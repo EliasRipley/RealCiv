@@ -76,6 +76,10 @@ public final class RealCivEvents {
                         + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
+        if (civId.equals(RealCivConfig.defaultCivilizationId())) {
+            player.sendSystemMessage(Component.literal(
+                    "You are in the default civilization. Use /realciv civ found <id> [name] to create your own civilization."));
+        }
     }
 
     public static void onServerTick(ServerTickEvent.Post event) {
@@ -172,7 +176,7 @@ public final class RealCivEvents {
         CivSavedData data = CivSavedData.get(player.getServer());
         long now = currentGameTime(player);
 
-        if (placedBlock.is(ModBlocks.COMMUNITY_HUB.get()) && !RealCivUtil.isBypass(player)) {
+        if (placedBlock.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
             RealCivMessages.deny(player, "Only admins can place Community Hubs.");
             event.setCanceled(true);
             return;
@@ -227,7 +231,7 @@ public final class RealCivEvents {
         BlockPos pos = event.getPos();
         long now = currentGameTime(player);
 
-        if (state.is(ModBlocks.COMMUNITY_HUB.get()) && !RealCivUtil.isBypass(player)) {
+        if (state.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
             RealCivMessages.deny(player, "Community Hub blocks are protected.");
             event.setCanceled(true);
             return;
@@ -410,6 +414,10 @@ public final class RealCivEvents {
         player.sendSystemMessage(Component.literal(
                 "Deposit mode for civilization '" + civId + "'. "
                         + "Place accepted stacks then close the window to contribute."));
+        if (civId.equals(RealCivConfig.defaultCivilizationId())) {
+            player.sendSystemMessage(Component.literal(
+                    "Tip: create your own civilization with /realciv civ found <id> [name]."));
+        }
         player.sendSystemMessage(Component.literal(
                 "Sneak + right click the Hub to open stock/withdraw pages."));
         player.sendSystemMessage(Component.literal(
@@ -426,7 +434,7 @@ public final class RealCivEvents {
 
     private static void openHubStockMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean privileged = RealCivUtil.isBypass(player) || data.isMayor(civId, player.getUUID());
+        boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player) || data.isMayor(civId, player.getUUID());
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
@@ -450,7 +458,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return !RealCivConfig.blockUnclaimedBuilding();
+            return true;
         }
         return data.canBuildOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }
@@ -465,7 +473,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return !RealCivConfig.blockUnclaimedBuilding();
+            return true;
         }
         return data.canBreakOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }

@@ -49,7 +49,7 @@ public final class RealCivUtil {
     }
 
     public static boolean isBypass(ServerPlayer player) {
-        return player.hasPermissions(2);
+        return RealCivConfig.adminBypassRestrictions() && player.hasPermissions(4);
     }
 
     public static int requiredGeneralLevelForTool(ItemStack stack) {

@@ -9,7 +9,6 @@ import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.logic.HubRewardResolver;
 import com.realciv.realciv.logic.Profession;
-import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
 import com.realciv.realciv.logic.TagRewardRule;
@@ -68,8 +67,18 @@ public final class RealCivCommands {
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("list")
                                 .executes(ctx -> civList(ctx.getSource())))
+                        .then(Commands.literal("found")
+                                .then(Commands.argument("id", StringArgumentType.word())
+                                        .executes(ctx -> civFound(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "id"),
+                                                StringArgumentType.getString(ctx, "id")))
+                                        .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                .executes(ctx -> civFound(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "id"),
+                                                        StringArgumentType.getString(ctx, "name"))))))
                         .then(Commands.literal("create")
-                                .requires(source -> source.hasPermission(3))
                                 .then(Commands.argument("id", StringArgumentType.word())
                                         .executes(ctx -> civCreate(
                                                 ctx.getSource(),
@@ -358,7 +367,29 @@ public final class RealCivCommands {
             source.sendFailure(Component.literal("Unable to create civilization. It may already exist or id is invalid."));
             return 0;
         }
-        source.sendSuccess(() -> Component.literal("Created civilization '" + name + "' [" + id.toLowerCase(Locale.ROOT) + "]."), true);
+        String normalized = id.toLowerCase(Locale.ROOT);
+        if (source.getEntity() instanceof ServerPlayer player) {
+            data.setPlayerCivilization(player.getUUID(), normalized, actorName(source));
+            data.setMayor(normalized, player.getUUID(), actorName(source));
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Created civilization '" + name + "' [" + normalized + "]."), true);
+        return 1;
+    }
+
+    private static int civFound(CommandSourceStack source, String id, String name)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer founder = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        if (!data.createCivilization(id, name, founder.getGameProfile().getName())) {
+            source.sendFailure(Component.literal("Unable to found civilization. It may already exist or id is invalid."));
+            return 0;
+        }
+        String normalized = id.toLowerCase(Locale.ROOT);
+        data.setPlayerCivilization(founder.getUUID(), normalized, founder.getGameProfile().getName());
+        data.setMayor(normalized, founder.getUUID(), founder.getGameProfile().getName());
+        source.sendSuccess(() -> Component.literal(
+                "You founded '" + name + "' [" + normalized + "] and are now its mayor."), true);
         return 1;
     }
 

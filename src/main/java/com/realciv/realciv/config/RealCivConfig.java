@@ -35,7 +35,7 @@ public final class RealCivConfig {
             .comment("Lumberjack block-break limits by lumberjack level index (level 0 = first value).")
             .defineListAllowEmpty(
                     "profession.lumberjackLimits",
-                    List.of(32, 64, 96, 160, 256, 384),
+                    List.of(8, 16, 32, 64, 96, 128),
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
@@ -232,15 +232,19 @@ public final class RealCivConfig {
 
     public static final ModConfigSpec.BooleanValue LAND_BLOCK_UNCLAIMED_BUILDING = BUILDER
             .comment("When true, block placement/breaking is denied in chunks with no zoning record.")
-            .define("land.blockUnclaimedBuilding", true);
+            .define("land.blockUnclaimedBuilding", false);
 
     public static final ModConfigSpec.ConfigValue<String> DEFAULT_CIVILIZATION_ID = BUILDER
             .comment("Civilization id assigned to players that do not currently belong to one.")
-            .define("civ.defaultId", "commonwealth");
+            .define("civ.defaultId", "unaligned");
 
     public static final ModConfigSpec.ConfigValue<String> DEFAULT_CIVILIZATION_NAME = BUILDER
             .comment("Display name used when creating the default civilization automatically.")
-            .define("civ.defaultName", "Commonwealth");
+            .define("civ.defaultName", "Unaligned");
+
+    public static final ModConfigSpec.BooleanValue ADMIN_BYPASS_RESTRICTIONS = BUILDER
+            .comment("When true, players with high operator permission bypass RealCiv restrictions.")
+            .define("admin.bypassRestrictions", false);
 
     public static final ModConfigSpec.IntValue MAX_AUDIT_LOGS = BUILDER
             .comment("Maximum number of audit log entries to retain in saved data.")
@@ -276,7 +280,7 @@ public final class RealCivConfig {
     }
 
     public static int lumberjackLimitForLevel(int lumberjackLevel) {
-        return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 32);
+        return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 8);
     }
 
     public static int hunterLimitForLevel(int hunterLevel) {
@@ -322,7 +326,7 @@ public final class RealCivConfig {
     public static String defaultCivilizationId() {
         String value = DEFAULT_CIVILIZATION_ID.get();
         if (value == null || value.isBlank()) {
-            return "commonwealth";
+            return "unaligned";
         }
         return value.trim().toLowerCase(java.util.Locale.ROOT);
     }
@@ -330,9 +334,13 @@ public final class RealCivConfig {
     public static String defaultCivilizationName() {
         String value = DEFAULT_CIVILIZATION_NAME.get();
         if (value == null || value.isBlank()) {
-            return "Commonwealth";
+            return "Unaligned";
         }
         return value.trim();
+    }
+
+    public static boolean adminBypassRestrictions() {
+        return ADMIN_BYPASS_RESTRICTIONS.get();
     }
 
     public static double defaultPersonalWithdrawRatio() {
