@@ -159,6 +159,60 @@ public class CivSavedData extends SavedData {
         return id.isEmpty() ? null : id;
     }
 
+    private static String sanitizeDisplayName(@Nullable String displayName, String fallback) {
+        if (displayName == null) {
+            return fallback;
+        }
+        String name = displayName.trim();
+        return name.isEmpty() ? fallback : name;
+    }
+
+    private static String slugifyCivName(String rawName) {
+        String lowercase = rawName.toLowerCase(java.util.Locale.ROOT);
+        StringBuilder out = new StringBuilder();
+        boolean lastDash = false;
+        for (int i = 0; i < lowercase.length(); i++) {
+            char ch = lowercase.charAt(i);
+            boolean allowed = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+            if (allowed) {
+                out.append(ch);
+                lastDash = false;
+                continue;
+            }
+            if (!lastDash && out.length() > 0) {
+                out.append('-');
+                lastDash = true;
+            }
+        }
+        while (out.length() > 0 && out.charAt(out.length() - 1) == '-') {
+            out.deleteCharAt(out.length() - 1);
+        }
+        return out.toString();
+    }
+
+    private static String truncatedForSuffix(String base, int suffix) {
+        String suffixText = "-" + suffix;
+        int maxBaseLength = Math.max(1, 32 - suffixText.length());
+        String trimmed = base.length() > maxBaseLength ? base.substring(0, maxBaseLength) : base;
+        while (trimmed.endsWith("-")) {
+            trimmed = trimmed.substring(0, trimmed.length() - 1);
+        }
+        return trimmed.isEmpty() ? "civ" : trimmed;
+    }
+
+    private boolean civilizationDisplayNameTaken(String displayName, @Nullable String exceptId) {
+        String wanted = displayName.trim();
+        for (CivilizationRecord civ : civilizations.values()) {
+            if (exceptId != null && civ.id().equals(exceptId)) {
+                continue;
+            }
+            if (civ.displayName().equalsIgnoreCase(wanted)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public void ensureDefaultCivilizationExists() {
         String id = RealCivConfig.defaultCivilizationId();
         if (!civilizations.containsKey(id)) {
@@ -167,12 +221,40 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    public String suggestCivilizationId(String displayNameRaw) {
+        String base = slugifyCivName(displayNameRaw == null ? "" : displayNameRaw);
+        if (base.isEmpty()) {
+            base = "civ";
+        }
+        if (base.length() > 32) {
+            base = base.substring(0, 32);
+        }
+        while (base.endsWith("-")) {
+            base = base.substring(0, base.length() - 1);
+        }
+        if (base.isEmpty()) {
+            base = "civ";
+        }
+
+        String candidate = base;
+        int suffix = 2;
+        while (civilizations.containsKey(candidate)) {
+            String clipped = truncatedForSuffix(base, suffix);
+            candidate = clipped + "-" + suffix;
+            suffix++;
+        }
+        return candidate;
+    }
+
     public boolean createCivilization(String idRaw, String displayName, String actorName) {
         String id = normalizeCivId(idRaw);
         if (id == null || civilizations.containsKey(id)) {
             return false;
         }
-        String name = (displayName == null || displayName.isBlank()) ? id : displayName.trim();
+        String name = sanitizeDisplayName(displayName, id);
+        if (civilizationDisplayNameTaken(name, null)) {
+            return false;
+        }
         civilizations.put(id, new CivilizationRecord(id, name));
         addAuditLog(id, actorName + " created civilization '" + name + "'", RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
@@ -184,11 +266,89 @@ public class CivSavedData extends SavedData {
         if (civ == null) {
             return false;
         }
-        String name = (displayName == null || displayName.isBlank()) ? civ.id() : displayName.trim();
+        String name = sanitizeDisplayName(displayName, civ.id());
+        if (civilizationDisplayNameTaken(name, civ.id())) {
+            return false;
+        }
         civ.setDisplayName(name);
         addAuditLog(civ.id(), actorName + " renamed civilization to '" + name + "'", RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
         return true;
+    }
+
+    @Nullable
+    public String findCivilizationIdByDisplayName(String displayNameRaw) {
+        if (displayNameRaw == null) {
+            return null;
+        }
+        String name = displayNameRaw.trim();
+        if (name.isEmpty()) {
+            return null;
+        }
+        for (CivilizationRecord civ : civilizations.values()) {
+            if (civ.displayName().equalsIgnoreCase(name)) {
+                return civ.id();
+            }
+        }
+        return null;
+    }
+
+    @Nullable
+    public DeleteCivilizationResult deleteCivilization(String civIdRaw, String fallbackCivRaw, String actorName) {
+        String civId = normalizeCivId(civIdRaw);
+        String fallbackId = normalizeCivId(fallbackCivRaw);
+        if (civId == null || fallbackId == null || civId.equals(fallbackId)) {
+            return null;
+        }
+
+        CivilizationRecord removed = civilizations.remove(civId);
+        if (removed == null) {
+            return null;
+        }
+
+        CivilizationRecord fallback = getOrCreateCivilization(fallbackId);
+        int reassignedMembers = 0;
+        for (Map.Entry<UUID, String> entry : playerCivilization.entrySet()) {
+            if (civId.equals(normalizeCivId(entry.getValue()))) {
+                entry.setValue(fallback.id());
+                reassignedMembers++;
+            }
+        }
+
+        int migratedAccounts = 0;
+        for (PlayerRecord record : players.values()) {
+            if (record.migrateCivAccount(civId, fallback.id())) {
+                migratedAccounts++;
+            }
+        }
+
+        int transferredStockEntries = 0;
+        long transferredStockItems = 0L;
+        for (Map.Entry<String, Long> entry : removed.hubStock().entrySet()) {
+            long value = Math.max(0L, entry.getValue());
+            if (value <= 0L) {
+                continue;
+            }
+            fallback.hubStock().merge(entry.getKey(), value, Long::sum);
+            transferredStockEntries++;
+            transferredStockItems += value;
+        }
+
+        int removedPlots = removed.plots().size();
+        addAuditLog(
+                fallback.id(),
+                actorName + " deleted civilization '" + removed.displayName() + "' [" + removed.id() + "]"
+                        + " and reassigned " + reassignedMembers + " member(s) to " + fallback.id(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return new DeleteCivilizationResult(
+                removed.id(),
+                removed.displayName(),
+                reassignedMembers,
+                migratedAccounts,
+                transferredStockEntries,
+                transferredStockItems,
+                removedPlots);
     }
 
     public List<String> civilizationIdsSorted() {
@@ -560,6 +720,16 @@ public class CivSavedData extends SavedData {
     public record PlotLookup(String civilizationId, PlotRecord plot) {
     }
 
+    public record DeleteCivilizationResult(
+            String deletedId,
+            String deletedDisplayName,
+            int reassignedMembers,
+            int migratedAccounts,
+            int transferredStockEntries,
+            long transferredStockItems,
+            int removedPlots) {
+    }
+
     public static final class CivilizationRecord {
         private final String id;
         private String displayName;
@@ -856,6 +1026,37 @@ public class CivSavedData extends SavedData {
                 civId = RealCivConfig.defaultCivilizationId();
             }
             return civAccounts.computeIfAbsent(civId, ignored -> new CivAccount());
+        }
+
+        public boolean migrateCivAccount(String fromCivRaw, String toCivRaw) {
+            String from = normalizeCivId(fromCivRaw);
+            String to = normalizeCivId(toCivRaw);
+            if (from == null || to == null || from.equals(to)) {
+                return false;
+            }
+            CivAccount fromAccount = civAccounts.remove(from);
+            if (fromAccount == null) {
+                return false;
+            }
+
+            CivAccount target = account(to);
+            target.socialCreditCents = Math.max(0L, target.socialCreditCents + Math.max(0L, fromAccount.socialCreditCents));
+            for (Map.Entry<String, Long> entry : fromAccount.contributions.entrySet()) {
+                long value = Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    target.contributions.merge(entry.getKey(), value, Long::sum);
+                }
+            }
+            for (Map.Entry<String, Long> entry : fromAccount.personalWithdrawals.entrySet()) {
+                long value = Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    target.personalWithdrawals.merge(entry.getKey(), value, Long::sum);
+                }
+            }
+            if (target.personalWithdrawRatioOverride == null && fromAccount.personalWithdrawRatioOverride != null) {
+                target.personalWithdrawRatioOverride = clampRatio(fromAccount.personalWithdrawRatioOverride);
+            }
+            return true;
         }
 
         public void migrateLegacyAccount(String civId) {

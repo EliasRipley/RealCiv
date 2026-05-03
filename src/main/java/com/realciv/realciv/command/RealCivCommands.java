@@ -68,48 +68,45 @@ public final class RealCivCommands {
                         .then(Commands.literal("list")
                                 .executes(ctx -> civList(ctx.getSource())))
                         .then(Commands.literal("found")
-                                .then(Commands.argument("id", StringArgumentType.word())
+                                .then(Commands.argument("name", StringArgumentType.greedyString())
                                         .executes(ctx -> civFound(
                                                 ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "id"),
-                                                StringArgumentType.getString(ctx, "id")))
-                                        .then(Commands.argument("name", StringArgumentType.greedyString())
-                                                .executes(ctx -> civFound(
-                                                        ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "id"),
-                                                        StringArgumentType.getString(ctx, "name"))))))
+                                                        StringArgumentType.getString(ctx, "name")))))
                         .then(Commands.literal("create")
-                                .then(Commands.argument("id", StringArgumentType.word())
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.argument("name", StringArgumentType.greedyString())
                                         .executes(ctx -> civCreate(
                                                 ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "id"),
-                                                StringArgumentType.getString(ctx, "id")))
-                                        .then(Commands.argument("name", StringArgumentType.greedyString())
-                                                .executes(ctx -> civCreate(
-                                                        ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "id"),
-                                                        StringArgumentType.getString(ctx, "name"))))))
+                                                        StringArgumentType.getString(ctx, "name")))))
                         .then(Commands.literal("rename")
                                 .requires(source -> source.hasPermission(3))
-                                .then(Commands.argument("id", StringArgumentType.word())
+                                .then(Commands.argument("civ", StringArgumentType.string())
                                         .then(Commands.argument("name", StringArgumentType.greedyString())
                                                 .executes(ctx -> civRename(
                                                         ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "id"),
+                                                        StringArgumentType.getString(ctx, "civ"),
                                                         StringArgumentType.getString(ctx, "name"))))))
+                        .then(Commands.literal("delete")
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.argument("civ", StringArgumentType.string())
+                                        .executes(ctx -> civDelete(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "civ")))))
                         .then(Commands.literal("join")
-                                .then(Commands.argument("id", StringArgumentType.word())
+                                .then(Commands.argument("civ", StringArgumentType.string())
                                         .executes(ctx -> civJoin(
                                                 ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "id")))))
+                                                StringArgumentType.getString(ctx, "civ")))))
+                        .then(Commands.literal("leave")
+                                .executes(ctx -> civLeave(ctx.getSource())))
                         .then(Commands.literal("assign")
                                 .requires(source -> source.hasPermission(3))
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .then(Commands.argument("id", StringArgumentType.word())
+                                        .then(Commands.argument("civ", StringArgumentType.string())
                                                 .executes(ctx -> civAssign(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
-                                                        StringArgumentType.getString(ctx, "id")))))))
+                                                        StringArgumentType.getString(ctx, "civ"))))))
                 .then(Commands.literal("land")
                         .then(Commands.literal("rent")
                                 .executes(ctx -> rentCurrentPlot(ctx.getSource(), RealCivConfig.LAND_RENT_DAYS.get()))
@@ -246,7 +243,7 @@ public final class RealCivCommands {
                 .then(Commands.literal("mayor")
                         .then(Commands.literal("show")
                                 .executes(ctx -> mayorShow(ctx.getSource(), null))
-                                .then(Commands.argument("civ", StringArgumentType.word())
+                                .then(Commands.argument("civ", StringArgumentType.string())
                                         .executes(ctx -> mayorShow(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "civ")))))
@@ -257,7 +254,7 @@ public final class RealCivCommands {
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player"),
                                                 null))
-                                        .then(Commands.argument("civ", StringArgumentType.word())
+                                        .then(Commands.argument("civ", StringArgumentType.string())
                                                 .executes(ctx -> mayorSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
@@ -265,7 +262,7 @@ public final class RealCivCommands {
                         .then(Commands.literal("clear")
                                 .requires(source -> source.hasPermission(3))
                                 .executes(ctx -> mayorClear(ctx.getSource(), null))
-                                .then(Commands.argument("civ", StringArgumentType.word())
+                                .then(Commands.argument("civ", StringArgumentType.string())
                                         .executes(ctx -> mayorClear(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "civ")))))
@@ -283,9 +280,9 @@ public final class RealCivCommands {
                                                                 DoubleArgumentType.getDouble(ctx, "percent"))))))
                                 .then(Commands.literal("clear")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> mayorWithdrawRateClear(
-                                                        ctx.getSource(),
-                                                        EntityArgument.getPlayer(ctx, "player"))))))));
+                                                        .executes(ctx -> mayorWithdrawRateClear(
+                                                                ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player")))))))));
     }
 
     private static int showProfile(CommandSourceStack source, ServerPlayer target) {
@@ -301,7 +298,11 @@ public final class RealCivCommands {
         int generalLevel = record.generalLevel();
 
         source.sendSuccess(() -> Component.literal("RealCiv profile for " + target.getGameProfile().getName()), false);
-        source.sendSuccess(() -> Component.literal("Civilization: " + civDisplay(data, civId) + " [" + civId + "]"), false);
+        if (source.hasPermission(3)) {
+            source.sendSuccess(() -> Component.literal("Civilization: " + civDisplay(data, civId) + " [" + civId + "]"), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Civilization: " + civDisplay(data, civId)), false);
+        }
         source.sendSuccess(() -> Component.literal(
                 "Credits: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
                         + " | General Level: " + generalLevel + " (" + record.generalXp() + " XP)"), false);
@@ -337,10 +338,17 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         boolean mayor = data.isMayor(civId, target.getUUID());
-        source.sendSuccess(() -> Component.literal(
-                target.getGameProfile().getName() + " belongs to " + civDisplay(data, civId) + " [" + civId + "]"
-                        + (mayor ? " (Mayor)" : "")),
-                false);
+        if (source.hasPermission(3)) {
+            source.sendSuccess(() -> Component.literal(
+                    target.getGameProfile().getName() + " belongs to " + civDisplay(data, civId) + " [" + civId + "]"
+                            + (mayor ? " (Mayor)" : "")),
+                    false);
+        } else {
+            source.sendSuccess(() -> Component.literal(
+                    target.getGameProfile().getName() + " belongs to " + civDisplay(data, civId)
+                            + (mayor ? " (Mayor)" : "")),
+                    false);
+        }
         return 1;
     }
 
@@ -352,81 +360,163 @@ public final class RealCivCommands {
             return 1;
         }
         source.sendSuccess(() -> Component.literal("Civilizations:"), false);
+        boolean showInternalId = source.hasPermission(3);
         for (String civId : ids) {
             CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
             String name = civ == null ? civId : civ.displayName();
             int plots = civ == null ? 0 : civ.plots().size();
-            source.sendSuccess(() -> Component.literal("- " + name + " [" + civId + "] | plots " + plots), false);
+            if (showInternalId) {
+                source.sendSuccess(() -> Component.literal("- " + name + " [" + civId + "] | plots " + plots), false);
+            } else {
+                source.sendSuccess(() -> Component.literal("- " + name + " | plots " + plots), false);
+            }
         }
         return 1;
     }
 
-    private static int civCreate(CommandSourceStack source, String id, String name) {
+    private static int civCreate(CommandSourceStack source, String nameRaw) {
         CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.createCivilization(id, name, actorName(source))) {
-            source.sendFailure(Component.literal("Unable to create civilization. It may already exist or id is invalid."));
+        String displayName = nameRaw == null ? "" : nameRaw.trim();
+        if (displayName.isEmpty()) {
+            source.sendFailure(Component.literal("Civilization name cannot be empty."));
             return 0;
         }
-        String normalized = id.toLowerCase(Locale.ROOT);
-        if (source.getEntity() instanceof ServerPlayer player) {
-            data.setPlayerCivilization(player.getUUID(), normalized, actorName(source));
-            data.setMayor(normalized, player.getUUID(), actorName(source));
+        if (data.findCivilizationIdByDisplayName(displayName) != null) {
+            source.sendFailure(Component.literal("A civilization with that name already exists."));
+            return 0;
         }
+
+        String id = data.suggestCivilizationId(displayName);
+        if (!data.createCivilization(id, displayName, actorName(source))) {
+            source.sendFailure(Component.literal("Unable to create civilization. Name or internal id may already exist."));
+            return 0;
+        }
+
         source.sendSuccess(() -> Component.literal(
-                "Created civilization '" + name + "' [" + normalized + "]."), true);
+                "Created civilization '" + displayName + "'. Internal id: " + id + "."), true);
         return 1;
     }
 
-    private static int civFound(CommandSourceStack source, String id, String name)
+    private static int civFound(CommandSourceStack source, String nameRaw)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer founder = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.createCivilization(id, name, founder.getGameProfile().getName())) {
-            source.sendFailure(Component.literal("Unable to found civilization. It may already exist or id is invalid."));
+        String displayName = nameRaw == null ? "" : nameRaw.trim();
+        if (displayName.isEmpty()) {
+            source.sendFailure(Component.literal("Civilization name cannot be empty."));
             return 0;
         }
-        String normalized = id.toLowerCase(Locale.ROOT);
-        data.setPlayerCivilization(founder.getUUID(), normalized, founder.getGameProfile().getName());
-        data.setMayor(normalized, founder.getUUID(), founder.getGameProfile().getName());
+        if (data.findCivilizationIdByDisplayName(displayName) != null) {
+            source.sendFailure(Component.literal("A civilization with that name already exists."));
+            return 0;
+        }
+
+        String id = data.suggestCivilizationId(displayName);
+        if (!data.createCivilization(id, displayName, founder.getGameProfile().getName())) {
+            source.sendFailure(Component.literal("Unable to found civilization. Name or internal id may already exist."));
+            return 0;
+        }
+
+        data.setPlayerCivilization(founder.getUUID(), id, founder.getGameProfile().getName());
+        data.setMayor(id, founder.getUUID(), founder.getGameProfile().getName());
         source.sendSuccess(() -> Component.literal(
-                "You founded '" + name + "' [" + normalized + "] and are now its mayor."), true);
+                "You founded '" + displayName + "' and are now its mayor."), true);
         return 1;
     }
 
-    private static int civRename(CommandSourceStack source, String id, String name) {
+    private static int civRename(CommandSourceStack source, String civRef, String name) {
         CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.renameCivilization(id, name, actorName(source))) {
-            source.sendFailure(Component.literal("Civilization not found: " + id));
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
             return 0;
         }
-        source.sendSuccess(() -> Component.literal("Renamed civilization [" + id + "] to '" + name + "'."), true);
+        if (!data.renameCivilization(civId, name, actorName(source))) {
+            source.sendFailure(Component.literal("Unable to rename civilization. Name may already be taken."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Renamed civilization '" + civRef + "' to '" + name + "'."), true);
         return 1;
     }
 
-    private static int civJoin(CommandSourceStack source, String id)
+    private static int civDelete(CommandSourceStack source, String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+
+        String defaultCiv = RealCivConfig.defaultCivilizationId();
+        if (civId.equals(defaultCiv)) {
+            source.sendFailure(Component.literal("Cannot delete the default civilization."));
+            return 0;
+        }
+
+        CivSavedData.DeleteCivilizationResult result = data.deleteCivilization(civId, defaultCiv, actorName(source));
+        if (result == null) {
+            source.sendFailure(Component.literal("Unable to delete civilization."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Deleted '" + result.deletedDisplayName() + "' [" + result.deletedId() + "]. "
+                        + "Reassigned members: " + result.reassignedMembers()
+                        + ", migrated accounts: " + result.migratedAccounts()
+                        + ", transferred stock entries: " + result.transferredStockEntries()
+                        + " (" + result.transferredStockItems() + " items), removed plots: " + result.removedPlots() + "."),
+                true);
+        return 1;
+    }
+
+    private static int civJoin(CommandSourceStack source, String civRef)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.setPlayerCivilization(player.getUUID(), id, actorName(source))) {
-            source.sendFailure(Component.literal("Civilization not found: " + id));
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        if (!data.setPlayerCivilization(player.getUUID(), civId, actorName(source))) {
+            source.sendFailure(Component.literal("Failed to join civilization."));
             return 0;
         }
         String newCiv = data.getOrAssignCivilization(player.getUUID());
         source.sendSuccess(() -> Component.literal(
-                "You are now a citizen of " + civDisplay(data, newCiv) + " [" + newCiv + "]."), true);
+                "You are now a citizen of " + civDisplay(data, newCiv) + "."), true);
         return 1;
     }
 
-    private static int civAssign(CommandSourceStack source, ServerPlayer target, String id) {
+    private static int civLeave(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.setPlayerCivilization(target.getUUID(), id, actorName(source))) {
-            source.sendFailure(Component.literal("Civilization not found: " + id));
+        String defaultCiv = RealCivConfig.defaultCivilizationId();
+        if (!data.setPlayerCivilization(player.getUUID(), defaultCiv, actorName(source))) {
+            source.sendFailure(Component.literal("Unable to leave civilization."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "You are now unaligned (" + civDisplay(data, defaultCiv) + ")."), true);
+        return 1;
+    }
+
+    private static int civAssign(CommandSourceStack source, ServerPlayer target, String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        if (!data.setPlayerCivilization(target.getUUID(), civId, actorName(source))) {
+            source.sendFailure(Component.literal("Failed to assign player to civilization."));
             return 0;
         }
         String newCiv = data.getOrAssignCivilization(target.getUUID());
         source.sendSuccess(() -> Component.literal(
                 "Assigned " + target.getGameProfile().getName()
-                        + " to " + civDisplay(data, newCiv) + " [" + newCiv + "]."),
+                        + " to " + civDisplay(data, newCiv) + "."),
                 true);
         return 1;
     }
@@ -1127,12 +1217,24 @@ public final class RealCivCommands {
         return RealCivConfig.defaultCivilizationId();
     }
 
+    @Nullable
+    private static String resolveCivilizationId(CivSavedData data, String civRaw) {
+        if (civRaw == null || civRaw.isBlank()) {
+            return null;
+        }
+        CivSavedData.CivilizationRecord byId = data.getCivilization(civRaw);
+        if (byId != null) {
+            return byId.id();
+        }
+        return data.findCivilizationIdByDisplayName(civRaw);
+    }
+
     private static String resolveMayorCivId(CommandSourceStack source, CivSavedData data, @Nullable String civRaw) {
         if (civRaw == null || civRaw.isBlank()) {
             return civOfSource(source, data);
         }
-        CivSavedData.CivilizationRecord civ = data.getCivilization(civRaw);
-        return civ == null ? civOfSource(source, data) : civ.id();
+        String resolved = resolveCivilizationId(data, civRaw);
+        return resolved == null ? civOfSource(source, data) : resolved;
     }
 
     private static String civDisplay(CivSavedData data, String civId) {
