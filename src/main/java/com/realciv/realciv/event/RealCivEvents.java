@@ -77,8 +77,13 @@ public final class RealCivEvents {
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
-            player.sendSystemMessage(Component.literal(
-                    "You are in the default civilization. Use /realciv civ found <id> [name] to create your own civilization."));
+            if (RealCivConfig.requireFounderApproval()) {
+                player.sendSystemMessage(Component.literal(
+                        "You are in the default civilization. Ask an admin for founder approval before using /realciv civ found <name>."));
+            } else {
+                player.sendSystemMessage(Component.literal(
+                        "You are in the default civilization. Use /realciv civ found <name> to create your own civilization."));
+            }
         }
     }
 
@@ -177,9 +182,12 @@ public final class RealCivEvents {
         long now = currentGameTime(player);
 
         if (placedBlock.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
-            RealCivMessages.deny(player, "Only admins can place Community Hubs.");
-            event.setCanceled(true);
-            return;
+            String civId = data.getOrAssignCivilization(player.getUUID());
+            if (!data.isMayor(civId, player.getUUID())) {
+                RealCivMessages.deny(player, "Only your civilization mayor (or admins) can place Community Hubs.");
+                event.setCanceled(true);
+                return;
+            }
         }
 
         if (!canBuildInChunk(player, level, event.getPos(), data, now)) {
@@ -232,9 +240,12 @@ public final class RealCivEvents {
         long now = currentGameTime(player);
 
         if (state.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
-            RealCivMessages.deny(player, "Community Hub blocks are protected.");
-            event.setCanceled(true);
-            return;
+            String civId = data.getOrAssignCivilization(player.getUUID());
+            if (!data.isMayor(civId, player.getUUID())) {
+                RealCivMessages.deny(player, "Community Hub blocks are protected.");
+                event.setCanceled(true);
+                return;
+            }
         }
 
         if (!canBreakInChunk(player, level, pos, data, now)) {

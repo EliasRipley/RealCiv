@@ -247,6 +247,10 @@ public final class RealCivConfig {
             .comment("Display name used when creating the default civilization automatically.")
             .define("civ.defaultName", "Unaligned");
 
+    public static final ModConfigSpec.BooleanValue REQUIRE_FOUNDER_APPROVAL = BUILDER
+            .comment("When true, only approved players (or admins) can found new civilizations.")
+            .define("civ.requireFounderApproval", true);
+
     public static final ModConfigSpec.BooleanValue ADMIN_BYPASS_RESTRICTIONS = BUILDER
             .comment("When true, players with high operator permission bypass RealCiv restrictions.")
             .define("admin.bypassRestrictions", false);
@@ -346,6 +350,10 @@ public final class RealCivConfig {
 
     public static boolean adminBypassRestrictions() {
         return ADMIN_BYPASS_RESTRICTIONS.get();
+    }
+
+    public static boolean requireFounderApproval() {
+        return REQUIRE_FOUNDER_APPROVAL.get();
     }
 
     public static boolean migrateLegacyCommonConfigIfNeeded() {

@@ -3,6 +3,7 @@ package com.realciv.realciv.command;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
@@ -280,9 +281,25 @@ public final class RealCivCommands {
                                                                 DoubleArgumentType.getDouble(ctx, "percent"))))))
                                 .then(Commands.literal("clear")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                        .executes(ctx -> mayorWithdrawRateClear(
-                                                                ctx.getSource(),
-                                                        EntityArgument.getPlayer(ctx, "player")))))))));
+                                                .executes(ctx -> mayorWithdrawRateClear(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"))))))
+                        .then(Commands.literal("approval")
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> mayorApprovalSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        true))))
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> mayorApprovalSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        false))))
+                                .then(Commands.literal("list")
+                                        .executes(ctx -> mayorApprovalList(ctx.getSource())))))));
     }
 
     private static int showProfile(CommandSourceStack source, ServerPlayer target) {
@@ -401,6 +418,13 @@ public final class RealCivCommands {
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer founder = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
+        if (!canFoundCivilization(source, data, founder)) {
+            source.sendFailure(Component.literal(
+                    "You are not approved to found a civilization. Ask an admin to run "
+                            + "/realciv mayor approval add " + founder.getGameProfile().getName() + "."));
+            return 0;
+        }
+
         String displayName = nameRaw == null ? "" : nameRaw.trim();
         if (displayName.isEmpty()) {
             source.sendFailure(Component.literal("Civilization name cannot be empty."));
@@ -419,6 +443,10 @@ public final class RealCivCommands {
 
         data.setPlayerCivilization(founder.getUUID(), id, founder.getGameProfile().getName());
         data.setMayor(id, founder.getUUID(), founder.getGameProfile().getName());
+        if (RealCivConfig.requireFounderApproval() && !source.hasPermission(3)) {
+            data.consumeFounderApproval(founder.getUUID(), founder.getGameProfile().getName());
+        }
+        grantMayorStarterHub(founder);
         source.sendSuccess(() -> Component.literal(
                 "You founded '" + displayName + "' and are now its mayor."), true);
         return 1;
@@ -1111,6 +1139,7 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = resolveMayorCivId(source, data, civRaw);
         data.setMayor(civId, player.getUUID(), actorName(source));
+        grantMayorStarterHub(player);
         source.sendSuccess(
                 () -> Component.literal("Mayor for " + civDisplay(data, civId)
                         + " set to " + player.getGameProfile().getName() + "."),
@@ -1210,11 +1239,49 @@ public final class RealCivCommands {
         return 1;
     }
 
+    private static int mayorApprovalSet(CommandSourceStack source, ServerPlayer player, boolean approved) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        data.setFounderApproved(player.getUUID(), approved, actorName(source));
+        source.sendSuccess(() -> Component.literal(
+                (approved ? "Approved " : "Revoked approval for ")
+                        + player.getGameProfile().getName()
+                        + (approved ? " to found a civilization." : " as civilization founder.")),
+                true);
+        return 1;
+    }
+
+    private static int mayorApprovalList(CommandSourceStack source) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        List<UUID> approved = data.founderApprovalsSorted();
+        if (approved.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No founder approvals are currently set."), false);
+            return 1;
+        }
+
+        source.sendSuccess(() -> Component.literal("Founder approvals:"), false);
+        for (UUID id : approved) {
+            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
+            String label = online != null ? online.getGameProfile().getName() + " (" + id + ")" : id.toString();
+            source.sendSuccess(() -> Component.literal("- " + label), false);
+        }
+        return 1;
+    }
+
     private static String civOfSource(CommandSourceStack source, CivSavedData data) {
         if (source.getEntity() instanceof ServerPlayer player) {
             return data.getOrAssignCivilization(player.getUUID());
         }
         return RealCivConfig.defaultCivilizationId();
+    }
+
+    private static boolean canFoundCivilization(CommandSourceStack source, CivSavedData data, ServerPlayer founder) {
+        if (source.hasPermission(3)) {
+            return true;
+        }
+        if (!RealCivConfig.requireFounderApproval()) {
+            return true;
+        }
+        return data.isFounderApproved(founder.getUUID());
     }
 
     @Nullable
@@ -1253,6 +1320,19 @@ public final class RealCivCommands {
             return data.isMayor(civId, player.getUUID());
         }
         return false;
+    }
+
+    private static void grantMayorStarterHub(ServerPlayer player) {
+        if (player.getInventory().contains(new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get()))) {
+            return;
+        }
+        ItemStack hub = new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get(), 1);
+        boolean added = player.getInventory().add(hub);
+        if (!added) {
+            player.drop(hub, false);
+        }
+        player.sendSystemMessage(Component.literal(
+                "Mayor starter item granted: 1x Community Hub."));
     }
 
     private static String actorName(CommandSourceStack source) {

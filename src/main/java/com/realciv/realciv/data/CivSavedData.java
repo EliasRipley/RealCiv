@@ -31,6 +31,7 @@ public class CivSavedData extends SavedData {
     private final Map<UUID, PlayerRecord> players = new HashMap<>();
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
     private final Map<UUID, String> playerCivilization = new HashMap<>();
+    private final Set<UUID> founderApprovals = new HashSet<>();
 
     public static CivSavedData get(MinecraftServer server) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Overworld is not available");
@@ -114,6 +115,14 @@ public class CivSavedData extends SavedData {
             }
         }
 
+        ListTag approvalsTag = tag.getList("founderApprovals", Tag.TAG_STRING);
+        for (Tag entry : approvalsTag) {
+            try {
+                data.founderApprovals.add(UUID.fromString(entry.getAsString()));
+            } catch (Exception ignored) {
+            }
+        }
+
         data.ensureDefaultCivilizationExists();
 
         // Lazy legacy account migration into default civ account.
@@ -146,6 +155,12 @@ public class CivSavedData extends SavedData {
             membershipTag.putString(entry.getKey().toString(), entry.getValue());
         }
         tag.put("playerCivilization", membershipTag);
+
+        ListTag approvalsTag = new ListTag();
+        for (UUID approved : founderApprovals) {
+            approvalsTag.add(StringTag.valueOf(approved.toString()));
+        }
+        tag.put("founderApprovals", approvalsTag);
 
         return tag;
     }
@@ -349,6 +364,41 @@ public class CivSavedData extends SavedData {
                 transferredStockEntries,
                 transferredStockItems,
                 removedPlots);
+    }
+
+    public boolean isFounderApproved(UUID playerId) {
+        return founderApprovals.contains(playerId);
+    }
+
+    public void setFounderApproved(UUID playerId, boolean approved, String actorName) {
+        if (approved) {
+            founderApprovals.add(playerId);
+        } else {
+            founderApprovals.remove(playerId);
+        }
+        addAuditLog(
+                RealCivConfig.defaultCivilizationId(),
+                actorName + (approved ? " approved " : " revoked approval for ") + playerId + " as founder",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+    }
+
+    public boolean consumeFounderApproval(UUID playerId, String actorName) {
+        if (!founderApprovals.remove(playerId)) {
+            return false;
+        }
+        addAuditLog(
+                RealCivConfig.defaultCivilizationId(),
+                actorName + " consumed founder approval for " + playerId,
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public List<UUID> founderApprovalsSorted() {
+        return founderApprovals.stream()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
     }
 
     public List<String> civilizationIdsSorted() {
