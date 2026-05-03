@@ -29,7 +29,7 @@ public abstract class InventoryMenuMixin {
         }
 
         if (!CraftingLimitService.canTakeCraftingResult(serverPlayer, result)) {
-            CraftingLimitService.notifyCraftDenied(serverPlayer);
+            CraftingLimitService.notifyCraftDenied(serverPlayer, result);
             cir.setReturnValue(ItemStack.EMPTY);
         }
     }

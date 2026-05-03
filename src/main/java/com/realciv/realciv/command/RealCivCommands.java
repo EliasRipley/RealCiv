@@ -9,6 +9,7 @@ import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.logic.HubRewardResolver;
+import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
@@ -171,7 +172,54 @@ public final class RealCivCommands {
                                                 .executes(ctx -> landManagerSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
-                                                        false))))))
+                                                        false)))))
+                        .then(Commands.literal("wand")
+                                .executes(ctx -> landWandGive(ctx.getSource(), ctx.getSource().getPlayerOrException()))
+                                .then(Commands.literal("clear")
+                                        .executes(ctx -> landSelectionClear(ctx.getSource())))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .requires(source -> source.hasPermission(3))
+                                        .executes(ctx -> landWandGive(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("selection")
+                                .then(Commands.literal("info")
+                                        .executes(ctx -> landSelectionInfo(ctx.getSource())))
+                                .then(Commands.literal("clear")
+                                        .executes(ctx -> landSelectionClear(ctx.getSource()))))
+                        .then(Commands.literal("zone-selection")
+                                .then(Commands.argument("class", StringArgumentType.word())
+                                        .executes(ctx -> landZoneSelection(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "class"),
+                                                null,
+                                                RealCivConfig.LAND_RENT_DAYS.get()))
+                                        .then(Commands.argument("owner", EntityArgument.player())
+                                                .executes(ctx -> landZoneSelection(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "class"),
+                                                        EntityArgument.getPlayer(ctx, "owner"),
+                                                        RealCivConfig.LAND_RENT_DAYS.get()))
+                                                .then(Commands.argument("days", IntegerArgumentType.integer(1, 10_000))
+                                                        .executes(ctx -> landZoneSelection(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "class"),
+                                                                EntityArgument.getPlayer(ctx, "owner"),
+                                                                IntegerArgumentType.getInteger(ctx, "days")))))
+                                        .then(Commands.argument("days", IntegerArgumentType.integer(1, 10_000))
+                                                .executes(ctx -> landZoneSelection(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "class"),
+                                                        null,
+                                                        IntegerArgumentType.getInteger(ctx, "days"))))))
+                        .then(Commands.literal("clear-selection")
+                                .executes(ctx -> landClearSelection(ctx.getSource())))
+                        .then(Commands.literal("visualize")
+                                .executes(ctx -> landVisualize(ctx.getSource(), RealCivConfig.landWandVisualizeRadiusChunks()))
+                                .then(Commands.argument("radius", IntegerArgumentType.integer(1, 64))
+                                        .executes(ctx -> landVisualize(
+                                                ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "radius"))))))
                 .then(Commands.literal("hub")
                         .then(Commands.literal("open")
                                 .executes(ctx -> openHubStockMenu(ctx.getSource())))
@@ -225,6 +273,42 @@ public final class RealCivCommands {
                                         .executes(ctx -> showHubLogs(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "count"))))))
+                .then(Commands.literal("census")
+                        .then(Commands.literal("members")
+                                .executes(ctx -> censusMembers(ctx.getSource(), 1))
+                                .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                        .executes(ctx -> censusMembers(
+                                                ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "page")))))
+                        .then(Commands.literal("manager")
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> censusManagerSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        true))))
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> censusManagerSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        false)))))
+                        .then(Commands.literal("mayor")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusMayorSet(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player"))))
+                                .then(Commands.literal("clear")
+                                        .executes(ctx -> censusMayorClear(ctx.getSource())))))
+                .then(Commands.literal("tax")
+                        .then(Commands.literal("status")
+                                .executes(ctx -> taxStatus(ctx.getSource())))
+                        .then(Commands.literal("pay")
+                                .executes(ctx -> taxPay(ctx.getSource(), 1))
+                                .then(Commands.argument("cycles", IntegerArgumentType.integer(1, 365))
+                                        .executes(ctx -> taxPay(
+                                                ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "cycles"))))))
                 .then(Commands.literal("credit")
                         .requires(source -> source.hasPermission(3))
                         .then(Commands.literal("add")
@@ -772,6 +856,364 @@ public final class RealCivCommands {
                 (allowed ? "Added " : "Removed ")
                         + target.getGameProfile().getName() + " as civic manager for "
                         + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int landWandGive(CommandSourceStack source, ServerPlayer target) {
+        ItemStack wand = new ItemStack(ModBlocks.LAND_WAND.get(), 1);
+        boolean added = target.getInventory().add(wand);
+        if (!added) {
+            target.drop(wand, false);
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Granted Land Wand to " + target.getGameProfile().getName() + "."), true);
+        return 1;
+    }
+
+    private static int landSelectionInfo(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(player);
+        if (selection == null) {
+            source.sendFailure(Component.literal(
+                    "No complete wand selection in this dimension. Use Land Wand left-click for pos1 and right-click for pos2."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Land selection: dimension=" + selection.dimension()
+                        + " | X " + selection.minChunkX() + ".." + selection.maxChunkX()
+                        + " | Z " + selection.minChunkZ() + ".." + selection.maxChunkZ()
+                        + " | chunks=" + selection.chunkCount()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Configured selection max: " + RealCivConfig.landWandMaxSelectionChunks() + " chunk(s)."), false);
+        return 1;
+    }
+
+    private static int landSelectionClear(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        LandWandService.clearSelection(player);
+        source.sendSuccess(() -> Component.literal("Land wand selection cleared."), false);
+        return 1;
+    }
+
+    private static int landVisualize(CommandSourceStack source, int radius)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        int safeRadius = Math.max(1, Math.min(64, radius));
+        int boundaryEdges = LandWandService.visualizeNearbyPlots(player, data, safeRadius);
+        int selectionEdges = LandWandService.visualizeSelection(player);
+        source.sendSuccess(() -> Component.literal(
+                "Visualized " + boundaryEdges + " land boundary edge(s) within " + safeRadius + " chunks."
+                        + (selectionEdges > 0 ? " Selection edges: " + selectionEdges + "." : "")),
+                false);
+        return 1;
+    }
+
+    private static int landZoneSelection(
+            CommandSourceStack source,
+            String landClassRaw,
+            @Nullable ServerPlayer owner,
+            int prepayDays) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, actorCiv)) {
+            source.sendFailure(Component.literal("Only mayor/admin can zone selected areas for this civilization."));
+            return 0;
+        }
+
+        LandClass landClass = LandClass.fromConfig(landClassRaw);
+        if (landClass == null) {
+            source.sendFailure(Component.literal("Invalid land class. Use: public, civic, private."));
+            return 0;
+        }
+
+        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(actor);
+        if (selection == null) {
+            source.sendFailure(Component.literal(
+                    "No complete wand selection in this dimension. Use the Land Wand first."));
+            return 0;
+        }
+
+        if (selection.chunkCount() > RealCivConfig.landWandMaxSelectionChunks()) {
+            source.sendFailure(Component.literal(
+                    "Selection is too large (" + selection.chunkCount() + " chunks). Max allowed: "
+                            + RealCivConfig.landWandMaxSelectionChunks() + "."));
+            return 0;
+        }
+
+        long now = source.getServer().overworld().getGameTime();
+        String dimension = selection.dimension();
+        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
+            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
+                @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+                if (existing != null
+                        && !existing.civilizationId().equals(actorCiv)
+                        && !source.hasPermission(3)) {
+                    source.sendFailure(Component.literal(
+                            "Selection contains chunk [" + chunkX + ", " + chunkZ + "] already zoned by civilization '"
+                                    + existing.civilizationId() + "'. Admin privileges required to override."));
+                    return 0;
+                }
+            }
+        }
+
+        UUID ownerId = null;
+        long paidTicks = 0L;
+        if (landClass == LandClass.PRIVATE) {
+            ownerId = owner == null ? actor.getUUID() : owner.getUUID();
+            paidTicks = Math.max(1L, prepayDays) * 24_000L;
+        }
+
+        int affected = 0;
+        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
+            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
+                @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+                if (existing != null && !existing.civilizationId().equals(actorCiv) && source.hasPermission(3)) {
+                    data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
+                }
+                data.setPlot(actorCiv, dimension, chunkX, chunkZ, landClass, ownerId, now, paidTicks);
+                affected++;
+            }
+        }
+
+        data.addAuditLog(
+                actorCiv,
+                actorName(source) + " zoned selection " + dimension
+                        + " X[" + selection.minChunkX() + ".." + selection.maxChunkX() + "]"
+                        + " Z[" + selection.minChunkZ() + ".." + selection.maxChunkZ() + "] as " + landClass
+                        + (ownerId == null ? "" : " owner=" + ownerId),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        String ownerText = ownerId == null ? "none" : ownerId.toString();
+        final int finalAffected = affected;
+        final String zonedMessage =
+                "Zoned " + finalAffected + " chunk(s) in " + civDisplay(data, actorCiv)
+                        + " as " + landClass + " | owner: " + ownerText;
+        source.sendSuccess(() -> Component.literal(zonedMessage), true);
+        return 1;
+    }
+
+    private static int landClearSelection(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, actorCiv)) {
+            source.sendFailure(Component.literal("Only mayor/admin can clear selected land zoning."));
+            return 0;
+        }
+
+        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(actor);
+        if (selection == null) {
+            source.sendFailure(Component.literal(
+                    "No complete wand selection in this dimension. Use the Land Wand first."));
+            return 0;
+        }
+
+        if (selection.chunkCount() > RealCivConfig.landWandMaxSelectionChunks()) {
+            source.sendFailure(Component.literal(
+                    "Selection is too large (" + selection.chunkCount() + " chunks). Max allowed: "
+                            + RealCivConfig.landWandMaxSelectionChunks() + "."));
+            return 0;
+        }
+
+        int cleared = 0;
+        int skipped = 0;
+        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
+            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
+                @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(selection.dimension(), chunkX, chunkZ);
+                if (existing == null) {
+                    continue;
+                }
+                if (!existing.civilizationId().equals(actorCiv) && !source.hasPermission(3)) {
+                    skipped++;
+                    continue;
+                }
+                if (data.clearPlot(existing.civilizationId(), selection.dimension(), chunkX, chunkZ)) {
+                    data.addAuditLog(
+                            existing.civilizationId(),
+                            actorName(source) + " cleared zoning at " + selection.dimension()
+                                    + "[" + chunkX + "," + chunkZ + "]",
+                            RealCivConfig.MAX_AUDIT_LOGS.get());
+                    cleared++;
+                }
+            }
+        }
+        data.setDirty();
+
+        if (cleared == 0) {
+            source.sendFailure(Component.literal(
+                    "No zoned chunks were cleared in selection."
+                            + (skipped > 0 ? " Skipped " + skipped + " chunk(s) owned by other civilizations." : "")));
+            return 0;
+        }
+
+        final int finalCleared = cleared;
+        final int finalSkipped = skipped;
+        final String clearedMessage =
+                "Cleared zoning for " + finalCleared + " chunk(s)."
+                        + (finalSkipped > 0 ? " Skipped " + finalSkipped + " chunk(s) owned by other civilizations." : "");
+        source.sendSuccess(() -> Component.literal(clearedMessage), true);
+        return 1;
+    }
+
+    private static int censusMembers(CommandSourceStack source, int page)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        List<UUID> members = data.civilizationMembersSorted(civId);
+        if (members.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No members are registered in your civilization."), false);
+            return 1;
+        }
+
+        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+        int totalPages = Math.max(1, (members.size() + pageSize - 1) / pageSize);
+        int safePage = Math.max(1, Math.min(page, totalPages));
+        int start = (safePage - 1) * pageSize;
+        int end = Math.min(members.size(), start + pageSize);
+
+        source.sendSuccess(() -> Component.literal(
+                "Census members for " + civDisplay(data, civId)
+                        + " (page " + safePage + "/" + totalPages + "):"),
+                false);
+        for (int i = start; i < end; i++) {
+            UUID memberId = members.get(i);
+            ServerPlayer online = source.getServer().getPlayerList().getPlayer(memberId);
+            String name = online == null ? memberId.toString() : online.getGameProfile().getName();
+            String role = data.isMayor(civId, memberId)
+                    ? "MAYOR"
+                    : (data.isCivicManager(civId, memberId) ? "MANAGER" : "CITIZEN");
+            source.sendSuccess(() -> Component.literal("- " + name + " | " + role + " | " + memberId), false);
+        }
+        return 1;
+    }
+
+    private static int censusManagerSet(CommandSourceStack source, ServerPlayer target, boolean allowed)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can manage census roles."));
+            return 0;
+        }
+
+        data.setCivicManager(civId, target.getUUID(), allowed, actorName(source));
+        source.sendSuccess(() -> Component.literal(
+                (allowed ? "Assigned " : "Removed ")
+                        + target.getGameProfile().getName() + " as civic manager in "
+                        + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int censusMayorSet(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can set mayor through census controls."));
+            return 0;
+        }
+
+        data.setMayor(civId, target.getUUID(), actorName(source));
+        grantMayorStarterHub(target);
+        source.sendSuccess(() -> Component.literal(
+                "Set mayor for " + civDisplay(data, civId) + " to " + target.getGameProfile().getName() + "."), true);
+        return 1;
+    }
+
+    private static int censusMayorClear(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can clear mayor through census controls."));
+            return 0;
+        }
+        data.setMayor(civId, null, actorName(source));
+        source.sendSuccess(() -> Component.literal(
+                "Mayor assignment cleared for " + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int taxStatus(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+
+        int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
+        int delinquentPlots = data.delinquentPrivatePlotCountForOwner(civId, player.getUUID());
+        long nextUpkeepTick = data.earliestPrivatePlotUpkeepTick(civId, player.getUUID());
+        long cycleCost = RealCivConfig.upkeepCostCents() * ownedPlots;
+
+        source.sendSuccess(() -> Component.literal(
+                "Tax status for " + player.getGameProfile().getName() + " in " + civDisplay(data, civId) + ":"), false);
+        source.sendSuccess(() -> Component.literal(
+                "Private plots: " + ownedPlots + " | Delinquent: " + delinquentPlots + " | Next upkeep tick: " + nextUpkeepTick), false);
+        source.sendSuccess(() -> Component.literal(
+                "Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
+                        + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                        + " | Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                false);
+        return 1;
+    }
+
+    private static int taxPay(CommandSourceStack source, int cycles)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        int safeCycles = Math.max(1, cycles);
+        int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
+        if (ownedPlots <= 0) {
+            source.sendFailure(Component.literal(
+                    "You do not own private plots in " + civDisplay(data, civId) + "."));
+            return 0;
+        }
+
+        long cycleCost = RealCivConfig.upkeepCostCents() * ownedPlots;
+        long totalCost = cycleCost * safeCycles;
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (record.socialCreditCents(civId) < totalCost) {
+            source.sendFailure(Component.literal(
+                    "Insufficient social credit. Need " + RealCivUtil.formatCredits(totalCost)
+                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
+            return 0;
+        }
+
+        long now = source.getServer().overworld().getGameTime();
+        int affected = data.prepayPrivatePlotUpkeep(civId, player.getUUID(), safeCycles, now, actorName(source));
+        if (affected <= 0) {
+            source.sendFailure(Component.literal("No private plots were eligible for upkeep prepayment."));
+            return 0;
+        }
+
+        record.addSocialCreditCents(civId, -totalCost);
+        data.addCivTreasuryCents(civId, totalCost);
+        data.addAuditLog(
+                civId,
+                actorName(source) + " paid upkeep tax " + RealCivUtil.formatCredits(totalCost)
+                        + " for " + affected + " private plot(s) across " + safeCycles + " cycle(s).",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        source.sendSuccess(() -> Component.literal(
+                "Paid " + RealCivUtil.formatCredits(totalCost)
+                        + " upkeep tax for " + affected + " private plot(s). New balance: "
+                        + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                        + " | Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                true);
         return 1;
     }
 
@@ -1323,16 +1765,27 @@ public final class RealCivCommands {
     }
 
     private static void grantMayorStarterHub(ServerPlayer player) {
-        if (player.getInventory().contains(new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get()))) {
-            return;
+        int granted = 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.CENSUS_BLOCK_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.TAX_BLOCK_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.LAND_WAND.get(), 1)) ? 1 : 0;
+        if (granted > 0) {
+            player.sendSystemMessage(Component.literal(
+                    "Mayor starter kit granted: Community Hub, Census Block, Tax Block, Land Wand."));
         }
-        ItemStack hub = new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get(), 1);
-        boolean added = player.getInventory().add(hub);
+    }
+
+    private static boolean giveStarterIfMissing(ServerPlayer player, ItemStack stack) {
+        if (player.getInventory().contains(stack)) {
+            return false;
+        }
+        ItemStack copy = stack.copy();
+        boolean added = player.getInventory().add(copy);
         if (!added) {
-            player.drop(hub, false);
+            player.drop(copy, false);
         }
-        player.sendSystemMessage(Component.literal(
-                "Mayor starter item granted: 1x Community Hub."));
+        return true;
     }
 
     private static String actorName(CommandSourceStack source) {

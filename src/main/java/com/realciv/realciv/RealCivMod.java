@@ -38,6 +38,7 @@ public class RealCivMod {
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onAttackEntity);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemCrafted);
+        NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemPickupPre);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onServerTick);
     }
 
@@ -56,6 +57,11 @@ public class RealCivMod {
     private void addCreativeTabContents(BuildCreativeModeTabContentsEvent event) {
         if (event.getTabKey() == CreativeModeTabs.FUNCTIONAL_BLOCKS) {
             event.accept(ModBlocks.COMMUNITY_HUB_ITEM);
+            event.accept(ModBlocks.CENSUS_BLOCK_ITEM);
+            event.accept(ModBlocks.TAX_BLOCK_ITEM);
+        }
+        if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
+            event.accept(ModBlocks.LAND_WAND);
         }
     }
 }

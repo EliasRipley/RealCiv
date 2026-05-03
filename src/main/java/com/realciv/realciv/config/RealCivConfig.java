@@ -215,6 +215,37 @@ public final class RealCivConfig {
             .comment("Fallback required level for custom tiered tools not matching vanilla tiers.")
             .defineInRange("tools.requiredLevel.unknownTier", 8, 0, 1000);
 
+    public static final ModConfigSpec.BooleanValue CARRY_CAP_PICKUP_ENABLED = BUILDER
+            .comment("When true, players cannot pick up profession-tracked items above configured carry caps.")
+            .define("carryCap.pickupEnabled", false);
+
+    public static final ModConfigSpec.BooleanValue CARRY_CAP_CRAFT_ENABLED = BUILDER
+            .comment("When true, players cannot take crafting output that would exceed configured carry caps.")
+            .define("carryCap.craftEnabled", false);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> CARRY_CAP_PROFESSION_MULTIPLIERS = BUILDER
+            .comment("Carry-cap multipliers by profession. Format: profession|multiplier")
+            .comment("Example: FARMER|1.0 means cap equals farmer action limit for current level.")
+            .defineListAllowEmpty(
+                    "carryCap.professionMultipliers",
+                    List.of(
+                            "FARMER|1.0",
+                            "MINER|1.0",
+                            "LUMBERJACK|1.0",
+                            "HUNTER|1.0",
+                            "CRAFTER|1.0"),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> CARRY_CAP_ITEM_MAX_OVERRIDES = BUILDER
+            .comment("Optional per-item carry cap overrides. Format: item_id|max_count")
+            .comment("If an item override exists, it takes precedence over profession multiplier caps.")
+            .defineListAllowEmpty(
+                    "carryCap.itemMaxOverrides",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.DoubleValue LAND_RENT_COST = BUILDER
             .comment("Social credit cost to rent one chunk plot.")
             .defineInRange("land.rentCost", 100.0D, 0.0D, 1_000_000.0D);
@@ -238,6 +269,14 @@ public final class RealCivConfig {
     public static final ModConfigSpec.BooleanValue LAND_BLOCK_UNCLAIMED_BUILDING = BUILDER
             .comment("When true, block placement/breaking is denied in chunks with no zoning record.")
             .define("land.blockUnclaimedBuilding", false);
+
+    public static final ModConfigSpec.IntValue LAND_WAND_VISUALIZE_RADIUS_CHUNKS = BUILDER
+            .comment("How many chunks around the player the land wand will visualize.")
+            .defineInRange("land.wandVisualizeRadiusChunks", 6, 1, 64);
+
+    public static final ModConfigSpec.IntValue LAND_WAND_MAX_SELECTION_CHUNKS = BUILDER
+            .comment("Maximum chunk count that can be zoned/cleared in one land-wand selection action.")
+            .defineInRange("land.wandMaxSelectionChunks", 256, 1, 10_000);
 
     public static final ModConfigSpec.ConfigValue<String> DEFAULT_CIVILIZATION_ID = BUILDER
             .comment("Civilization id assigned to players that do not currently belong to one.")
@@ -332,6 +371,14 @@ public final class RealCivConfig {
         return LAND_BLOCK_UNCLAIMED_BUILDING.get();
     }
 
+    public static int landWandVisualizeRadiusChunks() {
+        return Math.max(1, LAND_WAND_VISUALIZE_RADIUS_CHUNKS.get());
+    }
+
+    public static int landWandMaxSelectionChunks() {
+        return Math.max(1, LAND_WAND_MAX_SELECTION_CHUNKS.get());
+    }
+
     public static String defaultCivilizationId() {
         String value = DEFAULT_CIVILIZATION_ID.get();
         if (value == null || value.isBlank()) {
@@ -354,6 +401,83 @@ public final class RealCivConfig {
 
     public static boolean requireFounderApproval() {
         return REQUIRE_FOUNDER_APPROVAL.get();
+    }
+
+    public static boolean carryCapPickupEnabled() {
+        return CARRY_CAP_PICKUP_ENABLED.get();
+    }
+
+    public static boolean carryCapCraftEnabled() {
+        return CARRY_CAP_CRAFT_ENABLED.get();
+    }
+
+    public static Map<Profession, Double> carryCapProfessionMultipliers() {
+        Map<Profession, Double> multipliers = new HashMap<>();
+        multipliers.put(Profession.FARMER, 1.0D);
+        multipliers.put(Profession.MINER, 1.0D);
+        multipliers.put(Profession.LUMBERJACK, 1.0D);
+        multipliers.put(Profession.HUNTER, 1.0D);
+        multipliers.put(Profession.CRAFTER, 1.0D);
+
+        for (String raw : CARRY_CAP_PROFESSION_MULTIPLIERS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|");
+            if (parts.length != 2) {
+                continue;
+            }
+
+            Profession profession = Profession.fromConfigName(parts[0].trim());
+            if (profession == null || profession == Profession.NONE) {
+                continue;
+            }
+
+            Double parsed = tryParseDouble(parts[1].trim());
+            if (parsed == null) {
+                continue;
+            }
+            multipliers.put(profession, Math.max(0.0D, parsed));
+        }
+
+        return multipliers;
+    }
+
+    public static Map<ResourceLocation, Integer> carryCapItemMaxOverrides() {
+        Map<ResourceLocation, Integer> overrides = new HashMap<>();
+        for (String raw : CARRY_CAP_ITEM_MAX_OVERRIDES.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|");
+            if (parts.length != 2) {
+                continue;
+            }
+
+            ResourceLocation itemId;
+            try {
+                itemId = ResourceLocation.parse(parts[0].trim());
+            } catch (Exception ex) {
+                continue;
+            }
+
+            Integer maxCount = tryParseInt(parts[1].trim());
+            if (maxCount == null) {
+                continue;
+            }
+            overrides.put(itemId, Math.max(0, maxCount));
+        }
+        return overrides;
     }
 
     public static boolean migrateLegacyCommonConfigIfNeeded() {

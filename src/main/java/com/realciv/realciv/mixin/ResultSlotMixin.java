@@ -32,7 +32,7 @@ public abstract class ResultSlotMixin {
         }
 
         if (!CraftingLimitService.canTakeCraftingResult(serverPlayer, result)) {
-            CraftingLimitService.notifyCraftDenied(serverPlayer);
+            CraftingLimitService.notifyCraftDenied(serverPlayer, result);
             cir.setReturnValue(false);
         }
     }

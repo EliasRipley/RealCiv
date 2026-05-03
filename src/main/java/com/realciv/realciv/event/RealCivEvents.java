@@ -3,12 +3,16 @@ package com.realciv.realciv.event;
 import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.logic.CarryCapService;
 import com.realciv.realciv.logic.CraftingLimitService;
+import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
+import java.util.List;
+import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
@@ -25,7 +29,6 @@ import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ResultSlot;
-import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -33,11 +36,13 @@ import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
+import net.neoforged.neoforge.common.util.TriState;
 import org.jetbrains.annotations.Nullable;
 
 public final class RealCivEvents {
@@ -99,6 +104,24 @@ public final class RealCivEvents {
         CivSavedData.get(event.getServer()).processUpkeep(now);
     }
 
+    public static void onItemPickupPre(ItemEntityPickupEvent.Pre event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        ItemStack incoming = event.getItemEntity().getItem();
+        if (incoming.isEmpty()) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!CarryCapService.canAcquireForPickup(player, data, incoming)) {
+            event.setCanPickup(TriState.FALSE);
+        }
+    }
+
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         if (event.getHand() != InteractionHand.MAIN_HAND || event.getLevel().isClientSide()) {
             return;
@@ -109,6 +132,24 @@ public final class RealCivEvents {
 
         CivSavedData data = CivSavedData.get(player.getServer());
         BlockState clickedState = event.getLevel().getBlockState(event.getPos());
+        ItemStack held = event.getItemStack();
+
+        if (held.is(ModBlocks.LAND_WAND.get())) {
+            if (player.isShiftKeyDown()) {
+                int radius = RealCivConfig.landWandVisualizeRadiusChunks();
+                int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
+                int selectedEdges = LandWandService.visualizeSelection(player);
+                player.sendSystemMessage(Component.literal(
+                        "[RealCiv] Land Wand visualized " + edges
+                                + " nearby boundary edge(s) within " + radius + " chunks."
+                                + (selectedEdges > 0 ? " Selection edges: " + selectedEdges + "." : "")));
+            } else {
+                LandWandService.setPos2(player, event.getPos());
+            }
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
 
         if (clickedState.is(ModBlocks.COMMUNITY_HUB.get())) {
             if (player.isShiftKeyDown()) {
@@ -116,6 +157,16 @@ public final class RealCivEvents {
             } else {
                 openHubDepositMenu(event, player, data);
             }
+            return;
+        }
+
+        if (clickedState.is(ModBlocks.CENSUS_BLOCK.get())) {
+            openCensusPanel(event, player, data);
+            return;
+        }
+
+        if (clickedState.is(ModBlocks.TAX_BLOCK.get())) {
+            openTaxPanel(event, player, data, player.isShiftKeyDown());
             return;
         }
 
@@ -149,6 +200,18 @@ public final class RealCivEvents {
         }
 
         CivSavedData data = CivSavedData.get(player.getServer());
+        if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
+            int radius = RealCivConfig.landWandVisualizeRadiusChunks();
+            int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
+            int selectedEdges = LandWandService.visualizeSelection(player);
+            player.sendSystemMessage(Component.literal(
+                    "[RealCiv] Land Wand visualized " + edges
+                            + " nearby boundary edge(s) within " + radius + " chunks."
+                            + (selectedEdges > 0 ? " Selection edges: " + selectedEdges + "." : "")));
+            event.setCancellationResult(InteractionResult.SUCCESS);
+            event.setCanceled(true);
+            return;
+        }
         if (isToolLocked(player, event.getItemStack(), data)) {
             event.setCancellationResult(InteractionResult.FAIL);
             event.setCanceled(true);
@@ -160,6 +223,12 @@ public final class RealCivEvents {
             return;
         }
         if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+
+        if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
+            LandWandService.setPos1(player, event.getPos());
+            event.setCanceled(true);
             return;
         }
 
@@ -181,10 +250,15 @@ public final class RealCivEvents {
         CivSavedData data = CivSavedData.get(player.getServer());
         long now = currentGameTime(player);
 
-        if (placedBlock.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
+        if ((placedBlock.is(ModBlocks.COMMUNITY_HUB.get())
+                || placedBlock.is(ModBlocks.CENSUS_BLOCK.get())
+                || placedBlock.is(ModBlocks.TAX_BLOCK.get()))
+                && !player.hasPermissions(3)) {
             String civId = data.getOrAssignCivilization(player.getUUID());
             if (!data.isMayor(civId, player.getUUID())) {
-                RealCivMessages.deny(player, "Only your civilization mayor (or admins) can place Community Hubs.");
+                RealCivMessages.deny(
+                        player,
+                        "Only your civilization mayor (or admins) can place civic control blocks (Hub/Census/Tax).");
                 event.setCanceled(true);
                 return;
             }
@@ -239,10 +313,13 @@ public final class RealCivEvents {
         BlockPos pos = event.getPos();
         long now = currentGameTime(player);
 
-        if (state.is(ModBlocks.COMMUNITY_HUB.get()) && !player.hasPermissions(3)) {
+        if ((state.is(ModBlocks.COMMUNITY_HUB.get())
+                || state.is(ModBlocks.CENSUS_BLOCK.get())
+                || state.is(ModBlocks.TAX_BLOCK.get()))
+                && !player.hasPermissions(3)) {
             String civId = data.getOrAssignCivilization(player.getUUID());
             if (!data.isMayor(civId, player.getUUID())) {
-                RealCivMessages.deny(player, "Community Hub blocks are protected.");
+                RealCivMessages.deny(player, "Civic control blocks (Hub/Census/Tax) are protected.");
                 event.setCanceled(true);
                 return;
             }
@@ -397,7 +474,7 @@ public final class RealCivEvents {
         int current = record.crafterActions();
 
         if (current >= limit) {
-            CraftingLimitService.notifyCraftDenied(player);
+            CraftingLimitService.notifyCraftDenied(player, crafted);
             return;
         }
 
@@ -407,7 +484,7 @@ public final class RealCivEvents {
         data.setDirty();
 
         if (craftedCount > applied) {
-            CraftingLimitService.notifyCraftDenied(player);
+            CraftingLimitService.notifyCraftDenied(player, crafted);
         }
     }
 
@@ -427,7 +504,7 @@ public final class RealCivEvents {
                         + "Place accepted stacks then close the window to contribute."));
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
             player.sendSystemMessage(Component.literal(
-                    "Tip: create your own civilization with /realciv civ found <id> [name]."));
+                    "Tip: create your own civilization with /realciv civ found <name>."));
         }
         player.sendSystemMessage(Component.literal(
                 "Sneak + right click the Hub to open stock/withdraw pages."));
@@ -457,6 +534,117 @@ public final class RealCivEvents {
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
+    }
+
+    private static void openCensusPanel(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        List<UUID> members = data.civilizationMembersSorted(civId);
+        int managers = 0;
+        for (UUID member : members) {
+            if (data.isCivicManager(civId, member)) {
+                managers++;
+            }
+        }
+        boolean mayorOrAdmin = player.hasPermissions(3) || RealCivUtil.isBypass(player) || data.isMayor(civId, player.getUUID());
+
+        player.sendSystemMessage(Component.literal(
+                "Census: civ='" + civId + "' | members=" + members.size() + " | managers=" + managers));
+        if (mayorOrAdmin) {
+            player.sendSystemMessage(Component.literal(
+                    "Mayor controls: /realciv census members, /realciv census manager add <player>, "
+                            + "/realciv census manager remove <player>, /realciv census mayor <player>"));
+        } else {
+            player.sendSystemMessage(Component.literal(
+                    "Citizen view: /realciv census members"));
+        }
+
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        event.setCanceled(true);
+    }
+
+    private static void openTaxPanel(
+            PlayerInteractEvent.RightClickBlock event,
+            ServerPlayer player,
+            CivSavedData data,
+            boolean payOneCycleNow) {
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
+        if (ownedPlots <= 0) {
+            RealCivMessages.deny(
+                    player,
+                    "You do not own any private plots in this civilization, so no upkeep tax is due.");
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
+
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        long upkeepPerPlot = RealCivConfig.upkeepCostCents();
+        long cycleCost = upkeepPerPlot * ownedPlots;
+        int delinquent = data.delinquentPrivatePlotCountForOwner(civId, player.getUUID());
+        long nextTick = data.earliestPrivatePlotUpkeepTick(civId, player.getUUID());
+
+        if (payOneCycleNow) {
+            payPrivateUpkeepCycles(player, data, civId, 1, ownedPlots, cycleCost);
+        } else {
+            player.sendSystemMessage(Component.literal(
+                    "Tax Office: private plots=" + ownedPlots
+                            + " | delinquent=" + delinquent
+                            + " | next upkeep tick=" + nextTick));
+            player.sendSystemMessage(Component.literal(
+                    "Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
+                            + " | Your balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
+            player.sendSystemMessage(Component.literal(
+                    "Sneak + right-click to prepay 1 upkeep cycle now, or run /realciv tax pay <cycles>."));
+        }
+
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        event.setCanceled(true);
+    }
+
+    private static void payPrivateUpkeepCycles(
+            ServerPlayer player,
+            CivSavedData data,
+            String civId,
+            int cycles,
+            int ownedPlots,
+            long cycleCost) {
+        int safeCycles = Math.max(1, cycles);
+        long totalCost = cycleCost * safeCycles;
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        long balance = record.socialCreditCents(civId);
+        if (balance < totalCost) {
+            RealCivMessages.deny(
+                    player,
+                    "Insufficient social credit for upkeep prepayment. Need "
+                            + RealCivUtil.formatCredits(totalCost)
+                            + ", you have " + RealCivUtil.formatCredits(balance) + ".");
+            return;
+        }
+
+        long now = currentGameTime(player);
+        int affectedPlots = data.prepayPrivatePlotUpkeep(civId, player.getUUID(), safeCycles, now, player.getGameProfile().getName());
+        if (affectedPlots <= 0) {
+            RealCivMessages.deny(player, "No private plots were eligible for upkeep prepayment.");
+            return;
+        }
+
+        record.addSocialCreditCents(civId, -totalCost);
+        data.addCivTreasuryCents(civId, totalCost);
+        data.addAuditLog(
+                civId,
+                player.getGameProfile().getName() + " paid " + RealCivUtil.formatCredits(totalCost)
+                        + " upkeep tax via Tax Block for " + affectedPlots + " plot(s)"
+                        + " across " + safeCycles + " cycle(s).",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        player.sendSystemMessage(Component.literal(
+                "Upkeep tax paid for " + affectedPlots + " plot(s). Cost: "
+                        + RealCivUtil.formatCredits(totalCost)
+                        + " | New balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
+        player.sendSystemMessage(Component.literal(
+                "Civ treasury (" + civId + "): " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
     }
 
     private static boolean canBuildInChunk(ServerPlayer player, Level level, BlockPos pos, CivSavedData data, long gameTime) {
@@ -520,7 +708,11 @@ public final class RealCivEvents {
     }
 
     private static BreakProfession breakProfessionFor(BlockState state) {
-        if (state.isAir() || state.is(BlockTags.CROPS) || state.is(ModBlocks.COMMUNITY_HUB.get())) {
+        if (state.isAir()
+                || state.is(BlockTags.CROPS)
+                || state.is(ModBlocks.COMMUNITY_HUB.get())
+                || state.is(ModBlocks.CENSUS_BLOCK.get())
+                || state.is(ModBlocks.TAX_BLOCK.get())) {
             return BreakProfession.NONE;
         }
         if (state.is(BlockTags.LOGS) || state.is(BAMBOO_BLOCKS_TAG)) {

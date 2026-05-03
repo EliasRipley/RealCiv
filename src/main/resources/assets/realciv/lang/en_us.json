@@ -1,4 +1,7 @@
 {
   "block.realciv.community_hub": "Community Hub",
+  "block.realciv.census_block": "Census Block",
+  "block.realciv.tax_block": "Tax Block",
+  "item.realciv.land_wand": "Land Wand",
   "itemGroup.realciv": "Real Civilization"
 }

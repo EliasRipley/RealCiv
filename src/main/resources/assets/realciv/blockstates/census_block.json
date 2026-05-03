@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "realciv:block/census_block"
+    }
+  }
+}

@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "realciv:block/tax_block"
+    }
+  }
+}

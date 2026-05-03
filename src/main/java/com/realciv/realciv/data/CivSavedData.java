@@ -562,6 +562,29 @@ public class CivSavedData extends SavedData {
         return getOrCreateCivilization(civIdRaw).civicManagers().contains(playerId);
     }
 
+    public List<UUID> civilizationMembersSorted(String civIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return List.of();
+        }
+        String civId = civ.id();
+        return playerCivilization.entrySet().stream()
+                .filter(entry -> civId.equals(normalizeCivId(entry.getValue())))
+                .map(Map.Entry::getKey)
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    public long civTreasuryCents(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).treasuryCents();
+    }
+
+    public void addCivTreasuryCents(String civIdRaw, long delta) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.setTreasuryCents(civ.treasuryCents() + delta);
+        setDirty();
+    }
+
     public void setCivicManager(String civIdRaw, UUID playerId, boolean allowed, String actorName) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         if (allowed) {
@@ -658,6 +681,71 @@ public class CivSavedData extends SavedData {
         return canBuildOnPlot(civIdRaw, plot, playerId, bypass);
     }
 
+    public int privatePlotCountForOwner(String civIdRaw, UUID ownerId) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        int count = 0;
+        for (PlotRecord plot : civ.plots().values()) {
+            if (plot.landClass() == LandClass.PRIVATE && ownerId.equals(plot.ownerId())) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public int delinquentPrivatePlotCountForOwner(String civIdRaw, UUID ownerId) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        int count = 0;
+        for (PlotRecord plot : civ.plots().values()) {
+            if (plot.landClass() == LandClass.PRIVATE && ownerId.equals(plot.ownerId()) && plot.delinquentSinceTick() >= 0L) {
+                count++;
+            }
+        }
+        return count;
+    }
+
+    public long earliestPrivatePlotUpkeepTick(String civIdRaw, UUID ownerId) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        long earliest = Long.MAX_VALUE;
+        for (PlotRecord plot : civ.plots().values()) {
+            if (plot.landClass() == LandClass.PRIVATE && ownerId.equals(plot.ownerId())) {
+                earliest = Math.min(earliest, plot.nextUpkeepTick());
+            }
+        }
+        return earliest == Long.MAX_VALUE ? -1L : earliest;
+    }
+
+    public int prepayPrivatePlotUpkeep(String civIdRaw, UUID ownerId, int cycles, long gameTime, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        int safeCycles = Math.max(0, cycles);
+        if (safeCycles == 0) {
+            return 0;
+        }
+
+        long interval = Math.max(1L, RealCivConfig.upkeepIntervalTicks());
+        long extension = interval * safeCycles;
+        int updated = 0;
+
+        for (PlotRecord plot : civ.plots().values()) {
+            if (plot.landClass() != LandClass.PRIVATE || !ownerId.equals(plot.ownerId())) {
+                continue;
+            }
+            long base = Math.max(plot.nextUpkeepTick(), gameTime);
+            plot.setNextUpkeepTick(base + extension);
+            plot.setDelinquentSinceTick(-1L);
+            updated++;
+        }
+
+        if (updated > 0) {
+            addAuditLog(
+                    civ.id(),
+                    actorName + " prepaid upkeep for " + updated + " private plot(s) owned by " + ownerId
+                            + " for " + safeCycles + " cycle(s)",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            setDirty();
+        }
+        return updated;
+    }
+
     public void processUpkeep(long gameTime) {
         long interval = Math.max(1L, RealCivConfig.upkeepIntervalTicks());
         long grace = Math.max(1L, RealCivConfig.upkeepGraceTicks());
@@ -683,6 +771,7 @@ public class CivSavedData extends SavedData {
                 while (gameTime >= plot.nextUpkeepTick() && safety < 4096) {
                     if (owner.socialCreditCents(civ.id()) >= cost) {
                         owner.addSocialCreditCents(civ.id(), -cost);
+                        civ.setTreasuryCents(civ.treasuryCents() + cost);
                         plot.setNextUpkeepTick(plot.nextUpkeepTick() + interval);
                         plot.setDelinquentSinceTick(-1L);
                         changed = true;
@@ -783,6 +872,7 @@ public class CivSavedData extends SavedData {
     public static final class CivilizationRecord {
         private final String id;
         private String displayName;
+        private long treasuryCents;
         private final Map<String, Long> hubStock = new HashMap<>();
         private final Map<String, PlotRecord> plots = new HashMap<>();
         private final List<String> auditLogs = new ArrayList<>();
@@ -805,6 +895,14 @@ public class CivSavedData extends SavedData {
 
         public void setDisplayName(String displayName) {
             this.displayName = displayName;
+        }
+
+        public long treasuryCents() {
+            return treasuryCents;
+        }
+
+        public void setTreasuryCents(long value) {
+            treasuryCents = Math.max(0L, value);
         }
 
         public Map<String, Long> hubStock() {
@@ -836,6 +934,7 @@ public class CivSavedData extends SavedData {
             CompoundTag tag = new CompoundTag();
             tag.putString("id", id);
             tag.putString("displayName", displayName);
+            tag.putLong("treasuryCents", Math.max(0L, treasuryCents));
 
             CompoundTag stockTag = new CompoundTag();
             for (Map.Entry<String, Long> entry : hubStock.entrySet()) {
@@ -878,6 +977,7 @@ public class CivSavedData extends SavedData {
             }
             String name = tag.contains("displayName") ? tag.getString("displayName") : id;
             CivilizationRecord record = new CivilizationRecord(id, name);
+            record.treasuryCents = Math.max(0L, tag.getLong("treasuryCents"));
 
             CompoundTag stockTag = tag.getCompound("hubStock");
             for (String key : stockTag.getAllKeys()) {
