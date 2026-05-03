@@ -458,7 +458,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return true;
+            return !RealCivConfig.blockUnclaimedBuilding();
         }
         return data.canBuildOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }
@@ -473,7 +473,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return true;
+            return !RealCivConfig.blockUnclaimedBuilding();
         }
         return data.canBreakOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }

@@ -9,6 +9,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
 import org.slf4j.Logger;
@@ -21,6 +22,8 @@ public class RealCivMod {
     public RealCivMod(IEventBus modEventBus, ModContainer modContainer) {
         ModBlocks.register(modEventBus);
         modEventBus.addListener(this::addCreativeTabContents);
+        modEventBus.addListener(this::onConfigLoading);
+        modEventBus.addListener(this::onConfigReloading);
 
         modContainer.registerConfig(ModConfig.Type.COMMON, RealCivConfig.SPEC);
 
@@ -36,6 +39,18 @@ public class RealCivMod {
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onLivingDeath);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemCrafted);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onServerTick);
+    }
+
+    private void onConfigLoading(ModConfigEvent.Loading event) {
+        if (event.getConfig().getSpec() == RealCivConfig.SPEC) {
+            RealCivConfig.migrateLegacyCommonConfigIfNeeded();
+        }
+    }
+
+    private void onConfigReloading(ModConfigEvent.Reloading event) {
+        if (event.getConfig().getSpec() == RealCivConfig.SPEC) {
+            RealCivConfig.migrateLegacyCommonConfigIfNeeded();
+        }
     }
 
     private void addCreativeTabContents(BuildCreativeModeTabContentsEvent event) {

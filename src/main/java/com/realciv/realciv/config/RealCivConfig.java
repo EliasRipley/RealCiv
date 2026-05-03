@@ -5,6 +5,7 @@ import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
 import com.realciv.realciv.logic.TagRewardRule;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -14,6 +15,10 @@ import org.jetbrains.annotations.Nullable;
 
 public final class RealCivConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
+    private static final List<Integer> LEGACY_LUMBERJACK_LIMITS = List.of(32, 64, 96, 160, 256, 384);
+    private static final List<Integer> CURRENT_LUMBERJACK_LIMITS = List.of(8, 16, 32, 64, 96, 128);
+    private static final String LEGACY_DEFAULT_CIV_ID = "commonwealth";
+    private static final String LEGACY_DEFAULT_CIV_NAME = "Commonwealth";
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> FARMER_LIMITS = BUILDER
             .comment("Farmer action limits by farmer level index (level 0 = first value).")
@@ -341,6 +346,51 @@ public final class RealCivConfig {
 
     public static boolean adminBypassRestrictions() {
         return ADMIN_BYPASS_RESTRICTIONS.get();
+    }
+
+    public static boolean migrateLegacyCommonConfigIfNeeded() {
+        boolean changed = false;
+        List<Integer> current = sanitizeIntegerList(LUMBERJACK_LIMITS.get());
+        if (current.equals(LEGACY_LUMBERJACK_LIMITS)) {
+            LUMBERJACK_LIMITS.set(CURRENT_LUMBERJACK_LIMITS);
+            RealCivMod.LOGGER.info(
+                    "Migrated legacy lumberjack limits {} -> {} for RealCiv common config.",
+                    LEGACY_LUMBERJACK_LIMITS,
+                    CURRENT_LUMBERJACK_LIMITS);
+            changed = true;
+        }
+
+        String configuredCivId = DEFAULT_CIVILIZATION_ID.get();
+        if (configuredCivId != null && configuredCivId.equalsIgnoreCase(LEGACY_DEFAULT_CIV_ID)) {
+            DEFAULT_CIVILIZATION_ID.set("unaligned");
+            RealCivMod.LOGGER.info("Migrated legacy default civilization id '{}' -> 'unaligned'.", configuredCivId);
+            changed = true;
+        }
+
+        String configuredCivName = DEFAULT_CIVILIZATION_NAME.get();
+        if (configuredCivName != null && configuredCivName.trim().equals(LEGACY_DEFAULT_CIV_NAME)) {
+            DEFAULT_CIVILIZATION_NAME.set("Unaligned");
+            RealCivMod.LOGGER.info("Migrated legacy default civilization name '{}' -> 'Unaligned'.", configuredCivName);
+            changed = true;
+        }
+
+        if (LAND_BLOCK_UNCLAIMED_BUILDING.get() && changed) {
+            LAND_BLOCK_UNCLAIMED_BUILDING.set(false);
+            RealCivMod.LOGGER.info("Migrated legacy land.blockUnclaimedBuilding true -> false.");
+        }
+
+        if (changed) {
+            SPEC.save();
+        }
+        return changed;
+    }
+
+    private static List<Integer> sanitizeIntegerList(List<? extends Integer> raw) {
+        List<Integer> values = new ArrayList<>(raw.size());
+        for (Integer value : raw) {
+            values.add(value == null ? 0 : value);
+        }
+        return values;
     }
 
     public static double defaultPersonalWithdrawRatio() {
