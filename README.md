@@ -1,25 +1,72 @@
+RealCiv (NeoForge 1.21.1 MVP)
+=============================
 
-Installation information
-=======
+RealCiv is a server-first civilization economy mod for NeoForge 1.21.1.
+Players progress by contributing goods to a Community Hub instead of selecting RPG classes.
 
-This template repository can be directly cloned to get you started with a new
-mod. Simply create a new repository cloned from this one, by following the
-instructions provided by [GitHub](https://docs.github.com/en/repositories/creating-and-managing-repositories/creating-a-repository-from-a-template).
+Implemented MVP systems
+-----------------------
 
-Once you have your clone, simply open the repository in the IDE of your choice. The usual recommendation for an IDE is either IntelliJ IDEA or Eclipse.
+- Community Hub deposit block (`realciv:community_hub`) with 6-row deposit UI.
+- Farmer, miner, lumberjack, hunter, and crafter action limits with progression scaling.
+- Contribution rewards: profession XP, general XP, social credit.
+- Tool usage gating by general level (wood/stone/iron/diamond/netherite).
+- Plot-based chunk renting with social credit cost and rental expiry.
+- Personal quota hub withdrawals with mayor/admin override controls.
+- Server audit logging for deposits, withdrawals, mayor actions, and land rentals.
+- Admin/gameplay commands for profile, land, credits, mayor, and hub management.
 
-If at any point you are missing libraries in your IDE, or you've run into problems you can
-run `gradlew --refresh-dependencies` to refresh the local cache. `gradlew clean` to reset everything 
-{this does not affect your code} and then start the process again.
+Core command reference
+----------------------
 
-Mapping Names:
-============
-By default, the MDK is configured to use the official mapping names from Mojang for methods and fields 
-in the Minecraft codebase. These names are covered by a specific license. All modders should be aware of this
-license. For the latest license text, refer to the mapping file itself, or the reference copy here:
-https://github.com/NeoForged/NeoForm/blob/main/Mojang.md
+- `/realciv profile [player]`
+- `/realciv land rent`
+- `/realciv land info`
+- `/realciv hub stock`
+- `/realciv hub logs [count]` (mayor/admin)
+- `/realciv hub withdraw <item> <count>` (all players, subject to personal quota)
+- `/realciv hub withdraw <item> <count> <target>` (mayor/admin override)
+- `/realciv credit add <player> <amount>` (admin)
+- `/realciv credit set <player> <amount>` (admin)
+- `/realciv mayor show`
+- `/realciv mayor set <player>` (admin)
+- `/realciv mayor clear` (admin)
+- `/realciv mayor withdrawrate <player>` (mayor/admin)
+- `/realciv mayor withdrawrate set <player> <percent>` (mayor/admin)
+- `/realciv mayor withdrawrate clear <player>` (mayor/admin)
 
-Additional Resources: 
-==========
-Community Documentation: https://docs.neoforged.net/  
-NeoForged Discord: https://discord.neoforged.net/
+Configuration
+-------------
+
+File: `config/realciv-common.toml`
+
+Key sections:
+
+- `profession.farmerLimits`
+- `profession.minerLimits`
+- `profession.hunterLimits`
+- `profession.crafterLimits`
+- `profession.lumberjackLimits`
+- `progression.professionXpThresholds`
+- `progression.generalXpThresholds`
+- `hub.rewardRules`
+- `hub.defaultPersonalWithdrawalPercent`
+- `tools.requiredLevel.*`
+- `land.rentCost`
+- `land.rentDays`
+- `admin.maxAuditLogs`
+
+Reward rule format:
+
+`item_id|profession|credits|profession_xp|general_xp`
+
+Example:
+
+`minecraft:wheat|FARMER|1.0|2|1`
+
+Build and run
+-------------
+
+- `gradlew classes` to compile
+- `gradlew runServer` for dedicated server testing
+- `gradlew runClient` for local integrated testing

@@ -1,0 +1,20 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:villager_plantable_seeds",
+    "minecraft:wheat",
+    "minecraft:beetroot",
+    "minecraft:carrot",
+    "minecraft:potato",
+    "minecraft:melon_slice",
+    "minecraft:pumpkin",
+    "minecraft:nether_wart",
+    "minecraft:sugar_cane",
+    "minecraft:sweet_berries",
+    "minecraft:glow_berries",
+    "minecraft:cocoa_beans",
+    "minecraft:bamboo",
+    "minecraft:kelp",
+    "minecraft:dried_kelp"
+  ]
+}

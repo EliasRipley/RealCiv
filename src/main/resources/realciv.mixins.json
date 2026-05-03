@@ -1,0 +1,13 @@
+{
+  "required": true,
+  "package": "com.realciv.realciv.mixin",
+  "compatibilityLevel": "JAVA_21",
+  "mixins": [
+    "CraftingMenuMixin",
+    "InventoryMenuMixin",
+    "ResultSlotMixin"
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}

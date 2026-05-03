@@ -1,0 +1,29 @@
+package com.realciv.realciv.logic;
+
+import java.util.Locale;
+import org.jetbrains.annotations.Nullable;
+
+public enum Profession {
+    FARMER,
+    MINER,
+    LUMBERJACK,
+    HUNTER,
+    CRAFTER,
+    NONE;
+
+    @Nullable
+    public static Profession fromConfigName(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+            case "FARMER" -> FARMER;
+            case "MINER" -> MINER;
+            case "LUMBERJACK", "WOODCUTTER" -> LUMBERJACK;
+            case "HUNTER" -> HUNTER;
+            case "CRAFTER" -> CRAFTER;
+            case "NONE", "GENERAL" -> NONE;
+            default -> null;
+        };
+    }
+}
