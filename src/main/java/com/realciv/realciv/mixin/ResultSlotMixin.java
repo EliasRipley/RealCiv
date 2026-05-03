@@ -12,10 +12,13 @@ import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
-@Mixin(ResultSlot.class)
+@Mixin(Slot.class)
 public abstract class ResultSlotMixin {
     @Inject(method = "mayPickup", at = @At("HEAD"), cancellable = true)
     private void realciv$mayPickup(Player player, CallbackInfoReturnable<Boolean> cir) {
+        if (!((Object) this instanceof ResultSlot)) {
+            return;
+        }
         if (!(player instanceof ServerPlayer serverPlayer) || serverPlayer.getServer() == null) {
             return;
         }
