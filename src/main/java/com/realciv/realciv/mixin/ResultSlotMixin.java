@@ -5,18 +5,15 @@ import com.realciv.realciv.logic.RealCivUtil;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Player;
 import net.minecraft.world.inventory.ResultSlot;
+import net.minecraft.world.inventory.Slot;
 import net.minecraft.world.item.ItemStack;
 import org.spongepowered.asm.mixin.Mixin;
-import org.spongepowered.asm.mixin.Shadow;
 import org.spongepowered.asm.mixin.injection.At;
 import org.spongepowered.asm.mixin.injection.Inject;
 import org.spongepowered.asm.mixin.injection.callback.CallbackInfoReturnable;
 
 @Mixin(ResultSlot.class)
 public abstract class ResultSlotMixin {
-    @Shadow
-    public abstract ItemStack getItem();
-
     @Inject(method = "mayPickup", at = @At("HEAD"), cancellable = true)
     private void realciv$mayPickup(Player player, CallbackInfoReturnable<Boolean> cir) {
         if (!(player instanceof ServerPlayer serverPlayer) || serverPlayer.getServer() == null) {
@@ -26,7 +23,7 @@ public abstract class ResultSlotMixin {
             return;
         }
 
-        ItemStack result = this.getItem();
+        ItemStack result = ((Slot) (Object) this).getItem();
         if (result.isEmpty()) {
             return;
         }
