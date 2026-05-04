@@ -270,7 +270,10 @@ public final class RealCivEvents {
                     event.getPos().getX() >> 4,
                     event.getPos().getZ() >> 4);
             if (lookup == null) {
-                RealCivMessages.deny(player, "You can't place blocks here. This chunk is not legally zoned.");
+                RealCivMessages.deny(
+                        player,
+                        "You can't place blocks here. Public/wilderness chunks are break-only. "
+                                + "Build in CIVIC (with permission) or PRIVATE land.");
             } else {
                 RealCivMessages.deny(
                         player,
@@ -657,7 +660,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return !RealCivConfig.blockUnclaimedBuilding();
+            return false;
         }
         return data.canBuildOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }
@@ -672,7 +675,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return !RealCivConfig.blockUnclaimedBuilding();
+            return true;
         }
         return data.canBreakOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }

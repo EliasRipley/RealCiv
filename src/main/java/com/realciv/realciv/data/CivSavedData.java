@@ -671,14 +671,21 @@ public class CivSavedData extends SavedData {
             return true;
         }
         return switch (plot.landClass()) {
-            case PUBLIC -> true;
+            case PUBLIC -> false;
             case CIVIC -> isMayor(civIdRaw, playerId) || isCivicManager(civIdRaw, playerId);
             case PRIVATE -> plot.ownerId() != null && plot.ownerId().equals(playerId);
         };
     }
 
     public boolean canBreakOnPlot(String civIdRaw, PlotRecord plot, UUID playerId, boolean bypass) {
-        return canBuildOnPlot(civIdRaw, plot, playerId, bypass);
+        if (bypass) {
+            return true;
+        }
+        return switch (plot.landClass()) {
+            case PUBLIC -> true;
+            case CIVIC -> isMayor(civIdRaw, playerId) || isCivicManager(civIdRaw, playerId);
+            case PRIVATE -> plot.ownerId() != null && plot.ownerId().equals(playerId);
+        };
     }
 
     public int privatePlotCountForOwner(String civIdRaw, UUID ownerId) {
