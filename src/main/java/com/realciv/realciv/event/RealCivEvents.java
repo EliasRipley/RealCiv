@@ -1,6 +1,7 @@
 package com.realciv.realciv.event;
 
 import com.realciv.realciv.ModBlocks;
+import com.realciv.realciv.census.CensusMenu;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
@@ -17,6 +18,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -168,8 +170,9 @@ public final class RealCivEvents {
                 int selectedEdges = LandWandService.visualizeSelection(player);
                 player.sendSystemMessage(Component.literal(
                         "[RealCiv] Land Wand visualized " + edges
-                                + " nearby boundary edge(s) within " + radius + " chunks."
-                                + (selectedEdges > 0 ? " Selection edges: " + selectedEdges + "." : "")));
+                                + " nearby boundary line(s) within " + radius + " chunks"
+                                + " (all distinct nearby claim boundaries)."
+                                + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
             } else {
                 LandWandService.setPos2(player, event.getPos());
             }
@@ -233,8 +236,9 @@ public final class RealCivEvents {
             int selectedEdges = LandWandService.visualizeSelection(player);
             player.sendSystemMessage(Component.literal(
                     "[RealCiv] Land Wand visualized " + edges
-                            + " nearby boundary edge(s) within " + radius + " chunks."
-                            + (selectedEdges > 0 ? " Selection edges: " + selectedEdges + "." : "")));
+                            + " nearby boundary line(s) within " + radius + " chunks"
+                            + " (all distinct nearby claim boundaries)."
+                            + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
             return;
@@ -458,36 +462,40 @@ public final class RealCivEvents {
             if (breakProfession == BreakProfession.NONE) {
                 return;
             }
+            int actionCost = actionCostForState(state);
 
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             if (breakProfession == BreakProfession.LUMBERJACK) {
                 int levelValue = record.levelFor(Profession.LUMBERJACK);
                 int limit = RealCivConfig.lumberjackLimitForLevel(levelValue);
-                if (record.lumberjackActions() >= limit) {
+                if (record.lumberjackActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
                             "You can't chop more wood until you've contributed wood to the Community Hub. "
-                                    + "Lumberjack limit reached (" + limit + ").");
+                                    + "Lumberjack limit reached (" + record.lumberjackActions() + "/" + limit
+                                    + ", this block costs " + actionCost + ").");
                     event.setCanceled(true);
                 }
             } else if (breakProfession == BreakProfession.MINER) {
                 int levelValue = record.levelFor(Profession.MINER);
                 int limit = RealCivConfig.minerLimitForLevel(levelValue);
-                if (record.minerActions() >= limit) {
+                if (record.minerActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
                             "You can't mine more until you've returned your blocks to the Community Hub. "
-                                    + "Miner limit reached (" + limit + ").");
+                                    + "Miner limit reached (" + record.minerActions() + "/" + limit
+                                    + ", this block costs " + actionCost + ").");
                     event.setCanceled(true);
                 }
             } else if (breakProfession == BreakProfession.TERRAFORMER) {
                 int levelValue = record.levelFor(Profession.TERRAFORMER);
                 int limit = RealCivConfig.terraformerLimitForLevel(levelValue);
-                if (record.terraformerActions() >= limit) {
+                if (record.terraformerActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
                             "You can't terraform more blocks until you've contributed earth materials to the Community Hub. "
-                                    + "Terraformer limit reached (" + limit + ").");
+                                    + "Terraformer limit reached (" + record.terraformerActions() + "/" + limit
+                                    + ", this block costs " + actionCost + ").");
                     event.setCanceled(true);
                 }
             }
@@ -507,15 +515,16 @@ public final class RealCivEvents {
         if (breakProfession == BreakProfession.NONE) {
             return;
         }
+        int actionCost = actionCostForState(state);
 
         CivSavedData data = CivSavedData.get(player.getServer());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (breakProfession == BreakProfession.LUMBERJACK) {
-            record.setLumberjackActions(record.lumberjackActions() + 1);
+            record.setLumberjackActions(record.lumberjackActions() + actionCost);
         } else if (breakProfession == BreakProfession.MINER) {
-            record.setMinerActions(record.minerActions() + 1);
+            record.setMinerActions(record.minerActions() + actionCost);
         } else if (breakProfession == BreakProfession.TERRAFORMER) {
-            record.setTerraformerActions(record.terraformerActions() + 1);
+            record.setTerraformerActions(record.terraformerActions() + actionCost);
         }
         data.setDirty();
     }
@@ -640,7 +649,7 @@ public final class RealCivEvents {
 
     private static void openHubStockMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player) || data.isMayor(civId, player.getUUID());
+        boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player);
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
@@ -656,24 +665,20 @@ public final class RealCivEvents {
 
     private static void openCensusPanel(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        List<UUID> members = data.civilizationMembersSorted(civId);
-        int managers = 0;
-        for (UUID member : members) {
-            if (data.isCivicManager(civId, member)) {
-                managers++;
-            }
-        }
-        boolean mayorOrAdmin = player.hasPermissions(3) || RealCivUtil.isBypass(player) || data.isMayor(civId, player.getUUID());
-
+        boolean canManage = player.hasPermissions(3)
+                || RealCivUtil.isBypass(player)
+                || data.isMayor(civId, player.getUUID())
+                || data.isCivicManager(civId, player.getUUID());
+        String title = "Census: " + civilizationDisplayName(data, civId);
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, p) -> new CensusMenu(containerId, playerInventory, player, data, civId, canManage),
+                Component.literal(title)));
         player.sendSystemMessage(Component.literal(
-                "Census: civ='" + civId + "' | members=" + members.size() + " | managers=" + managers));
-        if (mayorOrAdmin) {
+                "Census opened for " + civilizationDisplayName(data, civId)
+                        + ". Use left/right click actions inside the menu to manage members, requests, and invites."));
+        if (canManage) {
             player.sendSystemMessage(Component.literal(
-                    "Mayor controls: /realciv census members, /realciv census manager add <player>, "
-                            + "/realciv census manager remove <player>, /realciv census mayor <player>"));
-        } else {
-            player.sendSystemMessage(Component.literal(
-                    "Citizen view: /realciv census members"));
+                    "Tip: /realciv census invite <player> sends invites, and requests can be approved/denied in the menu."));
         }
 
         event.setCancellationResult(InteractionResult.SUCCESS);
@@ -958,6 +963,12 @@ public final class RealCivEvents {
             return BreakProfession.TERRAFORMER;
         }
         return BreakProfession.NONE;
+    }
+
+    private static int actionCostForState(BlockState state) {
+        ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+        int configured = RealCivConfig.breakActionCostOverrides().getOrDefault(blockId, 1);
+        return Math.max(1, configured);
     }
 
     @Nullable

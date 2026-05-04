@@ -318,6 +318,43 @@ public final class RealCivCommands {
                                         .executes(ctx -> censusMembers(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "page")))))
+                        .then(Commands.literal("requests")
+                                .executes(ctx -> censusRequests(ctx.getSource(), 1))
+                                .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                        .executes(ctx -> censusRequests(
+                                                ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "page")))))
+                        .then(Commands.literal("invites")
+                                .executes(ctx -> censusInvites(ctx.getSource(), 1))
+                                .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                        .executes(ctx -> censusInvites(
+                                                ctx.getSource(),
+                                                IntegerArgumentType.getInteger(ctx, "page")))))
+                        .then(Commands.literal("invite")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusInvitePlayer(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("uninvite")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusUninvitePlayer(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("approve")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusApproveRequest(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("deny")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusDenyRequest(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
+                        .then(Commands.literal("remove")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> censusRemoveMember(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("manager")
                                 .then(Commands.literal("add")
                                         .then(Commands.argument("player", EntityArgument.player())
@@ -633,13 +670,45 @@ public final class RealCivCommands {
             source.sendFailure(Component.literal("Civilization not found: " + civRef));
             return 0;
         }
-        if (!data.setPlayerCivilization(player.getUUID(), civId, actorName(source))) {
-            source.sendFailure(Component.literal("Failed to join civilization."));
+        String currentCiv = data.getOrAssignCivilization(player.getUUID());
+        if (currentCiv.equals(civId)) {
+            source.sendFailure(Component.literal("You are already in " + civDisplay(data, civId) + "."));
             return 0;
         }
-        String newCiv = data.getOrAssignCivilization(player.getUUID());
+
+        boolean hasInvite = data.hasInvite(civId, player.getUUID());
+        boolean canDirectJoin = source.hasPermission(3) || hasInvite;
+        if (canDirectJoin) {
+            if (!data.setPlayerCivilization(player.getUUID(), civId, actorName(source))) {
+                source.sendFailure(Component.literal("Failed to join civilization."));
+                return 0;
+            }
+            String newCiv = data.getOrAssignCivilization(player.getUUID());
+            source.sendSuccess(() -> Component.literal(
+                    "You are now a citizen of " + civDisplay(data, newCiv) + "."), true);
+            return 1;
+        }
+
+        boolean created = data.addJoinRequest(civId, player.getUUID(), actorName(source));
+        if (!created) {
+            source.sendSuccess(() -> Component.literal(
+                    "Your join request is already pending for " + civDisplay(data, civId) + "."), false);
+            return 1;
+        }
+
+        @Nullable UUID mayorId = data.getMayorId(civId);
+        if (mayorId != null) {
+            ServerPlayer mayorOnline = source.getServer().getPlayerList().getPlayer(mayorId);
+            if (mayorOnline != null) {
+                mayorOnline.sendSystemMessage(Component.literal(
+                        player.getGameProfile().getName() + " requested to join " + civDisplay(data, civId)
+                                + ". Use Census Block UI to approve/deny."));
+            }
+        }
+
         source.sendSuccess(() -> Component.literal(
-                "You are now a citizen of " + civDisplay(data, newCiv) + "."), true);
+                "Join request submitted to " + civDisplay(data, civId)
+                        + ". Wait for mayor/manager approval at Census."), true);
         return 1;
     }
 
@@ -931,7 +1000,7 @@ public final class RealCivCommands {
         if (existing != null
                 && existing.civilizationId().equals(civId)
                 && existing.plot().landClass() == LandClass.CIVIC
-                && !isMayorOrAdmin(source, data, civId)) {
+                && !source.hasPermission(3)) {
             source.sendFailure(Component.literal(
                     "This chunk is CIVIC town land. Ask your mayor to allot it with /realciv town allot <player>."));
             return 0;
@@ -1045,7 +1114,7 @@ public final class RealCivCommands {
 
         if (lookup != null && lookup.civilizationId().equals(civId)) {
             CivSavedData.PlotRecord plot = lookup.plot();
-            if (plot.landClass() == LandClass.CIVIC && !isMayorOrAdmin(source, data, civId) && !source.hasPermission(3)) {
+            if (plot.landClass() == LandClass.CIVIC && !source.hasPermission(3)) {
                 source.sendFailure(Component.literal(
                         "This chunk is CIVIC town land. Ask your mayor to allot it with /realciv town allot <player>."));
                 return 0;
@@ -1295,11 +1364,12 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         int safeRadius = Math.max(1, Math.min(64, radius));
-        int boundaryEdges = LandWandService.visualizeNearbyPlots(player, data, safeRadius);
-        int selectionEdges = LandWandService.visualizeSelection(player);
+        int boundaryLines = LandWandService.visualizeNearbyPlots(player, data, safeRadius);
+        int selectionLines = LandWandService.visualizeSelection(player);
         source.sendSuccess(() -> Component.literal(
-                "Visualized " + boundaryEdges + " land boundary edge(s) within " + safeRadius + " chunks."
-                        + (selectionEdges > 0 ? " Selection edges: " + selectionEdges + "." : "")),
+                "Visualized " + boundaryLines + " land boundary line(s) within " + safeRadius + " chunks"
+                        + " (all distinct nearby claim boundaries)."
+                        + (selectionLines > 0 ? " Selection boundary lines: " + selectionLines + "." : "")),
                 false);
         return 1;
     }
@@ -1487,6 +1557,189 @@ public final class RealCivCommands {
         return 1;
     }
 
+    private static int censusRequests(CommandSourceStack source, int page)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can view join requests."));
+            return 0;
+        }
+
+        List<UUID> requests = data.joinRequestsSorted(civId);
+        if (requests.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No join requests are pending."), false);
+            return 1;
+        }
+
+        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+        int totalPages = Math.max(1, (requests.size() + pageSize - 1) / pageSize);
+        int safePage = Math.max(1, Math.min(page, totalPages));
+        int start = (safePage - 1) * pageSize;
+        int end = Math.min(requests.size(), start + pageSize);
+        source.sendSuccess(() -> Component.literal(
+                "Join requests for " + civDisplay(data, civId)
+                        + " (page " + safePage + "/" + totalPages + "):"), false);
+
+        for (int i = start; i < end; i++) {
+            UUID id = requests.get(i);
+            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
+            String name = online == null ? id.toString() : online.getGameProfile().getName();
+            source.sendSuccess(() -> Component.literal("- " + name + " | " + id), false);
+        }
+        return 1;
+    }
+
+    private static int censusInvites(CommandSourceStack source, int page)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can view invitations."));
+            return 0;
+        }
+
+        List<UUID> invites = data.invitedPlayersSorted(civId);
+        if (invites.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No invitations are pending."), false);
+            return 1;
+        }
+
+        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+        int totalPages = Math.max(1, (invites.size() + pageSize - 1) / pageSize);
+        int safePage = Math.max(1, Math.min(page, totalPages));
+        int start = (safePage - 1) * pageSize;
+        int end = Math.min(invites.size(), start + pageSize);
+        source.sendSuccess(() -> Component.literal(
+                "Invitations for " + civDisplay(data, civId)
+                        + " (page " + safePage + "/" + totalPages + "):"), false);
+
+        for (int i = start; i < end; i++) {
+            UUID id = invites.get(i);
+            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
+            String name = online == null ? id.toString() : online.getGameProfile().getName();
+            source.sendSuccess(() -> Component.literal("- " + name + " | " + id), false);
+        }
+        return 1;
+    }
+
+    private static int censusInvitePlayer(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can invite players."));
+            return 0;
+        }
+
+        String targetCiv = data.getOrAssignCivilization(target.getUUID());
+        if (targetCiv.equals(civId)) {
+            source.sendFailure(Component.literal(target.getGameProfile().getName() + " is already in your civilization."));
+            return 0;
+        }
+        if (!data.addInvite(civId, target.getUUID(), actorName(source))) {
+            source.sendFailure(Component.literal("Invite already exists for that player."));
+            return 0;
+        }
+        target.sendSystemMessage(Component.literal(
+                "You have been invited to join " + civDisplay(data, civId)
+                        + ". Use /realciv civ join " + civId + " to accept."));
+        source.sendSuccess(() -> Component.literal(
+                "Invited " + target.getGameProfile().getName() + " to " + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int censusUninvitePlayer(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can revoke invites."));
+            return 0;
+        }
+        if (!data.removeInvite(civId, target.getUUID(), actorName(source))) {
+            source.sendFailure(Component.literal("No invite found for that player."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Revoked invite for " + target.getGameProfile().getName() + "."), true);
+        return 1;
+    }
+
+    private static int censusApproveRequest(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can approve join requests."));
+            return 0;
+        }
+        if (!data.hasJoinRequest(civId, target.getUUID()) && !data.hasInvite(civId, target.getUUID())) {
+            source.sendFailure(Component.literal("No pending request/invite for that player."));
+            return 0;
+        }
+        if (!data.setPlayerCivilization(target.getUUID(), civId, actorName(source))) {
+            source.sendFailure(Component.literal("Failed to approve join."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Approved " + target.getGameProfile().getName() + " into " + civDisplay(data, civId) + "."), true);
+        target.sendSystemMessage(Component.literal(
+                "Your membership in " + civDisplay(data, civId) + " was approved."));
+        return 1;
+    }
+
+    private static int censusDenyRequest(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can deny join requests."));
+            return 0;
+        }
+        boolean removedRequest = data.removeJoinRequest(civId, target.getUUID(), actorName(source));
+        boolean removedInvite = data.removeInvite(civId, target.getUUID(), actorName(source));
+        if (!removedRequest && !removedInvite) {
+            source.sendFailure(Component.literal("No pending request/invite for that player."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Denied/cleared pending join state for " + target.getGameProfile().getName() + "."), true);
+        target.sendSystemMessage(Component.literal(
+                "Your join request/invite for " + civDisplay(data, civId) + " was declined or revoked."));
+        return 1;
+    }
+
+    private static int censusRemoveMember(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can remove members."));
+            return 0;
+        }
+        if (actor.getUUID().equals(target.getUUID()) && !source.hasPermission(3)) {
+            source.sendFailure(Component.literal("Use /realciv civ leave if you want to leave your own civilization."));
+            return 0;
+        }
+        if (!data.removeMemberToDefault(civId, target.getUUID(), actorName(source))) {
+            source.sendFailure(Component.literal("That player is not a member of your civilization."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Removed " + target.getGameProfile().getName() + " from " + civDisplay(data, civId) + "."), true);
+        target.sendSystemMessage(Component.literal(
+                "You were removed from " + civDisplay(data, civId) + "."));
+        return 1;
+    }
+
     private static int censusManagerSet(CommandSourceStack source, ServerPlayer target, boolean allowed)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer actor = source.getPlayerOrException();
@@ -1614,7 +1867,7 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean privileged = isMayorOrAdmin(source, data, civId);
+        boolean privileged = source.hasPermission(3) || RealCivUtil.isBypass(player);
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
@@ -1635,8 +1888,9 @@ public final class RealCivCommands {
         String civId = source.getEntity() instanceof ServerPlayer player
                 ? data.getOrAssignCivilization(player.getUUID())
                 : RealCivConfig.defaultCivilizationId();
-        boolean privileged = isMayorOrAdmin(source, data, civId);
         ServerPlayer requester = source.getEntity() instanceof ServerPlayer player ? player : null;
+        boolean canTargetOthers = isMayorOrAdmin(source, data, civId);
+        boolean canBypassQuota = source.hasPermission(3) || (requester != null && RealCivUtil.isBypass(requester));
 
         Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(Items.AIR);
         if (item == Items.AIR) {
@@ -1644,33 +1898,57 @@ public final class RealCivCommands {
             return 0;
         }
 
-        long remainingAllowance = -1L;
-        CivSavedData.PlayerRecord requesterRecord = null;
+        if (!source.hasPermission(3)) {
+            String targetCiv = data.getOrAssignCivilization(target.getUUID());
+            if (!targetCiv.equals(civId)) {
+                source.sendFailure(Component.literal(
+                        "Target must belong to your civilization unless you are admin."));
+                return 0;
+            }
+        }
 
-        if (!privileged) {
+        CivSavedData.PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
+        if (!canBypassQuota) {
             if (requester == null) {
                 source.sendFailure(Component.literal("Only players can use personal hub withdrawals."));
                 return 0;
             }
-            if (!requester.getUUID().equals(target.getUUID())) {
+            if (!canTargetOthers && !requester.getUUID().equals(target.getUUID())) {
                 source.sendFailure(Component.literal("You can only withdraw to yourself unless you are mayor/admin."));
                 return 0;
             }
 
-            requesterRecord = data.getOrCreatePlayer(requester.getUUID());
-            remainingAllowance = requesterRecord.remainingPersonalWithdraw(civId, itemId);
+            long remainingAllowance = quotaRecord.remainingPersonalWithdraw(civId, itemId);
             if (remainingAllowance <= 0L) {
                 source.sendFailure(Component.literal(
-                        "No personal withdrawal allowance left for " + itemId
-                                + ". Contribute more to increase your quota."));
+                        "No personal withdrawal allowance left for " + itemId + " for "
+                                + target.getGameProfile().getName()
+                                + ". Contribute more to increase quota."));
                 return 0;
             }
             if (count > remainingAllowance) {
                 source.sendFailure(Component.literal(
-                        "You can withdraw at most " + remainingAllowance + "x " + itemId
-                                + " right now (personal quota)."));
+                        "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
+                                + target.getGameProfile().getName() + " right now (personal quota)."));
                 return 0;
             }
+        }
+
+        long penaltyCents = 0L;
+        double penaltyRatio = RealCivConfig.hubWithdrawCreditPenaltyRatio();
+        if (penaltyRatio > 0.0D) {
+            RewardRule rule = HubRewardResolver.resolveEffectiveRewardRule(new ItemStack(item, 1));
+            if (rule != null) {
+                penaltyCents = Math.round(rule.creditsPerItemCents() * count * penaltyRatio);
+            }
+        }
+        if (penaltyCents > 0L && quotaRecord.socialCreditCents(civId) < penaltyCents) {
+            source.sendFailure(Component.literal(
+                    target.getGameProfile().getName() + " needs "
+                            + RealCivUtil.formatCredits(penaltyCents)
+                            + " social credit for this withdrawal's credit penalty, but has "
+                            + RealCivUtil.formatCredits(quotaRecord.socialCreditCents(civId)) + "."));
+            return 0;
         }
 
         if (!data.tryWithdrawFromHub(civId, itemId, count)) {
@@ -1689,26 +1967,38 @@ public final class RealCivCommands {
             remaining -= stackSize;
         }
 
-        if (!privileged && requesterRecord != null) {
-            requesterRecord.recordPersonalWithdrawal(civId, itemId, count);
-            data.setDirty();
+        if (!canBypassQuota) {
+            quotaRecord.recordPersonalWithdrawal(civId, itemId, count);
         }
+        if (penaltyCents > 0L) {
+            quotaRecord.addSocialCreditCents(civId, -penaltyCents);
+        }
+        data.setDirty();
 
         String actor = actorName(source);
-        if (privileged) {
+        if (canBypassQuota) {
             data.addAuditLog(
                     civId,
                     actor + " withdrew " + count + "x " + itemId + " for " + target.getGameProfile().getName(),
                     RealCivConfig.MAX_AUDIT_LOGS.get());
         } else {
-            long newRemaining = requesterRecord == null ? 0L : requesterRecord.remainingPersonalWithdraw(civId, itemId);
+            long newRemaining = quotaRecord.remainingPersonalWithdraw(civId, itemId);
             data.addAuditLog(
                     civId,
                     actor + " withdrew " + count + "x " + itemId
-                            + " from personal quota (remaining allowance: " + newRemaining + ")",
+                            + " from " + target.getGameProfile().getName()
+                            + " personal quota (remaining allowance: " + newRemaining + ")",
                     RealCivConfig.MAX_AUDIT_LOGS.get());
             source.sendSuccess(() -> Component.literal(
-                    "Personal quota remaining for " + itemId + ": " + newRemaining), false);
+                    "Personal quota remaining for " + target.getGameProfile().getName()
+                            + " on " + itemId + ": " + newRemaining), false);
+        }
+        if (penaltyCents > 0L) {
+            long appliedPenalty = penaltyCents;
+            source.sendSuccess(() -> Component.literal(
+                    "Withdrawal credit penalty applied to " + target.getGameProfile().getName()
+                            + ": -" + RealCivUtil.formatCredits(appliedPenalty)
+                            + " social credit."), false);
         }
 
         source.sendSuccess(() -> Component.literal(

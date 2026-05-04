@@ -2,8 +2,10 @@ package com.realciv.realciv.hub;
 
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.logic.HubRewardResolver;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
+import com.realciv.realciv.logic.RewardRule;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -162,6 +164,24 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
             return;
         }
 
+        long penaltyCents = 0L;
+        double penaltyRatio = RealCivConfig.hubWithdrawCreditPenaltyRatio();
+        if (penaltyRatio > 0.0D) {
+            RewardRule rule = HubRewardResolver.resolveEffectiveRewardRule(new ItemStack(item, 1));
+            if (rule != null) {
+                penaltyCents = Math.round(rule.creditsPerItemCents() * requested * penaltyRatio);
+            }
+        }
+
+        if (penaltyCents > 0L && record.socialCreditCents(civilizationId) < penaltyCents) {
+            RealCivMessages.deny(
+                    viewer,
+                    "Not enough social credit for this withdrawal. Need "
+                            + RealCivUtil.formatCredits(penaltyCents) + " for withdrawal penalty.");
+            refresh();
+            return;
+        }
+
         if (!data.tryWithdrawFromHub(civilizationId, itemId, requested)) {
             RealCivMessages.deny(viewer, "Hub stock changed before withdrawal could complete. Try again.");
             refresh();
@@ -181,6 +201,9 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         if (!privileged) {
             record.recordPersonalWithdrawal(civilizationId, itemId, requested);
         }
+        if (penaltyCents > 0L) {
+            record.addSocialCreditCents(civilizationId, -penaltyCents);
+        }
 
         data.addAuditLog(
                 civilizationId,
@@ -191,7 +214,10 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         long remainingPersonal = record.remainingPersonalWithdraw(civilizationId, itemId);
         viewer.sendSystemMessage(Component.literal(
                 "Withdrew " + requested + "x " + itemId
-                        + " | Remaining personal quota: " + remainingPersonal));
+                        + " | Remaining personal quota: " + remainingPersonal
+                        + (penaltyCents > 0L
+                        ? " | Credit penalty: -" + RealCivUtil.formatCredits(penaltyCents)
+                        : "")));
         refresh();
     }
 

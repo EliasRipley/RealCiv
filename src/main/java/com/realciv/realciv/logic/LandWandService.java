@@ -65,7 +65,8 @@ public final class LandWandService {
         long centerX = player.chunkPosition().x;
         long centerZ = player.chunkPosition().z;
         double y = player.getY() + 0.25D;
-        int edgesDrawn = 0;
+        Map<Long, java.util.SortedSet<Long>> horizontalSegments = new java.util.HashMap<>();
+        Map<Long, java.util.SortedSet<Long>> verticalSegments = new java.util.HashMap<>();
 
         int radius = Math.max(0, radiusChunks);
         for (long chunkX = centerX - radius; chunkX <= centerX + radius; chunkX++) {
@@ -83,23 +84,23 @@ public final class LandWandService {
                 ParticleOptions particle = particleFor(lookup.plot().landClass());
                 if (!sameBoundaryGroup(lookup, north)) {
                     drawNorthEdge(level, chunkX, chunkZ, y, particle);
-                    edgesDrawn++;
+                    addHorizontalSegment(horizontalSegments, chunkZ, chunkX);
                 }
                 if (!sameBoundaryGroup(lookup, south)) {
                     drawSouthEdge(level, chunkX, chunkZ, y, particle);
-                    edgesDrawn++;
+                    addHorizontalSegment(horizontalSegments, chunkZ + 1L, chunkX);
                 }
                 if (!sameBoundaryGroup(lookup, west)) {
                     drawWestEdge(level, chunkX, chunkZ, y, particle);
-                    edgesDrawn++;
+                    addVerticalSegment(verticalSegments, chunkX, chunkZ);
                 }
                 if (!sameBoundaryGroup(lookup, east)) {
                     drawEastEdge(level, chunkX, chunkZ, y, particle);
-                    edgesDrawn++;
+                    addVerticalSegment(verticalSegments, chunkX + 1L, chunkZ);
                 }
             }
         }
-        return edgesDrawn;
+        return countMergedLines(horizontalSegments) + countMergedLines(verticalSegments);
     }
 
     public static int visualizeSelection(ServerPlayer player) {
@@ -111,24 +112,23 @@ public final class LandWandService {
         double y = player.getY() + 0.45D;
         ParticleOptions particle = ParticleTypes.END_ROD;
 
-        int edgesDrawn = 0;
-        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
-            drawNorthEdge(level, chunkX, selection.minChunkZ(), y, particle);
-            drawSouthEdge(level, chunkX, selection.maxChunkZ(), y, particle);
-            edgesDrawn += 2;
-        }
-        for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
-            drawWestEdge(level, selection.minChunkX(), chunkZ, y, particle);
-            drawEastEdge(level, selection.maxChunkX(), chunkZ, y, particle);
-            edgesDrawn += 2;
-        }
-        return edgesDrawn;
+        long minBlockX = selection.minChunkX() << 4;
+        long maxBlockX = (selection.maxChunkX() + 1L) << 4;
+        long minBlockZ = selection.minChunkZ() << 4;
+        long maxBlockZ = (selection.maxChunkZ() + 1L) << 4;
+
+        drawHorizontalBoundary(level, minBlockX, maxBlockX, minBlockZ, y, particle);
+        drawHorizontalBoundary(level, minBlockX, maxBlockX, maxBlockZ, y, particle);
+        drawVerticalBoundary(level, minBlockZ, maxBlockZ, minBlockX, y, particle);
+        drawVerticalBoundary(level, minBlockZ, maxBlockZ, maxBlockX, y, particle);
+
+        return 4;
     }
 
     private static void drawNorthEdge(ServerLevel level, long chunkX, long chunkZ, double y, ParticleOptions particle) {
         long worldX = chunkX << 4;
         long worldZ = chunkZ << 4;
-        for (int offset = 0; offset <= 16; offset += 4) {
+        for (int offset = 0; offset <= 16; offset += 2) {
             level.sendParticles(
                     particle,
                     worldX + offset + 0.5D,
@@ -145,7 +145,7 @@ public final class LandWandService {
     private static void drawSouthEdge(ServerLevel level, long chunkX, long chunkZ, double y, ParticleOptions particle) {
         long worldX = chunkX << 4;
         long worldZ = chunkZ << 4;
-        for (int offset = 0; offset <= 16; offset += 4) {
+        for (int offset = 0; offset <= 16; offset += 2) {
             level.sendParticles(
                     particle,
                     worldX + offset + 0.5D,
@@ -162,7 +162,7 @@ public final class LandWandService {
     private static void drawWestEdge(ServerLevel level, long chunkX, long chunkZ, double y, ParticleOptions particle) {
         long worldX = chunkX << 4;
         long worldZ = chunkZ << 4;
-        for (int offset = 0; offset <= 16; offset += 4) {
+        for (int offset = 0; offset <= 16; offset += 2) {
             level.sendParticles(
                     particle,
                     worldX + 0.5D,
@@ -179,12 +179,54 @@ public final class LandWandService {
     private static void drawEastEdge(ServerLevel level, long chunkX, long chunkZ, double y, ParticleOptions particle) {
         long worldX = chunkX << 4;
         long worldZ = chunkZ << 4;
-        for (int offset = 0; offset <= 16; offset += 4) {
+        for (int offset = 0; offset <= 16; offset += 2) {
             level.sendParticles(
                     particle,
                     worldX + 16.5D,
                     y,
                     worldZ + offset + 0.5D,
+                    1,
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    0.0D);
+        }
+    }
+
+    private static void drawHorizontalBoundary(
+            ServerLevel level,
+            long minBlockX,
+            long maxBlockX,
+            long fixedBlockZ,
+            double y,
+            ParticleOptions particle) {
+        for (long x = minBlockX; x <= maxBlockX; x += 2L) {
+            level.sendParticles(
+                    particle,
+                    x + 0.5D,
+                    y,
+                    fixedBlockZ + 0.5D,
+                    1,
+                    0.0D,
+                    0.0D,
+                    0.0D,
+                    0.0D);
+        }
+    }
+
+    private static void drawVerticalBoundary(
+            ServerLevel level,
+            long minBlockZ,
+            long maxBlockZ,
+            long fixedBlockX,
+            double y,
+            ParticleOptions particle) {
+        for (long z = minBlockZ; z <= maxBlockZ; z += 2L) {
+            level.sendParticles(
+                    particle,
+                    fixedBlockX + 0.5D,
+                    y,
+                    z + 0.5D,
                     1,
                     0.0D,
                     0.0D,
@@ -204,6 +246,28 @@ public final class LandWandService {
             return false;
         }
         return Objects.equals(left.plot().ownerId(), right.plot().ownerId());
+    }
+
+    private static void addHorizontalSegment(Map<Long, java.util.SortedSet<Long>> segments, long zLine, long xStart) {
+        segments.computeIfAbsent(zLine, ignored -> new java.util.TreeSet<>()).add(xStart);
+    }
+
+    private static void addVerticalSegment(Map<Long, java.util.SortedSet<Long>> segments, long xLine, long zStart) {
+        segments.computeIfAbsent(xLine, ignored -> new java.util.TreeSet<>()).add(zStart);
+    }
+
+    private static int countMergedLines(Map<Long, java.util.SortedSet<Long>> segments) {
+        int lines = 0;
+        for (java.util.SortedSet<Long> starts : segments.values()) {
+            Long prev = null;
+            for (Long start : starts) {
+                if (prev == null || start != prev + 1L) {
+                    lines++;
+                }
+                prev = start;
+            }
+        }
+        return lines;
     }
 
     private static ParticleOptions particleFor(LandClass landClass) {

@@ -446,6 +446,17 @@ public class CivSavedData extends SavedData {
         if (civ == null) {
             return false;
         }
+
+        for (CivilizationRecord each : civilizations.values()) {
+            each.joinRequests().remove(playerId);
+            each.invitedPlayers().remove(playerId);
+            each.civicManagers().remove(playerId);
+            if (each.mayorId() != null && each.mayorId().equals(playerId) && !each.id().equals(civ.id())) {
+                each.setMayorId(null);
+                addAuditLog(each.id(), actorName + " cleared mayor assignment for migrating player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+            }
+        }
+
         playerCivilization.put(playerId, civ.id());
         addAuditLog(civ.id(), actorName + " assigned " + playerId + " to civilization " + civ.id(), RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
@@ -660,6 +671,90 @@ public class CivSavedData extends SavedData {
             addAuditLog(civ.id(), actorName + " removed civic manager " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
         }
         setDirty();
+    }
+
+    public boolean hasJoinRequest(String civIdRaw, UUID playerId) {
+        return getOrCreateCivilization(civIdRaw).joinRequests().contains(playerId);
+    }
+
+    public boolean hasInvite(String civIdRaw, UUID playerId) {
+        return getOrCreateCivilization(civIdRaw).invitedPlayers().contains(playerId);
+    }
+
+    public boolean addJoinRequest(String civIdRaw, UUID playerId, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (!civ.joinRequests().add(playerId)) {
+            return false;
+        }
+        addAuditLog(civ.id(), actorName + " requested to join civilization", RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean removeJoinRequest(String civIdRaw, UUID playerId, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (!civ.joinRequests().remove(playerId)) {
+            return false;
+        }
+        addAuditLog(civ.id(), actorName + " cleared a join request", RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean addInvite(String civIdRaw, UUID playerId, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.joinRequests().remove(playerId);
+        if (!civ.invitedPlayers().add(playerId)) {
+            return false;
+        }
+        addAuditLog(civ.id(), actorName + " invited player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean removeInvite(String civIdRaw, UUID playerId, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (!civ.invitedPlayers().remove(playerId)) {
+            return false;
+        }
+        addAuditLog(civ.id(), actorName + " revoked invite for player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public List<UUID> joinRequestsSorted(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return civ.joinRequests().stream().sorted(Comparator.comparing(UUID::toString)).toList();
+    }
+
+    public List<UUID> invitedPlayersSorted(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return civ.invitedPlayers().stream().sorted(Comparator.comparing(UUID::toString)).toList();
+    }
+
+    public boolean removeMemberToDefault(String civIdRaw, UUID playerId, String actorName) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return false;
+        }
+        String current = normalizeCivId(playerCivilization.get(playerId));
+        if (current == null || !current.equals(civId)) {
+            return false;
+        }
+        String fallback = RealCivConfig.defaultCivilizationId();
+        playerCivilization.put(playerId, fallback);
+        CivilizationRecord civ = getOrCreateCivilization(civId);
+        civ.civicManagers().remove(playerId);
+        civ.joinRequests().remove(playerId);
+        civ.invitedPlayers().remove(playerId);
+        if (civ.mayorId() != null && civ.mayorId().equals(playerId)) {
+            civ.setMayorId(null);
+            addAuditLog(civ.id(), actorName + " removed mayor " + playerId + " from civilization", RealCivConfig.MAX_AUDIT_LOGS.get());
+        } else {
+            addAuditLog(civ.id(), actorName + " removed member " + playerId + " from civilization", RealCivConfig.MAX_AUDIT_LOGS.get());
+        }
+        setDirty();
+        return true;
     }
 
     public void addAuditLog(String civIdRaw, String message, int maxLogs) {
@@ -952,6 +1047,8 @@ public class CivSavedData extends SavedData {
         private final Map<String, PlotRecord> plots = new HashMap<>();
         private final List<String> auditLogs = new ArrayList<>();
         private final Set<UUID> civicManagers = new HashSet<>();
+        private final Set<UUID> joinRequests = new HashSet<>();
+        private final Set<UUID> invitedPlayers = new HashSet<>();
         @Nullable
         private UUID mayorId;
         @Nullable
@@ -999,6 +1096,14 @@ public class CivSavedData extends SavedData {
 
         public Set<UUID> civicManagers() {
             return civicManagers;
+        }
+
+        public Set<UUID> joinRequests() {
+            return joinRequests;
+        }
+
+        public Set<UUID> invitedPlayers() {
+            return invitedPlayers;
         }
 
         @Nullable
@@ -1071,6 +1176,18 @@ public class CivSavedData extends SavedData {
             }
             tag.put("civicManagers", managers);
 
+            ListTag requests = new ListTag();
+            for (UUID request : joinRequests) {
+                requests.add(StringTag.valueOf(request.toString()));
+            }
+            tag.put("joinRequests", requests);
+
+            ListTag invites = new ListTag();
+            for (UUID invited : invitedPlayers) {
+                invites.add(StringTag.valueOf(invited.toString()));
+            }
+            tag.put("invitedPlayers", invites);
+
             if (mayorId != null) {
                 tag.putString("mayor", mayorId.toString());
             }
@@ -1121,6 +1238,22 @@ public class CivSavedData extends SavedData {
             for (Tag entry : managers) {
                 try {
                     record.civicManagers.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+
+            ListTag requests = tag.getList("joinRequests", Tag.TAG_STRING);
+            for (Tag entry : requests) {
+                try {
+                    record.joinRequests.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+
+            ListTag invites = tag.getList("invitedPlayers", Tag.TAG_STRING);
+            for (Tag entry : invites) {
+                try {
+                    record.invitedPlayers.add(UUID.fromString(entry.getAsString()));
                 } catch (Exception ignored) {
                 }
             }

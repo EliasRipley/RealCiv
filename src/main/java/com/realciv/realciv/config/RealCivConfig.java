@@ -273,6 +273,20 @@ public final class RealCivConfig {
                     () -> "",
                     RealCivConfig::isString);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> BREAK_ACTION_COST_OVERRIDES = BUILDER
+            .comment("Optional per-block action costs for block-break limits. Format: block_id|cost")
+            .comment("Example: minecraft:coal_ore|2 means breaking one coal ore uses 2 profession actions.")
+            .defineListAllowEmpty(
+                    "profession.breakActionCostOverrides",
+                    List.of(
+                            "minecraft:coal_ore|2",
+                            "minecraft:deepslate_coal_ore|2",
+                            "minecraft:diamond_ore|3",
+                            "minecraft:deepslate_diamond_ore|3",
+                            "minecraft:ancient_debris|4"),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.DoubleValue LAND_RENT_COST = BUILDER
             .comment("Social credit cost to rent one chunk plot.")
             .defineInRange("land.rentCost", 100.0D, 0.0D, 1_000_000.0D);
@@ -300,6 +314,10 @@ public final class RealCivConfig {
     public static final ModConfigSpec.DoubleValue CIV_TREASURY_DEPOSIT_PERCENT = BUILDER
             .comment("Percent of hub social-credit reward mirrored into civilization treasury on deposit.")
             .defineInRange("economy.civTreasuryDepositPercent", 100.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.DoubleValue HUB_WITHDRAW_CREDIT_PENALTY_PERCENT = BUILDER
+            .comment("Percent of the item's deposit credit value to deduct from recipient social credit on hub withdrawal.")
+            .defineInRange("economy.hubWithdrawCreditPenaltyPercent", 100.0D, 0.0D, 1000.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_UPKEEP_COST = BUILDER
             .comment("Recurring social credit upkeep cost per private plot per upkeep interval.")
@@ -426,6 +444,10 @@ public final class RealCivConfig {
         return RealCivUtil.creditsToCents(LAND_UPKEEP_COST.get());
     }
 
+    public static double hubWithdrawCreditPenaltyRatio() {
+        return Math.max(0.0D, HUB_WITHDRAW_CREDIT_PENALTY_PERCENT.get() / 100.0D);
+    }
+
     public static double civTreasuryDepositRatio() {
         return Math.max(0.0D, Math.min(1.0D, CIV_TREASURY_DEPOSIT_PERCENT.get() / 100.0D));
     }
@@ -548,6 +570,38 @@ public final class RealCivConfig {
                 continue;
             }
             overrides.put(itemId, Math.max(0, maxCount));
+        }
+        return overrides;
+    }
+
+    public static Map<ResourceLocation, Integer> breakActionCostOverrides() {
+        Map<ResourceLocation, Integer> overrides = new HashMap<>();
+        for (String raw : BREAK_ACTION_COST_OVERRIDES.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|");
+            if (parts.length != 2) {
+                continue;
+            }
+
+            ResourceLocation blockId;
+            try {
+                blockId = ResourceLocation.parse(parts[0].trim());
+            } catch (Exception ex) {
+                continue;
+            }
+
+            Integer cost = tryParseInt(parts[1].trim());
+            if (cost == null) {
+                continue;
+            }
+            overrides.put(blockId, Math.max(1, cost));
         }
         return overrides;
     }

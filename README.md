@@ -41,7 +41,7 @@ In-Game Civic Blocks
   - Right-click: deposit UI.
   - Sneak + right-click: stock/withdraw UI.
 - Census Block (`realciv:census_block`)
-  - Civic roster/role management entrypoint for mayor/admin workflows.
+  - Opens a census management UI (members, invites, join requests, manager actions).
 - Tax Block (`realciv:tax_block`)
   - Private plot upkeep information and prepay flow.
 - Land Wand (`realciv:land_wand`)
@@ -59,7 +59,7 @@ Civilization setup and membership:
 - `/realciv civ list`: Shows all civilizations currently registered on the server.
 - `/realciv civ info [player]`: Shows which civilization a player belongs to, and core civ details.
 - `/realciv civ found <name>`: Player-led civ creation. Creates the civilization, assigns founder as mayor, and grants mayor starter kit (Hub/Census/Tax/Land Wand). Requires founder approval if enabled.
-- `/realciv civ join <civ>`: Moves you into an existing civilization by name/id.
+- `/realciv civ join <civ>`: Joins directly if invited; otherwise creates a join request for mayor/manager approval.
 - `/realciv civ leave`: Leaves your current civilization and moves you to default unaligned civ.
 - `/realciv civ create <name>`: Admin scaffolding command. Creates civ record only. Does not auto-assign mayor and does not move players.
 - `/realciv civ rename <civ> <name>`: Admin rename of existing civilization display name.
@@ -72,9 +72,9 @@ Progress and economy visibility:
 - `/realciv hub open`: Opens the Community Hub stock/withdraw UI for your civilization.
 - `/realciv hub stock [page]`: Chat listing of hub inventory for your civilization.
 - `/realciv hub quota [page]`: Shows your personal withdrawal limits and remaining quota by item.
-- `/realciv hub quota player <player> [page]`: Mayor/admin view of another player’s quota.
-- `/realciv hub withdraw <item> <count>`: Withdraws from hub against your quota.
-- `/realciv hub withdraw <item> <count> <target>`: Mayor/admin controlled withdraw to target player.
+- `/realciv hub quota player <player> [page]`: Mayor/admin view of another player's quota.
+- `/realciv hub withdraw <item> <count>`: Withdraws from hub against your personal quota.
+- `/realciv hub withdraw <item> <count> <target>`: Mayor/admin withdraw to a target player (still quota-bound unless admin bypass).
 - `/realciv hub logs [count]`: Mayor/admin audit log view for deposit/withdraw/governance actions.
 - `/realciv hub coverage [page]`: Admin diagnostics for reward coverage and contribution mapping.
 
@@ -107,6 +107,13 @@ Land governance and staff controls:
 Mayor and census governance:
 
 - `/realciv census members [page]`: Shows civilization member list.
+- `/realciv census requests [page]`: Lists pending join requests.
+- `/realciv census invites [page]`: Lists active invitations.
+- `/realciv census invite <player>`: Sends a join invitation to a player.
+- `/realciv census uninvite <player>`: Revokes an invitation.
+- `/realciv census approve <player>`: Approves a request/invite and admits player.
+- `/realciv census deny <player>`: Denies/clears request or invite.
+- `/realciv census remove <player>`: Removes a member from the civilization.
 - `/realciv census manager add <player>`: Mayor/admin promotes manager via census controls.
 - `/realciv census manager remove <player>`: Mayor/admin removes manager.
 - `/realciv census mayor <player>`: Mayor/admin sets current civ mayor.
@@ -158,6 +165,7 @@ Key areas:
   - `profession.lumberjackLimits`
   - `profession.hunterLimits`
   - `profession.crafterLimits`
+  - `profession.breakActionCostOverrides`
 - Level thresholds:
   - `progression.professionXpThresholds`
   - `progression.generalXpThresholds`
@@ -165,6 +173,7 @@ Key areas:
   - `hub.rewardRules`
   - `hub.tagRewardRules`
   - `hub.defaultPersonalWithdrawalPercent`
+  - `economy.hubWithdrawCreditPenaltyPercent`
 - Tool unlock gates:
   - `tools.requiredLevel.*`
 - Land and upkeep:
@@ -226,3 +235,4 @@ Build and Test
 - Full build: `gradlew build`
 - Run dedicated server: `gradlew runServer`
 - Run local client: `gradlew runClient`
+
