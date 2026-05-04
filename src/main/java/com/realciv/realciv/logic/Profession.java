@@ -6,6 +6,7 @@ import org.jetbrains.annotations.Nullable;
 public enum Profession {
     FARMER,
     MINER,
+    TERRAFORMER,
     LUMBERJACK,
     HUNTER,
     CRAFTER,
@@ -19,6 +20,7 @@ public enum Profession {
         return switch (raw.trim().toUpperCase(Locale.ROOT)) {
             case "FARMER" -> FARMER;
             case "MINER" -> MINER;
+            case "TERRAFORMER", "TERRAFORMING", "DIGGER" -> TERRAFORMER;
             case "LUMBERJACK", "WOODCUTTER" -> LUMBERJACK;
             case "HUNTER" -> HUNTER;
             case "CRAFTER" -> CRAFTER;

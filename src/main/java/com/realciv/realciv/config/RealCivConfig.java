@@ -36,6 +36,14 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> TERRAFORMER_LIMITS = BUILDER
+            .comment("Terraformer block-break limits by terraformer level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.terraformerLimits",
+                    List.of(40, 80, 120, 180, 240, 320),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LUMBERJACK_LIMITS = BUILDER
             .comment("Lumberjack block-break limits by lumberjack level index (level 0 = first value).")
             .defineListAllowEmpty(
@@ -126,6 +134,22 @@ public final class RealCivConfig {
                             "minecraft:nether_quartz_ore|MINER|3.0|4|2",
                             "minecraft:nether_gold_ore|MINER|3.0|4|2",
                             "minecraft:ancient_debris|MINER|30.0|24|12",
+                            "minecraft:dirt|TERRAFORMER|0.15|1|1",
+                            "minecraft:coarse_dirt|TERRAFORMER|0.2|1|1",
+                            "minecraft:rooted_dirt|TERRAFORMER|0.3|2|1",
+                            "minecraft:grass_block|TERRAFORMER|0.2|1|1",
+                            "minecraft:podzol|TERRAFORMER|0.3|2|1",
+                            "minecraft:mycelium|TERRAFORMER|0.4|2|1",
+                            "minecraft:sand|TERRAFORMER|0.25|1|1",
+                            "minecraft:red_sand|TERRAFORMER|0.25|1|1",
+                            "minecraft:gravel|TERRAFORMER|0.3|2|1",
+                            "minecraft:clay|TERRAFORMER|0.5|2|1",
+                            "minecraft:clay_ball|TERRAFORMER|0.4|2|1",
+                            "minecraft:soul_sand|TERRAFORMER|0.5|2|1",
+                            "minecraft:soul_soil|TERRAFORMER|0.5|2|1",
+                            "minecraft:mud|TERRAFORMER|0.4|2|1",
+                            "minecraft:muddy_mangrove_roots|TERRAFORMER|0.5|2|1",
+                            "minecraft:snow_block|TERRAFORMER|0.2|1|1",
                             "minecraft:oak_log|LUMBERJACK|1.0|2|1",
                             "minecraft:spruce_log|LUMBERJACK|1.0|2|1",
                             "minecraft:birch_log|LUMBERJACK|1.0|2|1",
@@ -178,10 +202,12 @@ public final class RealCivConfig {
                     List.of(
                             "ITEM_TAG|realciv:farmer_contributions|FARMER|1.00|2|1",
                             "ITEM_TAG|realciv:miner_contributions|MINER|2.00|3|2",
+                            "ITEM_TAG|realciv:terraformer_contributions|TERRAFORMER|0.40|2|1",
                             "ITEM_TAG|realciv:lumberjack_contributions|LUMBERJACK|1.00|2|1",
                             "ITEM_TAG|realciv:hunter_contributions|HUNTER|2.00|3|2",
                             "ITEM_TAG|realciv:crafter_contributions|CRAFTER|1.20|2|1",
                             "BLOCK_TAG|minecraft:mineable/pickaxe|MINER|0.10|1|1",
+                            "BLOCK_TAG|minecraft:mineable/shovel|TERRAFORMER|0.15|1|1",
                             "BLOCK_TAG|minecraft:logs|LUMBERJACK|1.00|2|1",
                             "BLOCK_TAG|minecraft:bamboo_blocks|LUMBERJACK|1.00|2|1"),
                     () -> "",
@@ -231,6 +257,7 @@ public final class RealCivConfig {
                     List.of(
                             "FARMER|1.0",
                             "MINER|1.0",
+                            "TERRAFORMER|1.0",
                             "LUMBERJACK|1.0",
                             "HUNTER|1.0",
                             "CRAFTER|1.0"),
@@ -250,9 +277,29 @@ public final class RealCivConfig {
             .comment("Social credit cost to rent one chunk plot.")
             .defineInRange("land.rentCost", 100.0D, 0.0D, 1_000_000.0D);
 
+    public static final ModConfigSpec.DoubleValue LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE = BUILDER
+            .comment("Extra social credit cost added per already-owned private plot when claiming another private plot.")
+            .defineInRange("land.rentCostAddedPerOwnedPrivate", 20.0D, 0.0D, 1_000_000.0D);
+
+    public static final ModConfigSpec.DoubleValue LAND_TOWN_CLAIM_COST = BUILDER
+            .comment("Civilization treasury social credit cost to claim one town (CIVIC) chunk.")
+            .defineInRange("land.townClaimCost", 150.0D, 0.0D, 1_000_000.0D);
+
+    public static final ModConfigSpec.DoubleValue LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED = BUILDER
+            .comment("Extra treasury cost added per already-owned CIVIC town chunk when expanding town land.")
+            .defineInRange("land.townClaimCostAddedPerOwned", 30.0D, 0.0D, 1_000_000.0D);
+
+    public static final ModConfigSpec.IntValue LAND_HUB_STARTER_AREA_BLOCKS = BUILDER
+            .comment("Square starter town area side length in blocks, auto-claimed as CIVIC when first Community Hub is placed.")
+            .defineInRange("land.hubStarterAreaBlocks", 50, 1, 1024);
+
     public static final ModConfigSpec.IntValue LAND_RENT_DAYS = BUILDER
             .comment("How many Minecraft days one rent payment grants.")
             .defineInRange("land.rentDays", 7, 1, 10_000);
+
+    public static final ModConfigSpec.DoubleValue CIV_TREASURY_DEPOSIT_PERCENT = BUILDER
+            .comment("Percent of hub social-credit reward mirrored into civilization treasury on deposit.")
+            .defineInRange("economy.civTreasuryDepositPercent", 100.0D, 0.0D, 100.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_UPKEEP_COST = BUILDER
             .comment("Recurring social credit upkeep cost per private plot per upkeep interval.")
@@ -267,7 +314,7 @@ public final class RealCivConfig {
             .defineInRange("land.upkeepGraceDays", 3, 1, 10_000);
 
     public static final ModConfigSpec.BooleanValue LAND_BLOCK_UNCLAIMED_BUILDING = BUILDER
-            .comment("When true, block placement/breaking is denied in chunks with no zoning record.")
+            .comment("When true, breaking is denied in wilderness/unzoned chunks. Placement is always denied there.")
             .define("land.blockUnclaimedBuilding", false);
 
     public static final ModConfigSpec.IntValue LAND_WAND_VISUALIZE_RADIUS_CHUNKS = BUILDER
@@ -327,6 +374,10 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(minerLevel, MINER_LIMITS.get(), 40);
     }
 
+    public static int terraformerLimitForLevel(int terraformerLevel) {
+        return RealCivUtil.valueForLevel(terraformerLevel, TERRAFORMER_LIMITS.get(), 40);
+    }
+
     public static int lumberjackLimitForLevel(int lumberjackLevel) {
         return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 8);
     }
@@ -351,12 +402,32 @@ public final class RealCivConfig {
         return RealCivUtil.creditsToCents(LAND_RENT_COST.get());
     }
 
+    public static long rentCostAddedPerOwnedPrivateCents() {
+        return RealCivUtil.creditsToCents(LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE.get());
+    }
+
+    public static long townClaimCostCents() {
+        return RealCivUtil.creditsToCents(LAND_TOWN_CLAIM_COST.get());
+    }
+
+    public static long townClaimCostAddedPerOwnedCents() {
+        return RealCivUtil.creditsToCents(LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED.get());
+    }
+
+    public static int hubStarterAreaBlocks() {
+        return Math.max(1, LAND_HUB_STARTER_AREA_BLOCKS.get());
+    }
+
     public static long rentDurationTicks() {
         return 24_000L * LAND_RENT_DAYS.get();
     }
 
     public static long upkeepCostCents() {
         return RealCivUtil.creditsToCents(LAND_UPKEEP_COST.get());
+    }
+
+    public static double civTreasuryDepositRatio() {
+        return Math.max(0.0D, Math.min(1.0D, CIV_TREASURY_DEPOSIT_PERCENT.get() / 100.0D));
     }
 
     public static long upkeepIntervalTicks() {
@@ -415,6 +486,7 @@ public final class RealCivConfig {
         Map<Profession, Double> multipliers = new HashMap<>();
         multipliers.put(Profession.FARMER, 1.0D);
         multipliers.put(Profession.MINER, 1.0D);
+        multipliers.put(Profession.TERRAFORMER, 1.0D);
         multipliers.put(Profession.LUMBERJACK, 1.0D);
         multipliers.put(Profession.HUNTER, 1.0D);
         multipliers.put(Profession.CRAFTER, 1.0D);

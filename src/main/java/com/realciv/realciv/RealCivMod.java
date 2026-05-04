@@ -29,6 +29,7 @@ public class RealCivMod {
 
         NeoForge.EVENT_BUS.addListener(RealCivCommands::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogin);
+        NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogout);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onRightClickItem);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onLeftClickBlock);

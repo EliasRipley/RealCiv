@@ -504,7 +504,12 @@ public class CivSavedData extends SavedData {
 
         civ.hubStock().merge(itemId.toString(), count, Long::sum);
         record.contributions(civ.id()).merge(itemId.toString(), count, Long::sum);
-        record.addSocialCreditCents(civ.id(), rewardRule.creditsPerItemCents() * count);
+        long earnedCredits = rewardRule.creditsPerItemCents() * count;
+        record.addSocialCreditCents(civ.id(), earnedCredits);
+        long treasuryShare = Math.round(earnedCredits * RealCivConfig.civTreasuryDepositRatio());
+        if (treasuryShare > 0L) {
+            civ.setTreasuryCents(civ.treasuryCents() + treasuryShare);
+        }
 
         int professionGain = rewardRule.professionXpPerItem() * itemCount;
         switch (rewardRule.profession()) {
@@ -515,6 +520,10 @@ public class CivSavedData extends SavedData {
             case MINER -> {
                 record.minerXp += professionGain;
                 record.minerActions = 0;
+            }
+            case TERRAFORMER -> {
+                record.terraformerXp += professionGain;
+                record.terraformerActions = 0;
             }
             case LUMBERJACK -> {
                 record.lumberjackXp += professionGain;
@@ -535,6 +544,17 @@ public class CivSavedData extends SavedData {
         record.generalXp += rewardRule.generalXpPerItem() * itemCount;
         addAuditLog(civ.id(), actorName + " deposited " + itemCount + "x " + itemId, RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
+    }
+
+    public int countPlotsByClass(String civIdRaw, LandClass landClass) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        int count = 0;
+        for (PlotRecord plot : civ.plots().values()) {
+            if (plot.landClass() == landClass) {
+                count++;
+            }
+        }
+        return count;
     }
 
     public boolean isMayor(String civIdRaw, UUID playerId) {
@@ -579,10 +599,55 @@ public class CivSavedData extends SavedData {
         return getOrCreateCivilization(civIdRaw).treasuryCents();
     }
 
+    public int plotCount(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).plots().size();
+    }
+
     public void addCivTreasuryCents(String civIdRaw, long delta) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         civ.setTreasuryCents(civ.treasuryCents() + delta);
         setDirty();
+    }
+
+    @Nullable
+    public HubLocation getHubLocation(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (civ.hubDimension() == null) {
+            return null;
+        }
+        return new HubLocation(civ.hubDimension(), civ.hubX(), civ.hubY(), civ.hubZ());
+    }
+
+    public void setHubLocation(String civIdRaw, String dimension, int x, int y, int z) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.setHubLocation(dimension, x, y, z);
+        setDirty();
+    }
+
+    public boolean clearHubLocation(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (civ.hubDimension() == null) {
+            return false;
+        }
+        civ.clearHubLocation();
+        setDirty();
+        return true;
+    }
+
+    @Nullable
+    public String findCivilizationIdByHubPosition(String dimension, int x, int y, int z) {
+        for (CivilizationRecord civ : civilizations.values()) {
+            if (civ.hubDimension() == null) {
+                continue;
+            }
+            if (!civ.hubDimension().equals(dimension)) {
+                continue;
+            }
+            if (civ.hubX() == x && civ.hubY() == y && civ.hubZ() == z) {
+                return civ.id();
+            }
+        }
+        return null;
     }
 
     public void setCivicManager(String civIdRaw, UUID playerId, boolean allowed, String actorName) {
@@ -866,6 +931,9 @@ public class CivSavedData extends SavedData {
     public record PlotLookup(String civilizationId, PlotRecord plot) {
     }
 
+    public record HubLocation(String dimension, int x, int y, int z) {
+    }
+
     public record DeleteCivilizationResult(
             String deletedId,
             String deletedDisplayName,
@@ -886,6 +954,11 @@ public class CivSavedData extends SavedData {
         private final Set<UUID> civicManagers = new HashSet<>();
         @Nullable
         private UUID mayorId;
+        @Nullable
+        private String hubDimension;
+        private int hubX;
+        private int hubY;
+        private int hubZ;
 
         public CivilizationRecord(String id, String displayName) {
             this.id = id;
@@ -937,6 +1010,37 @@ public class CivSavedData extends SavedData {
             this.mayorId = mayorId;
         }
 
+        @Nullable
+        public String hubDimension() {
+            return hubDimension;
+        }
+
+        public int hubX() {
+            return hubX;
+        }
+
+        public int hubY() {
+            return hubY;
+        }
+
+        public int hubZ() {
+            return hubZ;
+        }
+
+        public void setHubLocation(String dimension, int x, int y, int z) {
+            this.hubDimension = dimension;
+            this.hubX = x;
+            this.hubY = y;
+            this.hubZ = z;
+        }
+
+        public void clearHubLocation() {
+            this.hubDimension = null;
+            this.hubX = 0;
+            this.hubY = 0;
+            this.hubZ = 0;
+        }
+
         public CompoundTag save() {
             CompoundTag tag = new CompoundTag();
             tag.putString("id", id);
@@ -969,6 +1073,12 @@ public class CivSavedData extends SavedData {
 
             if (mayorId != null) {
                 tag.putString("mayor", mayorId.toString());
+            }
+            if (hubDimension != null) {
+                tag.putString("hubDimension", hubDimension);
+                tag.putInt("hubX", hubX);
+                tag.putInt("hubY", hubY);
+                tag.putInt("hubZ", hubZ);
             }
             return tag;
         }
@@ -1020,6 +1130,12 @@ public class CivSavedData extends SavedData {
                     record.mayorId = UUID.fromString(tag.getString("mayor"));
                 } catch (Exception ignored) {
                 }
+            }
+            if (tag.contains("hubDimension")) {
+                record.hubDimension = tag.getString("hubDimension");
+                record.hubX = tag.getInt("hubX");
+                record.hubY = tag.getInt("hubY");
+                record.hubZ = tag.getInt("hubZ");
             }
             return record;
         }
@@ -1162,6 +1278,8 @@ public class CivSavedData extends SavedData {
         private int minerActions;
         private int farmerXp;
         private int minerXp;
+        private int terraformerActions;
+        private int terraformerXp;
         private int lumberjackActions;
         private int lumberjackXp;
         private int hunterActions;
@@ -1266,6 +1384,18 @@ public class CivSavedData extends SavedData {
 
         public int minerXp() {
             return minerXp;
+        }
+
+        public int terraformerActions() {
+            return terraformerActions;
+        }
+
+        public void setTerraformerActions(int value) {
+            this.terraformerActions = Math.max(0, value);
+        }
+
+        public int terraformerXp() {
+            return terraformerXp;
         }
 
         public int lumberjackActions() {
@@ -1404,6 +1534,8 @@ public class CivSavedData extends SavedData {
             tag.putInt("minerActions", minerActions);
             tag.putInt("farmerXp", farmerXp);
             tag.putInt("minerXp", minerXp);
+            tag.putInt("terraformerActions", terraformerActions);
+            tag.putInt("terraformerXp", terraformerXp);
             tag.putInt("lumberjackActions", lumberjackActions);
             tag.putInt("lumberjackXp", lumberjackXp);
             tag.putInt("hunterActions", hunterActions);
@@ -1443,6 +1575,8 @@ public class CivSavedData extends SavedData {
             record.minerActions = Math.max(0, tag.getInt("minerActions"));
             record.farmerXp = Math.max(0, tag.getInt("farmerXp"));
             record.minerXp = Math.max(0, tag.getInt("minerXp"));
+            record.terraformerActions = Math.max(0, tag.getInt("terraformerActions"));
+            record.terraformerXp = Math.max(0, tag.getInt("terraformerXp"));
             record.lumberjackActions = Math.max(0, tag.getInt("lumberjackActions"));
             record.lumberjackXp = Math.max(0, tag.getInt("lumberjackXp"));
             record.hunterActions = Math.max(0, tag.getInt("hunterActions"));
@@ -1476,6 +1610,7 @@ public class CivSavedData extends SavedData {
             return switch (profession) {
                 case FARMER -> RealCivConfig.professionLevelFromXp(farmerXp());
                 case MINER -> RealCivConfig.professionLevelFromXp(minerXp());
+                case TERRAFORMER -> RealCivConfig.professionLevelFromXp(terraformerXp());
                 case LUMBERJACK -> RealCivConfig.professionLevelFromXp(lumberjackXp());
                 case HUNTER -> RealCivConfig.professionLevelFromXp(hunterXp());
                 case CRAFTER -> RealCivConfig.professionLevelFromXp(crafterXp());

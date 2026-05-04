@@ -100,6 +100,7 @@ public final class CarryCapService {
         return switch (profession) {
             case FARMER -> RealCivConfig.farmerLimitForLevel(record.levelFor(Profession.FARMER));
             case MINER -> RealCivConfig.minerLimitForLevel(record.levelFor(Profession.MINER));
+            case TERRAFORMER -> RealCivConfig.terraformerLimitForLevel(record.levelFor(Profession.TERRAFORMER));
             case LUMBERJACK -> RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK));
             case HUNTER -> RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER));
             case CRAFTER -> RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER));

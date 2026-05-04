@@ -3,6 +3,7 @@ package com.realciv.realciv.event;
 import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CarryCapService;
 import com.realciv.realciv.logic.CraftingLimitService;
 import com.realciv.realciv.logic.LandWandService;
@@ -11,7 +12,9 @@ import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
+import java.util.HashMap;
 import java.util.List;
+import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
 import net.minecraft.core.registries.Registries;
@@ -50,11 +53,16 @@ public final class RealCivEvents {
     private static final TagKey<Block> PICKAXE_MINEABLE_TAG = TagKey.create(
             Registries.BLOCK,
             ResourceLocation.parse("minecraft:mineable/pickaxe"));
+    private static final TagKey<Block> SHOVEL_MINEABLE_TAG = TagKey.create(
+            Registries.BLOCK,
+            ResourceLocation.parse("minecraft:mineable/shovel"));
     private static final TagKey<Block> BAMBOO_BLOCKS_TAG = TagKey.create(
             Registries.BLOCK,
             ResourceLocation.parse("minecraft:bamboo_blocks"));
     private static final long UPKEEP_TICK_INTERVAL = 200L;
+    private static final long TERRITORY_CHECK_INTERVAL = 10L;
     private static long lastUpkeepTick = Long.MIN_VALUE;
+    private static final Map<UUID, TerritoryState> LAST_TERRITORY = new HashMap<>();
 
     private RealCivEvents() {
     }
@@ -78,6 +86,7 @@ public final class RealCivEvents {
                         + " | General Level: " + record.generalLevel()
                         + " | Farmer: " + record.levelFor(Profession.FARMER)
                         + " | Miner: " + record.levelFor(Profession.MINER)
+                        + " | Terraformer: " + record.levelFor(Profession.TERRAFORMER)
                         + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
@@ -86,10 +95,22 @@ public final class RealCivEvents {
                 player.sendSystemMessage(Component.literal(
                         "You are in the default civilization. Ask an admin for founder approval before using /realciv civ found <name>."));
             } else {
-                player.sendSystemMessage(Component.literal(
-                        "You are in the default civilization. Use /realciv civ found <name> to create your own civilization."));
+                    player.sendSystemMessage(Component.literal(
+                            "You are in the default civilization. Use /realciv civ found <name> to create your own civilization."));
             }
         }
+        if (RealCivUtil.isBypass(player)) {
+            player.sendSystemMessage(Component.literal(
+                    "[RealCiv] Admin bypass is ACTIVE for your account. Limits and land restrictions will not apply."));
+        }
+        LAST_TERRITORY.remove(player.getUUID());
+    }
+
+    public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        LAST_TERRITORY.remove(player.getUUID());
     }
 
     public static void onServerTick(ServerTickEvent.Post event) {
@@ -97,6 +118,12 @@ public final class RealCivEvents {
             return;
         }
         long now = event.getServer().overworld().getGameTime();
+        if (now % TERRITORY_CHECK_INTERVAL == 0L) {
+            CivSavedData data = CivSavedData.get(event.getServer());
+            for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+                sendTerritoryTransitionMessage(player, data);
+            }
+        }
         if (lastUpkeepTick != Long.MIN_VALUE && now - lastUpkeepTick < UPKEEP_TICK_INTERVAL) {
             return;
         }
@@ -249,22 +276,59 @@ public final class RealCivEvents {
         BlockState placedBlock = event.getPlacedBlock();
         CivSavedData data = CivSavedData.get(player.getServer());
         long now = currentGameTime(player);
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        boolean placingCommunityHub = placedBlock.is(ModBlocks.COMMUNITY_HUB.get());
+        boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
 
         if ((placedBlock.is(ModBlocks.COMMUNITY_HUB.get())
                 || placedBlock.is(ModBlocks.CENSUS_BLOCK.get())
                 || placedBlock.is(ModBlocks.TAX_BLOCK.get()))
-                && !player.hasPermissions(3)) {
-            String civId = data.getOrAssignCivilization(player.getUUID());
-            if (!data.isMayor(civId, player.getUUID())) {
+                && !mayorOrAdmin) {
+            RealCivMessages.deny(
+                    player,
+                    "Only your civilization mayor (or admins) can place civic control blocks (Hub/Census/Tax).");
+            event.setCanceled(true);
+            return;
+        }
+
+        boolean firstTownHubPlacement = false;
+        if (placingCommunityHub) {
+            @Nullable CivSavedData.HubLocation existingHub = data.getHubLocation(civId);
+            if (existingHub != null
+                    && (!existingHub.dimension().equals(level.dimension().location().toString())
+                    || existingHub.x() != event.getPos().getX()
+                    || existingHub.y() != event.getPos().getY()
+                    || existingHub.z() != event.getPos().getZ())) {
                 RealCivMessages.deny(
                         player,
-                        "Only your civilization mayor (or admins) can place civic control blocks (Hub/Census/Tax).");
+                        "Your civilization already has a Community Hub. Break/move the current hub first.");
                 event.setCanceled(true);
                 return;
             }
+
+            if (data.countPlotsByClass(civId, LandClass.CIVIC) <= 0) {
+                if (!claimStarterTownAreaFromHub(player, data, civId, level, event.getPos(), now)) {
+                    event.setCanceled(true);
+                    return;
+                }
+                firstTownHubPlacement = true;
+            }
+            data.setHubLocation(
+                    civId,
+                    level.dimension().location().toString(),
+                    event.getPos().getX(),
+                    event.getPos().getY(),
+                    event.getPos().getZ());
+            data.addAuditLog(
+                    civId,
+                    player.getGameProfile().getName() + " placed Community Hub at "
+                            + level.dimension().location() + "[" + event.getPos().getX() + ","
+                            + event.getPos().getY() + "," + event.getPos().getZ() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            data.setDirty();
         }
 
-        if (!canBuildInChunk(player, level, event.getPos(), data, now)) {
+        if (!firstTownHubPlacement && !canBuildInChunk(player, level, event.getPos(), data, now)) {
             CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
                     level.dimension().location().toString(),
                     event.getPos().getX() >> 4,
@@ -315,10 +379,33 @@ public final class RealCivEvents {
         BlockState state = event.getState();
         BlockPos pos = event.getPos();
         long now = currentGameTime(player);
+        boolean authorizedHubMove = false;
+        @Nullable String authorizedHubCiv = null;
+        String dimension = level.dimension().location().toString();
 
-        if ((state.is(ModBlocks.COMMUNITY_HUB.get())
-                || state.is(ModBlocks.CENSUS_BLOCK.get())
-                || state.is(ModBlocks.TAX_BLOCK.get()))
+        if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
+            String hubOwnerCiv = data.findCivilizationIdByHubPosition(
+                    dimension,
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ());
+            if (hubOwnerCiv != null) {
+                if (!player.hasPermissions(3) && !data.isMayor(hubOwnerCiv, player.getUUID())) {
+                    RealCivMessages.deny(player, "Only the owning civilization mayor can move this Community Hub.");
+                    event.setCanceled(true);
+                    return;
+                }
+                authorizedHubMove = true;
+                authorizedHubCiv = hubOwnerCiv;
+            } else if (!player.hasPermissions(3)) {
+                String civId = data.getOrAssignCivilization(player.getUUID());
+                if (!data.isMayor(civId, player.getUUID())) {
+                    RealCivMessages.deny(player, "Community Hub is protected.");
+                    event.setCanceled(true);
+                    return;
+                }
+            }
+        } else if ((state.is(ModBlocks.CENSUS_BLOCK.get()) || state.is(ModBlocks.TAX_BLOCK.get()))
                 && !player.hasPermissions(3)) {
             String civId = data.getOrAssignCivilization(player.getUUID());
             if (!data.isMayor(civId, player.getUUID())) {
@@ -328,13 +415,19 @@ public final class RealCivEvents {
             }
         }
 
-        if (!canBreakInChunk(player, level, pos, data, now)) {
+        if (!authorizedHubMove && !canBreakInChunk(player, level, pos, data, now)) {
             CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
-                    level.dimension().location().toString(),
+                    dimension,
                     pos.getX() >> 4,
                     pos.getZ() >> 4);
             if (lookup == null) {
-                RealCivMessages.deny(player, "You can't break blocks here. This chunk is not legally zoned.");
+                if (RealCivConfig.blockUnclaimedBuilding()) {
+                    RealCivMessages.deny(
+                            player,
+                            "You can't break blocks here. Wilderness breaking is disabled by server configuration.");
+                } else {
+                    RealCivMessages.deny(player, "You can't break blocks here. This chunk is not legally zoned.");
+                }
             } else {
                 RealCivMessages.deny(
                         player,
@@ -344,6 +437,15 @@ public final class RealCivEvents {
             }
             event.setCanceled(true);
             return;
+        }
+
+        if (authorizedHubMove && authorizedHubCiv != null) {
+            data.clearHubLocation(authorizedHubCiv);
+            data.addAuditLog(
+                    authorizedHubCiv,
+                    player.getGameProfile().getName() + " removed Community Hub from "
+                            + dimension + "[" + pos.getX() + "," + pos.getY() + "," + pos.getZ() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
         }
 
         if (isToolLocked(player, player.getMainHandItem(), data)) {
@@ -378,6 +480,16 @@ public final class RealCivEvents {
                                     + "Miner limit reached (" + limit + ").");
                     event.setCanceled(true);
                 }
+            } else if (breakProfession == BreakProfession.TERRAFORMER) {
+                int levelValue = record.levelFor(Profession.TERRAFORMER);
+                int limit = RealCivConfig.terraformerLimitForLevel(levelValue);
+                if (record.terraformerActions() >= limit) {
+                    RealCivMessages.deny(
+                            player,
+                            "You can't terraform more blocks until you've contributed earth materials to the Community Hub. "
+                                    + "Terraformer limit reached (" + limit + ").");
+                    event.setCanceled(true);
+                }
             }
         }
     }
@@ -402,6 +514,8 @@ public final class RealCivEvents {
             record.setLumberjackActions(record.lumberjackActions() + 1);
         } else if (breakProfession == BreakProfession.MINER) {
             record.setMinerActions(record.minerActions() + 1);
+        } else if (breakProfession == BreakProfession.TERRAFORMER) {
+            record.setTerraformerActions(record.terraformerActions() + 1);
         }
         data.setDirty();
     }
@@ -515,6 +629,7 @@ public final class RealCivEvents {
                 "Credits: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
                         + " | Farmer " + record.farmerActions() + "/" + RealCivConfig.farmerLimitForLevel(record.levelFor(Profession.FARMER))
                         + " | Miner " + record.minerActions() + "/" + RealCivConfig.minerLimitForLevel(record.levelFor(Profession.MINER))
+                        + " | Terraformer " + record.terraformerActions() + "/" + RealCivConfig.terraformerLimitForLevel(record.levelFor(Profession.TERRAFORMER))
                         + " | Lumberjack " + record.lumberjackActions() + "/" + RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK))
                         + " | Hunter " + record.hunterActions() + "/" + RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER))
                         + " | Crafter " + record.crafterActions() + "/" + RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER))));
@@ -650,6 +765,121 @@ public final class RealCivEvents {
                 "Civ treasury (" + civId + "): " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
     }
 
+    private static boolean claimStarterTownAreaFromHub(
+            ServerPlayer player,
+            CivSavedData data,
+            String civId,
+            Level level,
+            BlockPos hubPos,
+            long now) {
+        int sideBlocks = RealCivConfig.hubStarterAreaBlocks();
+        int half = sideBlocks / 2;
+        int minX = hubPos.getX() - half;
+        int minZ = hubPos.getZ() - half;
+        int maxX = minX + sideBlocks - 1;
+        int maxZ = minZ + sideBlocks - 1;
+        long minChunkX = minX >> 4;
+        long maxChunkX = maxX >> 4;
+        long minChunkZ = minZ >> 4;
+        long maxChunkZ = maxZ >> 4;
+        String dimension = level.dimension().location().toString();
+
+        for (long chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+            for (long chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+                if (lookup != null && !lookup.civilizationId().equals(civId)) {
+                    RealCivMessages.deny(
+                            player,
+                            "Cannot place first Community Hub here. Starter area overlaps civilization '"
+                                    + lookup.civilizationId() + "' at chunk [" + chunkX + ", " + chunkZ + "].");
+                    return false;
+                }
+            }
+        }
+
+        int claimed = 0;
+        for (long chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
+            for (long chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
+                data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.CIVIC, null, now, 0L);
+                claimed++;
+            }
+        }
+        data.addAuditLog(
+                civId,
+                player.getGameProfile().getName() + " seeded starter town area from Community Hub at "
+                        + dimension + "[" + hubPos.getX() + "," + hubPos.getY() + "," + hubPos.getZ() + "]"
+                        + " | side=" + sideBlocks + " blocks | claimed chunks=" + claimed,
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        player.sendSystemMessage(Component.literal(
+                "Starter town land claimed: " + claimed + " CIVIC chunk(s) around the Community Hub."));
+        return true;
+    }
+
+    private static void sendTerritoryTransitionMessage(ServerPlayer player, CivSavedData data) {
+        TerritoryState current = territoryStateForPlayer(player, data);
+        TerritoryState previous = LAST_TERRITORY.put(player.getUUID(), current);
+        if (previous != null && previous.sameAs(current)) {
+            return;
+        }
+
+        if (current.isWilderness()) {
+            player.sendSystemMessage(Component.literal("You've entered public wilderness."));
+            return;
+        }
+
+        String civName = civilizationDisplayName(data, current.civilizationId());
+        if (current.landClass() == LandClass.PRIVATE) {
+            if (current.ownerId() != null && current.ownerId().equals(player.getUUID())) {
+                player.sendSystemMessage(Component.literal(
+                        "You've now entered your private plot in " + civName + "."));
+            } else {
+                player.sendSystemMessage(Component.literal(
+                        "You've now entered " + ownerName(player, current.ownerId()) + "'s private plot in " + civName + "."));
+            }
+            return;
+        }
+
+        if (current.landClass() == LandClass.CIVIC) {
+            player.sendSystemMessage(Component.literal(
+                    "You've now entered " + civName + "'s territory."));
+            return;
+        }
+
+        player.sendSystemMessage(Component.literal(
+                "You've now entered public land of " + civName + "."));
+    }
+
+    private static TerritoryState territoryStateForPlayer(ServerPlayer player, CivSavedData data) {
+        String dimension = player.serverLevel().dimension().location().toString();
+        long chunkX = player.chunkPosition().x;
+        long chunkZ = player.chunkPosition().z;
+        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        if (lookup == null) {
+            return TerritoryState.wilderness();
+        }
+        return TerritoryState.claimed(lookup.civilizationId(), lookup.plot().landClass(), lookup.plot().ownerId());
+    }
+
+    private static String civilizationDisplayName(CivSavedData data, @Nullable String civId) {
+        if (civId == null) {
+            return "Unknown Civilization";
+        }
+        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        return civ == null ? civId : civ.displayName();
+    }
+
+    private static String ownerName(ServerPlayer viewer, @Nullable UUID ownerId) {
+        if (ownerId == null) {
+            return "Unknown";
+        }
+        ServerPlayer online = viewer.getServer() == null ? null : viewer.getServer().getPlayerList().getPlayer(ownerId);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        String raw = ownerId.toString();
+        return raw.length() > 8 ? raw.substring(0, 8) : raw;
+    }
+
     private static boolean canBuildInChunk(ServerPlayer player, Level level, BlockPos pos, CivSavedData data, long gameTime) {
         if (RealCivUtil.isBypass(player)) {
             return true;
@@ -675,7 +905,7 @@ public final class RealCivEvents {
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
         if (lookup == null) {
-            return true;
+            return !RealCivConfig.blockUnclaimedBuilding();
         }
         return data.canBreakOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }
@@ -724,6 +954,9 @@ public final class RealCivEvents {
         if (state.is(PICKAXE_MINEABLE_TAG)) {
             return BreakProfession.MINER;
         }
+        if (state.is(SHOVEL_MINEABLE_TAG)) {
+            return BreakProfession.TERRAFORMER;
+        }
         return BreakProfession.NONE;
     }
 
@@ -743,6 +976,36 @@ public final class RealCivEvents {
         }
 
         return null;
+    }
+
+    private record TerritoryState(
+            @Nullable String civilizationId,
+            @Nullable LandClass landClass,
+            @Nullable UUID ownerId) {
+        private static TerritoryState wilderness() {
+            return new TerritoryState(null, null, null);
+        }
+
+        private static TerritoryState claimed(String civilizationId, LandClass landClass, @Nullable UUID ownerId) {
+            return new TerritoryState(civilizationId, landClass, ownerId);
+        }
+
+        private boolean isWilderness() {
+            return civilizationId == null;
+        }
+
+        private boolean sameAs(TerritoryState other) {
+            if (other == null) {
+                return false;
+            }
+            if (civilizationId == null ? other.civilizationId != null : !civilizationId.equals(other.civilizationId)) {
+                return false;
+            }
+            if (landClass != other.landClass) {
+                return false;
+            }
+            return ownerId == null ? other.ownerId == null : ownerId.equals(other.ownerId);
+        }
     }
 
     private static int resolveCraftedCount(PlayerEvent.ItemCraftedEvent event, ItemStack crafted) {
@@ -780,6 +1043,7 @@ public final class RealCivEvents {
     private enum BreakProfession {
         NONE,
         MINER,
+        TERRAFORMER,
         LUMBERJACK
     }
 }
