@@ -14,6 +14,7 @@ import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
+import com.realciv.realciv.integration.RealCivFTBChunksMirror;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -93,6 +94,7 @@ public final class RealCivEvents {
                         + " | Terraformer: " + record.levelFor(Profession.TERRAFORMER)
                         + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
+                        + " | Warrior: " + record.levelFor(Profession.WARRIOR)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
             if (RealCivConfig.requireFounderApproval()) {
@@ -107,6 +109,7 @@ public final class RealCivEvents {
             player.sendSystemMessage(Component.literal(
                     "[RealCiv] Admin bypass is ACTIVE for your account. Limits and land restrictions will not apply."));
         }
+        RealCivFTBChunksMirror.syncCivilization(player.getServer(), data, civId);
         LAST_TERRITORY.remove(player.getUUID());
     }
 
@@ -137,10 +140,11 @@ public final class RealCivEvents {
         int terraformerRefund = refundActions(record.terraformerActions(), ratio);
         int lumberjackRefund = refundActions(record.lumberjackActions(), ratio);
         int hunterRefund = refundActions(record.hunterActions(), ratio);
+        int warriorRefund = refundActions(record.warriorActions(), ratio);
         int crafterRefund = refundActions(record.crafterActions(), ratio);
 
         if (farmerRefund <= 0 && minerRefund <= 0 && terraformerRefund <= 0
-                && lumberjackRefund <= 0 && hunterRefund <= 0 && crafterRefund <= 0) {
+                && lumberjackRefund <= 0 && hunterRefund <= 0 && warriorRefund <= 0 && crafterRefund <= 0) {
             return;
         }
 
@@ -149,10 +153,11 @@ public final class RealCivEvents {
         record.setTerraformerActions(record.terraformerActions() - terraformerRefund);
         record.setLumberjackActions(record.lumberjackActions() - lumberjackRefund);
         record.setHunterActions(record.hunterActions() - hunterRefund);
+        record.setWarriorActions(record.warriorActions() - warriorRefund);
         record.setCrafterActions(record.crafterActions() - crafterRefund);
         data.setDirty();
 
-        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + crafterRefund;
+        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + warriorRefund + crafterRefund;
         player.sendSystemMessage(Component.literal(
                 "Death recovery refunded " + totalRefund + " profession action(s) total. "
                         + "Refund rate: " + RealCivUtil.formatPercentFromRatio(ratio) + "."));
@@ -585,26 +590,95 @@ public final class RealCivEvents {
     }
 
     public static void onAttackEntity(AttackEntityEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null) {
+        if (!(event.getEntity() instanceof ServerPlayer attacker) || attacker.getServer() == null) {
             return;
         }
-        if (!(event.getTarget() instanceof Mob) || RealCivUtil.isBypass(player)) {
+        if (RealCivUtil.isBypass(attacker)) {
             return;
         }
 
-        CivSavedData data = CivSavedData.get(player.getServer());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (event.getTarget() instanceof ServerPlayer target) {
+            if (attacker.getUUID().equals(target.getUUID())) {
+                return;
+            }
+
+            CivSavedData data = CivSavedData.get(attacker.getServer());
+            String attackerCiv = data.getOrAssignCivilization(attacker.getUUID());
+            String targetCiv = data.getOrAssignCivilization(target.getUUID());
+            if (!isPlayerCombatAllowed(attacker, target, data, attackerCiv, targetCiv)) {
+                event.setCanceled(true);
+                return;
+            }
+            if (!shouldCountWarriorProgress(attackerCiv, targetCiv, data)) {
+                return;
+            }
+
+            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
+            int warriorLevel = record.levelFor(Profession.WARRIOR);
+            int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
+            if (record.warriorActions() >= limit) {
+                notifyWarriorLimitReached(attacker, limit);
+                event.setCanceled(true);
+            }
+            return;
+        }
+
+        if (!(event.getTarget() instanceof Mob)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(attacker.getServer());
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
         if (record.hunterActions() >= limit) {
             RealCivMessages.deny(
-                    player,
+                    attacker,
                     "You can't kill another mob until you've contributed mob loot to the Community Hub. "
                             + "Hunter limit reached (" + limit + ").");
         }
     }
 
     public static void onLivingDeath(LivingDeathEvent event) {
+        if (event.getEntity() instanceof ServerPlayer victim && !victim.level().isClientSide()) {
+            ServerPlayer killer = getResponsiblePlayer(event.getSource());
+            if (killer == null || killer.getServer() == null || killer.getUUID().equals(victim.getUUID()) || RealCivUtil.isBypass(killer)) {
+                return;
+            }
+
+            CivSavedData data = CivSavedData.get(killer.getServer());
+            String killerCiv = data.getOrAssignCivilization(killer.getUUID());
+            String victimCiv = data.getOrAssignCivilization(victim.getUUID());
+            if (!isPlayerCombatAllowed(killer, victim, data, killerCiv, victimCiv)) {
+                event.setCanceled(true);
+                if (victim.getHealth() <= 0.0F) {
+                    victim.setHealth(1.0F);
+                }
+                return;
+            }
+            if (!shouldCountWarriorProgress(killerCiv, victimCiv, data)) {
+                return;
+            }
+
+            CivSavedData.PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
+            int warriorLevel = killerRecord.levelFor(Profession.WARRIOR);
+            int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
+            if (killerRecord.warriorActions() >= limit) {
+                notifyWarriorLimitReached(killer, limit);
+                event.setCanceled(true);
+                if (victim.getHealth() <= 0.0F) {
+                    victim.setHealth(1.0F);
+                }
+                return;
+            }
+
+            killerRecord.setWarriorActions(killerRecord.warriorActions() + 1);
+            killerRecord.addWarriorXp(RealCivConfig.warriorXpPerPlayerKill());
+            killerRecord.addGeneralXp(RealCivConfig.warriorGeneralXpPerPlayerKill());
+            data.setDirty();
+            return;
+        }
+
         if (!(event.getEntity() instanceof Mob mob) || mob.level().isClientSide()) {
             return;
         }
@@ -632,6 +706,53 @@ public final class RealCivEvents {
 
         record.setHunterActions(record.hunterActions() + 1);
         data.setDirty();
+    }
+
+    private static boolean isPlayerCombatAllowed(
+            ServerPlayer attacker,
+            ServerPlayer target,
+            CivSavedData data,
+            String attackerCiv,
+            String targetCiv) {
+        if (attackerCiv.equals(targetCiv)) {
+            if (data.allowIntraCivPvp(attackerCiv)) {
+                return true;
+            }
+            RealCivMessages.deny(
+                    attacker,
+                    "Friendly fire is disabled for your civilization. "
+                            + "Your mayor can enable it with /realciv civ pvp friendlyfire on.");
+            return false;
+        }
+
+        CivSavedData.DiplomacyState relation = data.diplomacyState(attackerCiv, targetCiv);
+        if (relation == CivSavedData.DiplomacyState.WAR) {
+            return true;
+        }
+        if (relation == CivSavedData.DiplomacyState.ALLY) {
+            RealCivMessages.deny(
+                    attacker,
+                    "You cannot attack allied civilization members. "
+                            + "Ask your mayor to adjust diplomacy first.");
+            return false;
+        }
+
+        RealCivMessages.deny(
+                attacker,
+                "You can only attack players from civilizations your civilization is at war with.");
+        return false;
+    }
+
+    private static boolean shouldCountWarriorProgress(String attackerCiv, String targetCiv, CivSavedData data) {
+        return !attackerCiv.equals(targetCiv)
+                && data.diplomacyState(attackerCiv, targetCiv) == CivSavedData.DiplomacyState.WAR;
+    }
+
+    private static void notifyWarriorLimitReached(ServerPlayer player, int limit) {
+        RealCivMessages.deny(
+                player,
+                "Warrior limit reached (" + limit + "). "
+                        + "You cannot kill another enemy player until your warrior cap resets.");
     }
 
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
@@ -696,6 +817,7 @@ public final class RealCivEvents {
                         + " | Terraformer " + record.terraformerActions() + "/" + RealCivConfig.terraformerLimitForLevel(record.levelFor(Profession.TERRAFORMER))
                         + " | Lumberjack " + record.lumberjackActions() + "/" + RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK))
                         + " | Hunter " + record.hunterActions() + "/" + RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER))
+                        + " | Warrior " + record.warriorActions() + "/" + RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR))
                         + " | Crafter " + record.crafterActions() + "/" + RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER))));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
@@ -794,7 +916,7 @@ public final class RealCivEvents {
         if (balance < totalCost) {
             RealCivMessages.deny(
                     player,
-                    "Insufficient social credit for upkeep prepayment. Need "
+                    "Insufficient contribution karma for upkeep prepayment. Need "
                             + RealCivUtil.formatCredits(totalCost)
                             + ", you have " + RealCivUtil.formatCredits(balance) + ".");
             return;
@@ -1056,10 +1178,11 @@ public final class RealCivEvents {
         int terraformerReset = staleResetValue(record.terraformerActions(), record.terraformerActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int lumberjackReset = staleResetValue(record.lumberjackActions(), record.lumberjackActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int hunterReset = staleResetValue(record.hunterActions(), record.hunterActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int warriorReset = staleResetValue(record.warriorActions(), record.warriorActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int crafterReset = staleResetValue(record.crafterActions(), record.crafterActionsUpdatedAtMillis(), nowMillis, staleMillis);
 
         if (farmerReset <= 0 && minerReset <= 0 && terraformerReset <= 0
-                && lumberjackReset <= 0 && hunterReset <= 0 && crafterReset <= 0) {
+                && lumberjackReset <= 0 && hunterReset <= 0 && warriorReset <= 0 && crafterReset <= 0) {
             return;
         }
 
@@ -1078,12 +1201,15 @@ public final class RealCivEvents {
         if (hunterReset > 0) {
             record.setHunterActions(0);
         }
+        if (warriorReset > 0) {
+            record.setWarriorActions(0);
+        }
         if (crafterReset > 0) {
             record.setCrafterActions(0);
         }
         data.setDirty();
 
-        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + crafterReset;
+        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + warriorReset + crafterReset;
         player.sendSystemMessage(Component.literal(
                 "Timed recovery reset " + totalReset + " stale profession action(s) after "
                         + (staleMillis / 60_000L) + " minute(s) without progression reset."));

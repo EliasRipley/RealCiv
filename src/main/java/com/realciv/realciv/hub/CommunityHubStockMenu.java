@@ -176,7 +176,7 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         if (penaltyCents > 0L && record.socialCreditCents(civilizationId) < penaltyCents) {
             RealCivMessages.deny(
                     viewer,
-                    "Not enough social credit for this withdrawal. Need "
+                    "Not enough contribution karma for this withdrawal. Need "
                             + RealCivUtil.formatCredits(penaltyCents) + " for withdrawal penalty.");
             refresh();
             return;

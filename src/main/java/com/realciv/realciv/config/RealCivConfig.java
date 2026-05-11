@@ -62,6 +62,14 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> WARRIOR_LIMITS = BUILDER
+            .comment("Warrior player-kill limits by warrior level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.warriorLimits",
+                    List.of(1, 2, 4, 6, 10, 20, 40),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> CRAFTER_LIMITS = BUILDER
             .comment("Crafter output-item limits by crafter level index (level 0 = first value).")
             .defineListAllowEmpty(
@@ -97,6 +105,14 @@ public final class RealCivConfig {
     public static final ModConfigSpec.IntValue STALE_ACTION_RESET_MINUTES = BUILDER
             .comment("Real-time minutes after last profession action update before that profession counter is auto-reset to 0.")
             .defineInRange("progression.staleActionResetMinutes", 120, 1, 60 * 24 * 30);
+
+    public static final ModConfigSpec.IntValue WARRIOR_XP_PER_PLAYER_KILL = BUILDER
+            .comment("Warrior profession XP awarded instantly per enemy player kill.")
+            .defineInRange("progression.warriorXpPerPlayerKill", 150, 0, 100_000);
+
+    public static final ModConfigSpec.IntValue WARRIOR_GENERAL_XP_PER_PLAYER_KILL = BUILDER
+            .comment("General XP awarded instantly per enemy player kill that counts toward warrior progression.")
+            .defineInRange("progression.warriorGeneralXpPerPlayerKill", 10, 0, 100_000);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> HUB_REWARD_RULES = BUILDER
             .comment("Accepted hub item rewards. Format: item_id|profession|credits|profession_xp|general_xp")
@@ -299,6 +315,7 @@ public final class RealCivConfig {
                             "TERRAFORMER|1.0",
                             "LUMBERJACK|1.0",
                             "HUNTER|1.0",
+                            "WARRIOR|1.0",
                             "CRAFTER|1.0"),
                     () -> "",
                     RealCivConfig::isString);
@@ -327,15 +344,15 @@ public final class RealCivConfig {
                     RealCivConfig::isString);
 
     public static final ModConfigSpec.DoubleValue LAND_RENT_COST = BUILDER
-            .comment("Social credit cost to rent one chunk plot.")
+            .comment("Contribution karma cost to rent one chunk plot.")
             .defineInRange("land.rentCost", 100.0D, 0.0D, 1_000_000.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE = BUILDER
-            .comment("Extra social credit cost added per already-owned private plot when claiming another private plot.")
+            .comment("Extra contribution karma cost added per already-owned private plot when claiming another private plot.")
             .defineInRange("land.rentCostAddedPerOwnedPrivate", 20.0D, 0.0D, 1_000_000.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_TOWN_CLAIM_COST = BUILDER
-            .comment("Civilization treasury social credit cost to claim one town (CIVIC) chunk.")
+            .comment("Civilization treasury contribution karma cost to claim one town (CIVIC) chunk.")
             .defineInRange("land.townClaimCost", 150.0D, 0.0D, 1_000_000.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED = BUILDER
@@ -351,15 +368,15 @@ public final class RealCivConfig {
             .defineInRange("land.rentDays", 7, 1, 10_000);
 
     public static final ModConfigSpec.DoubleValue CIV_TREASURY_DEPOSIT_PERCENT = BUILDER
-            .comment("Percent of hub social-credit reward mirrored into civilization treasury on deposit.")
+            .comment("Percent of hub contribution-karma reward mirrored into civilization treasury on deposit.")
             .defineInRange("economy.civTreasuryDepositPercent", 100.0D, 0.0D, 100.0D);
 
     public static final ModConfigSpec.DoubleValue HUB_WITHDRAW_CREDIT_PENALTY_PERCENT = BUILDER
-            .comment("Percent of the item's deposit credit value to deduct from recipient social credit on hub withdrawal.")
+            .comment("Percent of the item's deposit credit value to deduct from recipient contribution karma on hub withdrawal.")
             .defineInRange("economy.hubWithdrawCreditPenaltyPercent", 100.0D, 0.0D, 1000.0D);
 
     public static final ModConfigSpec.DoubleValue LAND_UPKEEP_COST = BUILDER
-            .comment("Recurring social credit upkeep cost per private plot per upkeep interval.")
+            .comment("Recurring contribution karma upkeep cost per private plot per upkeep interval.")
             .defineInRange("land.upkeepCost", 20.0D, 0.0D, 1_000_000.0D);
 
     public static final ModConfigSpec.IntValue LAND_UPKEEP_INTERVAL_DAYS = BUILDER
@@ -447,8 +464,20 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(hunterLevel, HUNTER_LIMITS.get(), 1);
     }
 
+    public static int warriorLimitForLevel(int warriorLevel) {
+        return RealCivUtil.valueForLevel(warriorLevel, WARRIOR_LIMITS.get(), 1);
+    }
+
     public static int crafterLimitForLevel(int crafterLevel) {
         return RealCivUtil.valueForLevel(crafterLevel, CRAFTER_LIMITS.get(), 64);
+    }
+
+    public static int warriorXpPerPlayerKill() {
+        return Math.max(0, WARRIOR_XP_PER_PLAYER_KILL.get());
+    }
+
+    public static int warriorGeneralXpPerPlayerKill() {
+        return Math.max(0, WARRIOR_GENERAL_XP_PER_PLAYER_KILL.get());
     }
 
     public static int professionLevelFromXp(int xp) {
@@ -566,6 +595,7 @@ public final class RealCivConfig {
         multipliers.put(Profession.TERRAFORMER, 1.0D);
         multipliers.put(Profession.LUMBERJACK, 1.0D);
         multipliers.put(Profession.HUNTER, 1.0D);
+        multipliers.put(Profession.WARRIOR, 1.0D);
         multipliers.put(Profession.CRAFTER, 1.0D);
 
         for (String raw : CARRY_CAP_PROFESSION_MULTIPLIERS.get()) {

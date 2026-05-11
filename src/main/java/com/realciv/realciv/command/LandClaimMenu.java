@@ -263,7 +263,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         if (record.socialCreditCents(civId) < cost) {
             RealCivMessages.deny(
                     viewer,
-                    "Not enough social credit. Need " + RealCivUtil.formatCredits(cost)
+                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(cost)
                             + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
             return;
         }
@@ -483,4 +483,3 @@ public class LandClaimMenu extends AbstractContainerMenu {
         }
     }
 }
-

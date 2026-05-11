@@ -15,6 +15,7 @@ import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import dev.ftb.mods.ftbteams.api.Team;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.function.Supplier;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -28,6 +29,7 @@ public final class RealCivFTBChunksBridge {
     public static final String CLAIM_MODE_PRIVATE = "private";
 
     private static final ThreadLocal<Boolean> INTERNAL_UNCLAIM = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<Integer> INTERNAL_SYNC_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static boolean registered;
 
     private RealCivFTBChunksBridge() {
@@ -50,7 +52,8 @@ public final class RealCivFTBChunksBridge {
             Optional<Team> team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player);
             if (team.isEmpty()) {
                 player.sendSystemMessage(Component.literal(
-                        "You need an FTB Team before using the chunk claim map. Use /ftbteams create <name>."));
+                        "FTB claim map context is unavailable for your current team state. "
+                                + "Opening the RealCiv land map instead."));
                 return false;
             }
             NetworkManager.sendToPlayer(player, new OpenClaimGUIPacket(team.get().getTeamId()));
@@ -89,7 +92,31 @@ public final class RealCivFTBChunksBridge {
         return RealCivConfig.ftbMayorDefaultClaimMode();
     }
 
+    public static void runInternalSync(Runnable runnable) {
+        runInternalSync(() -> {
+            runnable.run();
+            return null;
+        });
+    }
+
+    public static <T> T runInternalSync(Supplier<T> supplier) {
+        int previous = INTERNAL_SYNC_DEPTH.get();
+        INTERNAL_SYNC_DEPTH.set(previous + 1);
+        try {
+            return supplier.get();
+        } finally {
+            INTERNAL_SYNC_DEPTH.set(previous);
+        }
+    }
+
+    private static boolean isInternalSync() {
+        return INTERNAL_SYNC_DEPTH.get() > 0;
+    }
+
     private static CompoundEventResult<ClaimResult> beforeClaim(CommandSourceStack source, ClaimedChunk chunk) {
+        if (isInternalSync()) {
+            return CompoundEventResult.pass();
+        }
         ClaimDecision decision = validateClaim(source, chunk);
         if (decision.allowed()) {
             return CompoundEventResult.pass();
@@ -99,6 +126,9 @@ public final class RealCivFTBChunksBridge {
     }
 
     private static CompoundEventResult<ClaimResult> beforeUnclaim(CommandSourceStack source, ClaimedChunk chunk) {
+        if (isInternalSync()) {
+            return CompoundEventResult.pass();
+        }
         if (INTERNAL_UNCLAIM.get()) {
             return CompoundEventResult.pass();
         }
@@ -111,6 +141,9 @@ public final class RealCivFTBChunksBridge {
     }
 
     private static void afterClaim(CommandSourceStack source, ClaimedChunk chunk) {
+        if (isInternalSync()) {
+            return;
+        }
         ClaimDecision decision = validateClaim(source, chunk);
         if (!decision.allowed()) {
             sendClaimFailure(source, decision);
@@ -121,6 +154,9 @@ public final class RealCivFTBChunksBridge {
     }
 
     private static void afterUnclaim(CommandSourceStack source, ClaimedChunk chunk) {
+        if (isInternalSync()) {
+            return;
+        }
         if (INTERNAL_UNCLAIM.get()) {
             return;
         }
@@ -220,7 +256,7 @@ public final class RealCivFTBChunksBridge {
         long claimCost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < claimCost) {
             return ClaimDecision.denied(
-                    "Not enough social credit. Need " + RealCivUtil.formatCredits(claimCost)
+                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
                             + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
         }
 

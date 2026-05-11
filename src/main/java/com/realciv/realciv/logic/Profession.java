@@ -9,6 +9,7 @@ public enum Profession {
     TERRAFORMER,
     LUMBERJACK,
     HUNTER,
+    WARRIOR,
     CRAFTER,
     NONE;
 
@@ -23,6 +24,7 @@ public enum Profession {
             case "TERRAFORMER", "TERRAFORMING", "DIGGER" -> TERRAFORMER;
             case "LUMBERJACK", "WOODCUTTER" -> LUMBERJACK;
             case "HUNTER" -> HUNTER;
+            case "WARRIOR", "SOLDIER", "PVP" -> WARRIOR;
             case "CRAFTER" -> CRAFTER;
             case "NONE", "GENERAL" -> NONE;
             default -> null;

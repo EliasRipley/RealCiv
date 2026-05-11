@@ -9,6 +9,7 @@ import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
+import com.realciv.realciv.integration.RealCivFTBChunksMirror;
 import com.realciv.realciv.logic.HubRewardResolver;
 import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
@@ -114,6 +115,49 @@ public final class RealCivCommands {
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         StringArgumentType.getString(ctx, "civ"))))))
+                        .then(Commands.literal("diplomacy")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civDiplomacyShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civDiplomacyShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .then(Commands.argument("state", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                List.of("ally", "neutral", "war"),
+                                                                builder))
+                                                        .executes(ctx -> civDiplomacySet(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "other"),
+                                                                StringArgumentType.getString(ctx, "state")))))
+                                        .then(Commands.argument("civA", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(3))
+                                                .then(Commands.argument("civB", StringArgumentType.string())
+                                                        .then(Commands.argument("state", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                        List.of("ally", "neutral", "war"),
+                                                                        builder))
+                                                                .executes(ctx -> civDiplomacySetBetween(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "civA"),
+                                                                        StringArgumentType.getString(ctx, "civB"),
+                                                                        StringArgumentType.getString(ctx, "state"))))))))
+                        .then(Commands.literal("pvp")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civFriendlyFireShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civFriendlyFireShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("friendlyfire")
+                                        .then(Commands.literal("on")
+                                                .executes(ctx -> civFriendlyFireSet(ctx.getSource(), true)))
+                                        .then(Commands.literal("off")
+                                                .executes(ctx -> civFriendlyFireSet(ctx.getSource(), false)))))
                 .then(Commands.literal("town")
                         .then(Commands.literal("info")
                                 .executes(ctx -> townInfo(ctx.getSource())))
@@ -487,6 +531,7 @@ public final class RealCivCommands {
         int terraformerLevel = record.levelFor(Profession.TERRAFORMER);
         int lumberjackLevel = record.levelFor(Profession.LUMBERJACK);
         int hunterLevel = record.levelFor(Profession.HUNTER);
+        int warriorLevel = record.levelFor(Profession.WARRIOR);
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int generalLevel = record.generalLevel();
 
@@ -519,6 +564,10 @@ public final class RealCivCommands {
                 "Hunter L" + hunterLevel + " | kills " + record.hunterActions() + "/"
                         + RealCivConfig.hunterLimitForLevel(hunterLevel)
                         + " | XP " + record.hunterXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Warrior L" + warriorLevel + " | player kills " + record.warriorActions() + "/"
+                        + RealCivConfig.warriorLimitForLevel(warriorLevel)
+                        + " | XP " + record.warriorXp()), false);
         source.sendSuccess(() -> Component.literal(
                 "Crafter L" + crafterLevel + " | crafted " + record.crafterActions() + "/"
                         + RealCivConfig.crafterLimitForLevel(crafterLevel)
@@ -761,6 +810,145 @@ public final class RealCivCommands {
         return 1;
     }
 
+    private static int civDiplomacyShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId;
+        if (civRef == null || civRef.isBlank()) {
+            civId = civOfSource(source, data);
+        } else {
+            civId = resolveCivilizationId(data, civRef);
+            if (civId == null) {
+                source.sendFailure(Component.literal("Civilization not found: " + civRef));
+                return 0;
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Diplomacy for " + civDisplay(data, civId) + " [" + civId + "]"), false);
+        source.sendSuccess(() -> Component.literal(
+                "Intra-civ PvP (friendly fire): " + (data.allowIntraCivPvp(civId) ? "ENABLED" : "DISABLED")), false);
+
+        List<CivSavedData.DiplomacyView> relations = data.nonNeutralDiplomacyEntriesFor(civId);
+        if (relations.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("All external relations are currently NEUTRAL."), false);
+            return 1;
+        }
+
+        source.sendSuccess(() -> Component.literal("Non-neutral relations:"), false);
+        for (CivSavedData.DiplomacyView relation : relations) {
+            String other = relation.otherCivilizationId();
+            source.sendSuccess(() -> Component.literal(
+                    "- " + civDisplay(data, other) + " [" + other + "]: " + relation.state().displayName()), false);
+        }
+        return 1;
+    }
+
+    private static int civDiplomacySet(CommandSourceStack source, String otherCivRef, String stateRaw) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = civOfSource(source, data);
+        if (!isMayorOrAdmin(source, data, actorCiv)) {
+            source.sendFailure(Component.literal("Only mayor/admin can change diplomacy for your civilization."));
+            return 0;
+        }
+
+        String otherCiv = resolveCivilizationId(data, otherCivRef);
+        if (otherCiv == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + otherCivRef));
+            return 0;
+        }
+        if (actorCiv.equals(otherCiv)) {
+            source.sendFailure(Component.literal("Use /realciv civ pvp friendlyfire on|off to control same-civ PvP."));
+            return 0;
+        }
+
+        @Nullable CivSavedData.DiplomacyState state = parseDiplomacyState(stateRaw);
+        if (state == null) {
+            source.sendFailure(Component.literal("Invalid diplomacy state. Use ally, neutral, or war."));
+            return 0;
+        }
+
+        if (!data.setDiplomacyState(actorCiv, otherCiv, state, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Diplomacy may already be " + state.displayName() + "."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Set diplomacy between " + civDisplay(data, actorCiv) + " and "
+                        + civDisplay(data, otherCiv) + " to " + state.displayName() + "."), true);
+        return 1;
+    }
+
+    private static int civDiplomacySetBetween(CommandSourceStack source, String civARef, String civBRef, String stateRaw) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civA = resolveCivilizationId(data, civARef);
+        if (civA == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civARef));
+            return 0;
+        }
+        String civB = resolveCivilizationId(data, civBRef);
+        if (civB == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civBRef));
+            return 0;
+        }
+        if (civA.equals(civB)) {
+            source.sendFailure(Component.literal("Cannot set diplomacy between the same civilization."));
+            return 0;
+        }
+
+        @Nullable CivSavedData.DiplomacyState state = parseDiplomacyState(stateRaw);
+        if (state == null) {
+            source.sendFailure(Component.literal("Invalid diplomacy state. Use ally, neutral, or war."));
+            return 0;
+        }
+        if (!data.setDiplomacyState(civA, civB, state, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Diplomacy may already be " + state.displayName() + "."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Set diplomacy between " + civDisplay(data, civA) + " and "
+                        + civDisplay(data, civB) + " to " + state.displayName() + "."), true);
+        return 1;
+    }
+
+    private static int civFriendlyFireShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId;
+        if (civRef == null || civRef.isBlank()) {
+            civId = civOfSource(source, data);
+        } else {
+            civId = resolveCivilizationId(data, civRef);
+            if (civId == null) {
+                source.sendFailure(Component.literal("Civilization not found: " + civRef));
+                return 0;
+            }
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Intra-civ PvP for " + civDisplay(data, civId) + ": "
+                        + (data.allowIntraCivPvp(civId) ? "ENABLED" : "DISABLED")), false);
+        return 1;
+    }
+
+    private static int civFriendlyFireSet(CommandSourceStack source, boolean allowed) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can change friendly-fire settings."));
+            return 0;
+        }
+        if (!data.setAllowIntraCivPvp(civId, allowed, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Friendly fire is already " + (allowed ? "enabled" : "disabled") + "."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Friendly fire for " + civDisplay(data, civId) + " is now " + (allowed ? "ENABLED" : "DISABLED") + "."), true);
+        return 1;
+    }
+
     private static int townInfo(CommandSourceStack source)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
@@ -814,7 +1002,7 @@ public final class RealCivCommands {
         }
 
         source.sendSuccess(() -> Component.literal(
-                "Legend: @=you, C=your town(CIVIC), P=your private, p=ally private, u=your PUBLIC zoning, x=other civ claim, .=wilderness/public"),
+                "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, u=your PUBLIC zoning, x=other civ claim, .=wilderness/public"),
                 false);
         source.sendSuccess(() -> Component.literal(
                 "Chunk claiming: mayor uses /realciv town claim, citizens use /realciv plot claim."),
@@ -1026,7 +1214,7 @@ public final class RealCivCommands {
         long cost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < cost) {
             source.sendFailure(Component.literal(
-                    "Not enough social credit. Need " + RealCivUtil.formatCredits(cost)
+                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(cost)
                             + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
             return 0;
         }
@@ -1122,7 +1310,7 @@ public final class RealCivCommands {
         long rentCost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < rentCost) {
             source.sendFailure(Component.literal(
-                    "Not enough social credit for " + civDisplay(data, civId) + ". Need "
+                    "Not enough contribution karma for " + civDisplay(data, civId) + ". Need "
                             + RealCivUtil.formatCredits(rentCost)
                             + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
             return 0;
@@ -1481,6 +1669,9 @@ public final class RealCivCommands {
     }
 
     public static void openLandGuiForPlayer(ServerPlayer player, CivSavedData data) {
+        if (player.getServer() != null) {
+            RealCivFTBChunksMirror.syncAll(player.getServer(), data);
+        }
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
         String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(
@@ -1959,7 +2150,7 @@ public final class RealCivCommands {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (record.socialCreditCents(civId) < totalCost) {
             source.sendFailure(Component.literal(
-                    "Insufficient social credit. Need " + RealCivUtil.formatCredits(totalCost)
+                    "Insufficient contribution karma. Need " + RealCivUtil.formatCredits(totalCost)
                             + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
             return 0;
         }
@@ -2073,7 +2264,7 @@ public final class RealCivCommands {
             source.sendFailure(Component.literal(
                     target.getGameProfile().getName() + " needs "
                             + RealCivUtil.formatCredits(penaltyCents)
-                            + " social credit for this withdrawal's credit penalty, but has "
+                            + " contribution karma for this withdrawal's credit penalty, but has "
                             + RealCivUtil.formatCredits(quotaRecord.socialCreditCents(civId)) + "."));
             return 0;
         }
@@ -2125,7 +2316,7 @@ public final class RealCivCommands {
             source.sendSuccess(() -> Component.literal(
                     "Withdrawal credit penalty applied to " + target.getGameProfile().getName()
                             + ": -" + RealCivUtil.formatCredits(appliedPenalty)
-                            + " social credit."), false);
+                            + " contribution karma."), false);
         }
 
         source.sendSuccess(() -> Component.literal(
@@ -2357,7 +2548,7 @@ public final class RealCivCommands {
         data.addAuditLog(
                 civId,
                 actorName(source) + " added " + RealCivUtil.formatCredits(cents)
-                        + " social credit to " + player.getGameProfile().getName(),
+                        + " contribution karma to " + player.getGameProfile().getName(),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
@@ -2379,7 +2570,7 @@ public final class RealCivCommands {
         record.setSocialCreditCents(civId, cents);
         data.addAuditLog(
                 civId,
-                actorName(source) + " set social credit of " + player.getGameProfile().getName()
+                actorName(source) + " set contribution karma of " + player.getGameProfile().getName()
                         + " to " + RealCivUtil.formatCredits(cents),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
@@ -2628,6 +2819,14 @@ public final class RealCivCommands {
         }
         String resolved = resolveCivilizationId(data, civRaw);
         return resolved == null ? civOfSource(source, data) : resolved;
+    }
+
+    @Nullable
+    private static CivSavedData.DiplomacyState parseDiplomacyState(@Nullable String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return CivSavedData.DiplomacyState.fromSerializedName(raw);
     }
 
     private static String civDisplay(CivSavedData data, String civId) {

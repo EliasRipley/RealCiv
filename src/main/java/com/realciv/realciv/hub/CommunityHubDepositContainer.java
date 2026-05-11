@@ -84,7 +84,7 @@ public class CommunityHubDepositContainer extends SimpleContainer {
             serverPlayer.sendSystemMessage(Component.literal(
                     "Community Hub accepted " + acceptedItemCount + " items. +"
                             + RealCivUtil.formatCredits(earnedCreditsCents)
-                            + " social credit. Restored " + restoredActionsTotal + " profession action(s)."));
+                            + " contribution karma. Restored " + restoredActionsTotal + " profession action(s)."));
         }
 
         if (returnedStackCount > 0) {

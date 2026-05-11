@@ -2,14 +2,14 @@ RealCiv (NeoForge 1.21.1)
 ==========================
 
 RealCiv is a server-first civilization/economy progression mod.
-Players do not pick a class for passive bonuses. They progress by contributing useful goods to a civilization hub, earning social credit and unlocking rights through participation.
+Players do not pick a class for passive bonuses. They progress by contributing useful goods to a civilization hub, earning contribution karma and unlocking rights through participation.
 
 Core Player Loop
 ----------------
 
-1. Gather within your current profession limits (farmer/miner/terraformer/lumberjack/hunter/crafter).
+1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/hunter/warrior/crafter).
 2. Contribute goods to your civilization's Community Hub.
-3. Gain profession XP, general XP, and social credit.
+3. Gain profession XP, general XP, and contribution karma.
 4. Unlock better tools and higher limits.
 5. Rent/own legal land, build inside legal zones, and participate in civic governance.
 
@@ -21,15 +21,16 @@ New citizen flow:
 1. Check your status with `/realciv profile`.
 2. Join a civilization with `/realciv civ join <name>` (or found one if approved).
 3. Gather resources and contribute them at the Community Hub.
-4. Use earned social credit for land and progression.
+4. Use earned contribution karma for land and progression.
 
 Important rule behaviors:
 
-- If you hit an action limit, you must contribute relevant resources to hub to reset that profession action counter.
+- If you hit an action limit, you must contribute relevant resources to hub to reset that profession action counter (except warrior, which levels from enemy player kills directly).
 - Profession action restoration is item- and quantity-based (configured per profession in `config/realciv/hub/*_resets.txt` by default), not a full reset from any single cheap item.
 - On death, action counters can be partially/fully refunded by `progression.deathActionRefundPercent` to prevent hard lockouts after item loss.
 - Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
 - Tool tiers are level-gated (wood/stone/iron/diamond/netherite).
+- Player-vs-player combat is diplomacy-gated: WAR allows cross-civ PvP, ALLY/NEUTRAL block it, and same-civ PvP is controlled by the civilization's friendly-fire toggle.
 - Public/wilderness land is break-only.
 - Building is only allowed in CIVIC land (mayor/manager permission) or PRIVATE land (owner).
 - If `land.blockUnclaimedBuilding=true`, even wilderness breaking is denied.
@@ -50,7 +51,7 @@ In-Game Civic Blocks
 - Land Wand (`realciv:land_wand`)
   - Left-click block: set selection `pos1` (chunk).
   - Right-click block: set selection `pos2` (chunk).
-  - Right-click in air: opens FTB Chunks claim map (falls back to legacy RealCiv map if unavailable).
+  - Right-click in air: tries FTB Chunks claim map first; falls back to the legacy RealCiv map if FTB map context is unavailable.
   - Sneak-right-click: draw chunk boundaries.
 
 Command Guide
@@ -69,10 +70,15 @@ Civilization setup and membership:
 - `/realciv civ rename <civ> <name>`: Admin rename of existing civilization display name.
 - `/realciv civ delete <civ>`: Admin deletion of a civilization record.
 - `/realciv civ assign <player> <civ>`: Admin force-assigns a player to a civilization.
+- `/realciv civ diplomacy show [civ]`: Shows diplomacy state and same-civ friendly-fire status for a civilization.
+- `/realciv civ diplomacy set <other-civ> <ally|neutral|war>`: Mayor/admin sets your civilization's diplomacy toward another civ (shared relation).
+- `/realciv civ diplomacy set <civA> <civB> <ally|neutral|war>`: Admin override variant to set diplomacy between any two civilizations.
+- `/realciv civ pvp show [civ]`: Shows whether intra-civ PvP (friendly fire) is enabled.
+- `/realciv civ pvp friendlyfire <on|off>`: Mayor/admin toggles same-civilization PvP for sparring/friendly fights.
 
 Progress and economy visibility:
 
-- `/realciv profile [player]`: Shows level, profession XP state, action counters, and social credit for a player.
+- `/realciv profile [player]`: Shows level, profession XP state, action counters, and contribution karma for a player.
 - `/realciv hub open`: Opens the Community Hub stock/withdraw UI for your civilization.
 - `/realciv hub stock [page]`: Chat listing of hub inventory for your civilization.
 - `/realciv hub quota [page]`: Shows your personal withdrawal limits and remaining quota by item.
@@ -137,12 +143,12 @@ Mayor and census governance:
 Tax and upkeep:
 
 - `/realciv tax status`: Shows your private plot count, upkeep due, and delinquency state.
-- `/realciv tax pay [cycles]`: Prepays private plot upkeep cycles using your social credit.
+- `/realciv tax pay [cycles]`: Prepays private plot upkeep cycles using your contribution karma.
 
 Credits and economic moderation:
 
-- `/realciv credit add <player> <amount>`: Admin adds social credit to player.
-- `/realciv credit set <player> <amount>`: Admin sets exact social credit balance.
+- `/realciv credit add <player> <amount>`: Admin adds contribution karma to player.
+- `/realciv credit set <player> <amount>`: Admin sets exact contribution karma balance.
 
 Common workflows:
 
@@ -170,6 +176,7 @@ Key areas:
   - `profession.terraformerLimits`
   - `profession.lumberjackLimits`
   - `profession.hunterLimits`
+  - `profession.warriorLimits`
   - `profession.crafterLimits`
   - `profession.breakActionCostOverrides`
 - Level thresholds:
@@ -178,6 +185,8 @@ Key areas:
   - `progression.deathActionRefundPercent`
   - `progression.staleActionResetEnabled`
   - `progression.staleActionResetMinutes`
+  - `progression.warriorXpPerPlayerKill`
+  - `progression.warriorGeneralXpPerPlayerKill`
 - Hub rewards:
   - `hub.useProfessionRuleFiles`
   - `hub.professionRuleDirectory`
@@ -277,8 +286,10 @@ Build and Test
 FTB Chunks Integration Notes
 ----------------------------
 
-- RealCiv now hooks into FTB Chunks claim/unclaim events and enforces RealCiv zoning, adjacency, treasury/social-credit costs, and role permissions.
+- RealCiv now hooks into FTB Chunks claim/unclaim events and enforces RealCiv zoning, adjacency, treasury/contribution-karma costs, and role permissions.
 - Non-mayors always claim PRIVATE via FTB map; mayor/admin can use `auto`, `civic`, or `private` via `/realciv land ftb-mode`.
 - `auto` uses `land.ftbMayorDefaultClaimMode` from `config/realciv-common.toml`.
-- Players must be in an FTB Team before opening the map (`/ftbteams create <name>`).
+- RealCiv land rules are authoritative: `CIVIC` and `PRIVATE` permissions are always checked from RealCiv data, not accepted blindly from FTB defaults.
+- RealCiv mirrors civilization membership and claimed chunks into FTB Teams/Chunks, so the FTB map is used as a RealCiv view/control surface rather than a separate source of truth.
+- `/realciv land gui` (and Land Wand right-click in air) tries the FTB map first, then opens the RealCiv fallback map if FTB team context is unavailable.
 

@@ -1,6 +1,7 @@
 package com.realciv.realciv.data;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.integration.RealCivFTBChunksMirror;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RewardRule;
 import java.time.Instant;
@@ -31,12 +32,16 @@ public class CivSavedData extends SavedData {
     private final Map<UUID, PlayerRecord> players = new HashMap<>();
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
     private final Map<UUID, String> playerCivilization = new HashMap<>();
+    private final Map<String, DiplomacyState> diplomacy = new HashMap<>();
     private final Set<UUID> founderApprovals = new HashSet<>();
+    @Nullable
+    private transient MinecraftServer attachedServer;
 
     public static CivSavedData get(MinecraftServer server) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Overworld is not available");
         SavedData.Factory<CivSavedData> factory = new SavedData.Factory<>(CivSavedData::new, CivSavedData::load);
         CivSavedData data = overworld.getDataStorage().computeIfAbsent(factory, DATA_NAME);
+        data.attachedServer = server;
         data.ensureDefaultCivilizationExists();
         return data;
     }
@@ -103,6 +108,20 @@ public class CivSavedData extends SavedData {
             data.civilizations.put(defaultId, migrated);
         }
 
+        ListTag diplomacyTags = tag.getList("diplomacy", Tag.TAG_COMPOUND);
+        for (Tag entry : diplomacyTags) {
+            if (!(entry instanceof CompoundTag diplomacyTag)) {
+                continue;
+            }
+            String civA = normalizeCivId(diplomacyTag.getString("civA"));
+            String civB = normalizeCivId(diplomacyTag.getString("civB"));
+            DiplomacyState state = DiplomacyState.fromSerializedName(diplomacyTag.getString("state"));
+            if (civA == null || civB == null || state == null) {
+                continue;
+            }
+            data.setDiplomacyStateInternal(civA, civB, state);
+        }
+
         CompoundTag membershipTag = tag.getCompound("playerCivilization");
         for (String playerIdRaw : membershipTag.getAllKeys()) {
             try {
@@ -162,6 +181,20 @@ public class CivSavedData extends SavedData {
         }
         tag.put("founderApprovals", approvalsTag);
 
+        ListTag diplomacyTags = new ListTag();
+        for (Map.Entry<String, DiplomacyState> entry : diplomacy.entrySet()) {
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                continue;
+            }
+            CompoundTag relationTag = new CompoundTag();
+            relationTag.putString("civA", pair.firstCivId());
+            relationTag.putString("civB", pair.secondCivId());
+            relationTag.putString("state", entry.getValue().serializedName());
+            diplomacyTags.add(relationTag);
+        }
+        tag.put("diplomacy", diplomacyTags);
+
         return tag;
     }
 
@@ -172,6 +205,33 @@ public class CivSavedData extends SavedData {
         }
         String id = raw.trim().toLowerCase(java.util.Locale.ROOT);
         return id.isEmpty() ? null : id;
+    }
+
+    @Nullable
+    private static String diplomacyKey(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return null;
+        }
+        return civA.compareTo(civB) < 0 ? civA + "|" + civB : civB + "|" + civA;
+    }
+
+    @Nullable
+    private static DiplomacyPair diplomacyPairFromKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        String[] parts = raw.split("\\|", 2);
+        if (parts.length != 2) {
+            return null;
+        }
+        String first = normalizeCivId(parts[0]);
+        String second = normalizeCivId(parts[1]);
+        if (first == null || second == null || first.equals(second)) {
+            return null;
+        }
+        return new DiplomacyPair(first, second);
     }
 
     private static String sanitizeDisplayName(@Nullable String displayName, String fallback) {
@@ -273,6 +333,9 @@ public class CivSavedData extends SavedData {
         civilizations.put(id, new CivilizationRecord(id, name));
         addAuditLog(id, actorName + " created civilization '" + name + "'", RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, id);
+        }
         return true;
     }
 
@@ -288,6 +351,9 @@ public class CivSavedData extends SavedData {
         civ.setDisplayName(name);
         addAuditLog(civ.id(), actorName + " renamed civilization to '" + name + "'", RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+        }
         return true;
     }
 
@@ -320,6 +386,7 @@ public class CivSavedData extends SavedData {
         if (removed == null) {
             return null;
         }
+        removeDiplomacyLinksForCivilization(civId);
 
         CivilizationRecord fallback = getOrCreateCivilization(fallbackId);
         int reassignedMembers = 0;
@@ -356,6 +423,16 @@ public class CivSavedData extends SavedData {
                         + " and reassigned " + reassignedMembers + " member(s) to " + fallback.id(),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
+        if (attachedServer != null) {
+            for (PlotRecord removedPlot : removed.plots().values()) {
+                RealCivFTBChunksMirror.clearClaimAt(
+                        attachedServer,
+                        removedPlot.dimension(),
+                        removedPlot.chunkX(),
+                        removedPlot.chunkZ());
+            }
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, fallback.id());
+        }
         return new DeleteCivilizationResult(
                 removed.id(),
                 removed.displayName(),
@@ -446,6 +523,7 @@ public class CivSavedData extends SavedData {
         if (civ == null) {
             return false;
         }
+        @Nullable String previousCivId = normalizeCivId(playerCivilization.get(playerId));
 
         for (CivilizationRecord each : civilizations.values()) {
             each.joinRequests().remove(playerId);
@@ -460,6 +538,12 @@ public class CivSavedData extends SavedData {
         playerCivilization.put(playerId, civ.id());
         addAuditLog(civ.id(), actorName + " assigned " + playerId + " to civilization " + civ.id(), RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+            if (previousCivId != null && !previousCivId.equals(civ.id())) {
+                RealCivFTBChunksMirror.syncCivilization(attachedServer, this, previousCivId);
+            }
+        }
         return true;
     }
 
@@ -546,6 +630,10 @@ public class CivSavedData extends SavedData {
                 record.hunterXp += professionGain;
                 record.setHunterActions(record.hunterActions() - safeRestoredActions);
             }
+            case WARRIOR -> {
+                record.warriorXp += professionGain;
+                record.setWarriorActions(record.warriorActions() - safeRestoredActions);
+            }
             case CRAFTER -> {
                 record.crafterXp += professionGain;
                 record.setCrafterActions(record.crafterActions() - safeRestoredActions);
@@ -593,6 +681,9 @@ public class CivSavedData extends SavedData {
             addAuditLog(civ.id(), actorName + " set mayor to " + newMayorId, RealCivConfig.MAX_AUDIT_LOGS.get());
         }
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+        }
     }
 
     public boolean isCivicManager(String civIdRaw, UUID playerId) {
@@ -677,6 +768,9 @@ public class CivSavedData extends SavedData {
             addAuditLog(civ.id(), actorName + " removed civic manager " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
         }
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+        }
     }
 
     public boolean hasJoinRequest(String civIdRaw, UUID playerId) {
@@ -738,6 +832,131 @@ public class CivSavedData extends SavedData {
         return civ.invitedPlayers().stream().sorted(Comparator.comparing(UUID::toString)).toList();
     }
 
+    public DiplomacyState diplomacyState(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return DiplomacyState.NEUTRAL;
+        }
+        String key = diplomacyKey(civA, civB);
+        if (key == null) {
+            return DiplomacyState.NEUTRAL;
+        }
+        return diplomacy.getOrDefault(key, DiplomacyState.NEUTRAL);
+    }
+
+    public boolean setDiplomacyState(String civAraw, String civBraw, DiplomacyState state, String actorName) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB) || state == null) {
+            return false;
+        }
+        CivilizationRecord civARecord = getCivilization(civA);
+        CivilizationRecord civBRecord = getCivilization(civB);
+        if (civARecord == null || civBRecord == null) {
+            return false;
+        }
+
+        DiplomacyState current = diplomacyState(civA, civB);
+        if (current == state) {
+            return false;
+        }
+        setDiplomacyStateInternal(civA, civB, state);
+
+        addAuditLog(
+                civARecord.id(),
+                actorName + " set diplomacy with " + civBRecord.displayName() + " [" + civBRecord.id() + "] to "
+                        + state.displayName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        addAuditLog(
+                civBRecord.id(),
+                actorName + " set diplomacy with " + civARecord.displayName() + " [" + civARecord.id() + "] to "
+                        + state.displayName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public List<DiplomacyView> nonNeutralDiplomacyEntriesFor(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null || !civilizations.containsKey(civId)) {
+            return List.of();
+        }
+        List<DiplomacyView> out = new ArrayList<>();
+        for (String otherId : civilizations.keySet()) {
+            if (civId.equals(otherId)) {
+                continue;
+            }
+            DiplomacyState state = diplomacyState(civId, otherId);
+            if (state != DiplomacyState.NEUTRAL) {
+                out.add(new DiplomacyView(otherId, state));
+            }
+        }
+        out.sort(Comparator.comparing(DiplomacyView::otherCivilizationId));
+        return out;
+    }
+
+    public boolean allowIntraCivPvp(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).allowIntraCivPvp();
+    }
+
+    public boolean setAllowIntraCivPvp(String civIdRaw, boolean allowed, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        if (civ.allowIntraCivPvp() == allowed) {
+            return false;
+        }
+        civ.setAllowIntraCivPvp(allowed);
+        addAuditLog(
+                civ.id(),
+                actorName + " set intra-civilization PvP to " + (allowed ? "enabled" : "disabled"),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    private void setDiplomacyStateInternal(String civAraw, String civBraw, DiplomacyState state) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB) || state == null) {
+            return;
+        }
+        String key = diplomacyKey(civA, civB);
+        if (key == null) {
+            return;
+        }
+        if (state == DiplomacyState.NEUTRAL) {
+            diplomacy.remove(key);
+        } else {
+            diplomacy.put(key, state);
+        }
+    }
+
+    private int removeDiplomacyLinksForCivilization(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return 0;
+        }
+        int removed = 0;
+        Iterator<Map.Entry<String, DiplomacyState>> iterator = diplomacy.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, DiplomacyState> entry = iterator.next();
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                iterator.remove();
+                removed++;
+                continue;
+            }
+            if (civId.equals(pair.firstCivId()) || civId.equals(pair.secondCivId())) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     public boolean removeMemberToDefault(String civIdRaw, UUID playerId, String actorName) {
         String civId = normalizeCivId(civIdRaw);
         if (civId == null) {
@@ -760,6 +979,10 @@ public class CivSavedData extends SavedData {
             addAuditLog(civ.id(), actorName + " removed member " + playerId + " from civilization", RealCivConfig.MAX_AUDIT_LOGS.get());
         }
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civId);
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, fallback);
+        }
         return true;
     }
 
@@ -808,6 +1031,16 @@ public class CivSavedData extends SavedData {
         plot.setDelinquentSinceTick(-1L);
         civ.plots().put(plot.plotKey(), plot);
         setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncPlotChange(
+                    attachedServer,
+                    this,
+                    civ.id(),
+                    dimension,
+                    chunkX,
+                    chunkZ,
+                    true);
+        }
     }
 
     public boolean clearPlot(String civIdRaw, String dimension, long chunkX, long chunkZ) {
@@ -815,6 +1048,16 @@ public class CivSavedData extends SavedData {
         PlotRecord removed = civ.plots().remove(chunkKey(dimension, chunkX, chunkZ));
         if (removed != null) {
             setDirty();
+            if (attachedServer != null) {
+                RealCivFTBChunksMirror.syncPlotChange(
+                        attachedServer,
+                        this,
+                        civ.id(),
+                        dimension,
+                        chunkX,
+                        chunkZ,
+                        false);
+            }
             return true;
         }
         return false;
@@ -1042,6 +1285,40 @@ public class CivSavedData extends SavedData {
     public record HubLocation(String dimension, int x, int y, int z) {
     }
 
+    public enum DiplomacyState {
+        ALLY,
+        NEUTRAL,
+        WAR;
+
+        @Nullable
+        public static DiplomacyState fromSerializedName(String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
+                case "ALLY", "ALLIES" -> ALLY;
+                case "NEUTRAL", "NONE" -> NEUTRAL;
+                case "WAR", "HOSTILE", "HOSTILES" -> WAR;
+                default -> null;
+            };
+        }
+
+        public String serializedName() {
+            return name().toLowerCase(java.util.Locale.ROOT);
+        }
+
+        public String displayName() {
+            return switch (this) {
+                case ALLY -> "ALLY";
+                case NEUTRAL -> "NEUTRAL";
+                case WAR -> "WAR";
+            };
+        }
+    }
+
+    public record DiplomacyView(String otherCivilizationId, DiplomacyState state) {
+    }
+
     public record DeleteCivilizationResult(
             String deletedId,
             String deletedDisplayName,
@@ -1050,6 +1327,9 @@ public class CivSavedData extends SavedData {
             int transferredStockEntries,
             long transferredStockItems,
             int removedPlots) {
+    }
+
+    private record DiplomacyPair(String firstCivId, String secondCivId) {
     }
 
     public static final class CivilizationRecord {
@@ -1069,6 +1349,7 @@ public class CivSavedData extends SavedData {
         private int hubX;
         private int hubY;
         private int hubZ;
+        private boolean allowIntraCivPvp;
 
         public CivilizationRecord(String id, String displayName) {
             this.id = id;
@@ -1085,6 +1366,14 @@ public class CivSavedData extends SavedData {
 
         public void setDisplayName(String displayName) {
             this.displayName = displayName;
+        }
+
+        public boolean allowIntraCivPvp() {
+            return allowIntraCivPvp;
+        }
+
+        public void setAllowIntraCivPvp(boolean allowed) {
+            this.allowIntraCivPvp = allowed;
         }
 
         public long treasuryCents() {
@@ -1210,6 +1499,7 @@ public class CivSavedData extends SavedData {
                 tag.putInt("hubY", hubY);
                 tag.putInt("hubZ", hubZ);
             }
+            tag.putBoolean("allowIntraCivPvp", allowIntraCivPvp);
             return tag;
         }
 
@@ -1283,6 +1573,7 @@ public class CivSavedData extends SavedData {
                 record.hubY = tag.getInt("hubY");
                 record.hubZ = tag.getInt("hubZ");
             }
+            record.allowIntraCivPvp = tag.getBoolean("allowIntraCivPvp");
             return record;
         }
     }
@@ -1435,6 +1726,9 @@ public class CivSavedData extends SavedData {
         private int hunterActions;
         private long hunterActionsUpdatedAtMillis;
         private int hunterXp;
+        private int warriorActions;
+        private long warriorActionsUpdatedAtMillis;
+        private int warriorXp;
         private int crafterActions;
         private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
@@ -1616,6 +1910,33 @@ public class CivSavedData extends SavedData {
             return hunterXp;
         }
 
+        public int warriorActions() {
+            return warriorActions;
+        }
+
+        public void setWarriorActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.warriorActions != updated) {
+                this.warriorActions = updated;
+                this.warriorActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long warriorActionsUpdatedAtMillis() {
+            return warriorActionsUpdatedAtMillis;
+        }
+
+        public int warriorXp() {
+            return warriorXp;
+        }
+
+        public void addWarriorXp(int delta) {
+            if (delta <= 0) {
+                return;
+            }
+            warriorXp = Math.max(0, warriorXp + delta);
+        }
+
         public int crafterActions() {
             return crafterActions;
         }
@@ -1638,6 +1959,13 @@ public class CivSavedData extends SavedData {
 
         public int generalXp() {
             return generalXp;
+        }
+
+        public void addGeneralXp(int delta) {
+            if (delta <= 0) {
+                return;
+            }
+            generalXp = Math.max(0, generalXp + delta);
         }
 
         public Map<String, Long> contributions(String civId) {
@@ -1756,6 +2084,9 @@ public class CivSavedData extends SavedData {
             tag.putInt("hunterActions", hunterActions);
             tag.putLong("hunterActionsUpdatedAtMillis", hunterActionsUpdatedAtMillis);
             tag.putInt("hunterXp", hunterXp);
+            tag.putInt("warriorActions", warriorActions);
+            tag.putLong("warriorActionsUpdatedAtMillis", warriorActionsUpdatedAtMillis);
+            tag.putInt("warriorXp", warriorXp);
             tag.putInt("crafterActions", crafterActions);
             tag.putLong("crafterActionsUpdatedAtMillis", crafterActionsUpdatedAtMillis);
             tag.putInt("crafterXp", crafterXp);
@@ -1801,6 +2132,8 @@ public class CivSavedData extends SavedData {
             record.lumberjackXp = Math.max(0, tag.getInt("lumberjackXp"));
             record.hunterActions = Math.max(0, tag.getInt("hunterActions"));
             record.hunterXp = Math.max(0, tag.getInt("hunterXp"));
+            record.warriorActions = Math.max(0, tag.getInt("warriorActions"));
+            record.warriorXp = Math.max(0, tag.getInt("warriorXp"));
             record.crafterActions = Math.max(0, tag.getInt("crafterActions"));
             record.crafterXp = Math.max(0, tag.getInt("crafterXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
@@ -1821,6 +2154,9 @@ public class CivSavedData extends SavedData {
             record.hunterActionsUpdatedAtMillis = tag.contains("hunterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("hunterActionsUpdatedAtMillis"))
                     : (record.hunterActions > 0 ? loadedAt : 0L);
+            record.warriorActionsUpdatedAtMillis = tag.contains("warriorActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("warriorActionsUpdatedAtMillis"))
+                    : (record.warriorActions > 0 ? loadedAt : 0L);
             record.crafterActionsUpdatedAtMillis = tag.contains("crafterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("crafterActionsUpdatedAtMillis"))
                     : (record.crafterActions > 0 ? loadedAt : 0L);
@@ -1856,6 +2192,7 @@ public class CivSavedData extends SavedData {
                 case TERRAFORMER -> RealCivConfig.professionLevelFromXp(terraformerXp());
                 case LUMBERJACK -> RealCivConfig.professionLevelFromXp(lumberjackXp());
                 case HUNTER -> RealCivConfig.professionLevelFromXp(hunterXp());
+                case WARRIOR -> RealCivConfig.professionLevelFromXp(warriorXp());
                 case CRAFTER -> RealCivConfig.professionLevelFromXp(crafterXp());
                 case NONE -> 0;
             };
