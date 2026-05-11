@@ -529,6 +529,7 @@ public class CivSavedData extends SavedData {
             each.joinRequests().remove(playerId);
             each.invitedPlayers().remove(playerId);
             each.civicManagers().remove(playerId);
+            each.explosivesExperts().remove(playerId);
             if (each.mayorId() != null && each.mayorId().equals(playerId) && !each.id().equals(civ.id())) {
                 each.setMayorId(null);
                 addAuditLog(each.id(), actorName + " cleared mayor assignment for migrating player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
@@ -633,6 +634,10 @@ public class CivSavedData extends SavedData {
             case WARRIOR -> {
                 record.warriorXp += professionGain;
                 record.setWarriorActions(record.warriorActions() - safeRestoredActions);
+            }
+            case EXPLOSIVES_EXPERT -> {
+                record.addExplosivesExpertXp(professionGain);
+                record.setExplosivesExpertActions(record.explosivesExpertActions() - safeRestoredActions);
             }
             case CRAFTER -> {
                 record.crafterXp += professionGain;
@@ -777,6 +782,44 @@ public class CivSavedData extends SavedData {
         if (attachedServer != null) {
             RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
         }
+    }
+
+    public boolean isExplosivesExpert(String civIdRaw, UUID playerId) {
+        return getOrCreateCivilization(civIdRaw).explosivesExperts().contains(playerId);
+    }
+
+    public int explosivesExpertCount(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).explosivesExperts().size();
+    }
+
+    public List<UUID> explosivesExpertsSorted(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).explosivesExperts().stream()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    public boolean setExplosivesExpert(String civIdRaw, UUID playerId, boolean allowed, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        boolean changed;
+        if (allowed) {
+            changed = civ.explosivesExperts().add(playerId);
+            if (changed) {
+                addAuditLog(civ.id(), actorName + " designated explosives expert " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+            }
+        } else {
+            changed = civ.explosivesExperts().remove(playerId);
+            if (changed) {
+                addAuditLog(civ.id(), actorName + " removed explosives expert " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+            }
+        }
+        if (!changed) {
+            return false;
+        }
+        setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+        }
+        return true;
     }
 
     public boolean hasJoinRequest(String civIdRaw, UUID playerId) {
@@ -976,6 +1019,7 @@ public class CivSavedData extends SavedData {
         playerCivilization.put(playerId, fallback);
         CivilizationRecord civ = getOrCreateCivilization(civId);
         civ.civicManagers().remove(playerId);
+        civ.explosivesExperts().remove(playerId);
         civ.joinRequests().remove(playerId);
         civ.invitedPlayers().remove(playerId);
         if (civ.mayorId() != null && civ.mayorId().equals(playerId)) {
@@ -1346,6 +1390,7 @@ public class CivSavedData extends SavedData {
         private final Map<String, PlotRecord> plots = new HashMap<>();
         private final List<String> auditLogs = new ArrayList<>();
         private final Set<UUID> civicManagers = new HashSet<>();
+        private final Set<UUID> explosivesExperts = new HashSet<>();
         private final Set<UUID> joinRequests = new HashSet<>();
         private final Set<UUID> invitedPlayers = new HashSet<>();
         @Nullable
@@ -1404,6 +1449,10 @@ public class CivSavedData extends SavedData {
 
         public Set<UUID> civicManagers() {
             return civicManagers;
+        }
+
+        public Set<UUID> explosivesExperts() {
+            return explosivesExperts;
         }
 
         public Set<UUID> joinRequests() {
@@ -1484,6 +1533,12 @@ public class CivSavedData extends SavedData {
             }
             tag.put("civicManagers", managers);
 
+            ListTag experts = new ListTag();
+            for (UUID expert : explosivesExperts) {
+                experts.add(StringTag.valueOf(expert.toString()));
+            }
+            tag.put("explosivesExperts", experts);
+
             ListTag requests = new ListTag();
             for (UUID request : joinRequests) {
                 requests.add(StringTag.valueOf(request.toString()));
@@ -1547,6 +1602,14 @@ public class CivSavedData extends SavedData {
             for (Tag entry : managers) {
                 try {
                     record.civicManagers.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+
+            ListTag experts = tag.getList("explosivesExperts", Tag.TAG_STRING);
+            for (Tag entry : experts) {
+                try {
+                    record.explosivesExperts.add(UUID.fromString(entry.getAsString()));
                 } catch (Exception ignored) {
                 }
             }
@@ -1735,6 +1798,9 @@ public class CivSavedData extends SavedData {
         private int warriorActions;
         private long warriorActionsUpdatedAtMillis;
         private int warriorXp;
+        private int explosivesExpertActions;
+        private long explosivesExpertActionsUpdatedAtMillis;
+        private int explosivesExpertXp;
         private int crafterActions;
         private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
@@ -1943,6 +2009,33 @@ public class CivSavedData extends SavedData {
             warriorXp = Math.max(0, warriorXp + delta);
         }
 
+        public int explosivesExpertActions() {
+            return explosivesExpertActions;
+        }
+
+        public void setExplosivesExpertActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.explosivesExpertActions != updated) {
+                this.explosivesExpertActions = updated;
+                this.explosivesExpertActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long explosivesExpertActionsUpdatedAtMillis() {
+            return explosivesExpertActionsUpdatedAtMillis;
+        }
+
+        public int explosivesExpertXp() {
+            return explosivesExpertXp;
+        }
+
+        public void addExplosivesExpertXp(int delta) {
+            if (delta <= 0) {
+                return;
+            }
+            explosivesExpertXp = Math.max(0, explosivesExpertXp + delta);
+        }
+
         public int crafterActions() {
             return crafterActions;
         }
@@ -2093,6 +2186,9 @@ public class CivSavedData extends SavedData {
             tag.putInt("warriorActions", warriorActions);
             tag.putLong("warriorActionsUpdatedAtMillis", warriorActionsUpdatedAtMillis);
             tag.putInt("warriorXp", warriorXp);
+            tag.putInt("explosivesExpertActions", explosivesExpertActions);
+            tag.putLong("explosivesExpertActionsUpdatedAtMillis", explosivesExpertActionsUpdatedAtMillis);
+            tag.putInt("explosivesExpertXp", explosivesExpertXp);
             tag.putInt("crafterActions", crafterActions);
             tag.putLong("crafterActionsUpdatedAtMillis", crafterActionsUpdatedAtMillis);
             tag.putInt("crafterXp", crafterXp);
@@ -2140,6 +2236,8 @@ public class CivSavedData extends SavedData {
             record.hunterXp = Math.max(0, tag.getInt("hunterXp"));
             record.warriorActions = Math.max(0, tag.getInt("warriorActions"));
             record.warriorXp = Math.max(0, tag.getInt("warriorXp"));
+            record.explosivesExpertActions = Math.max(0, tag.getInt("explosivesExpertActions"));
+            record.explosivesExpertXp = Math.max(0, tag.getInt("explosivesExpertXp"));
             record.crafterActions = Math.max(0, tag.getInt("crafterActions"));
             record.crafterXp = Math.max(0, tag.getInt("crafterXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
@@ -2163,6 +2261,9 @@ public class CivSavedData extends SavedData {
             record.warriorActionsUpdatedAtMillis = tag.contains("warriorActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("warriorActionsUpdatedAtMillis"))
                     : (record.warriorActions > 0 ? loadedAt : 0L);
+            record.explosivesExpertActionsUpdatedAtMillis = tag.contains("explosivesExpertActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("explosivesExpertActionsUpdatedAtMillis"))
+                    : (record.explosivesExpertActions > 0 ? loadedAt : 0L);
             record.crafterActionsUpdatedAtMillis = tag.contains("crafterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("crafterActionsUpdatedAtMillis"))
                     : (record.crafterActions > 0 ? loadedAt : 0L);
@@ -2199,6 +2300,7 @@ public class CivSavedData extends SavedData {
                 case LUMBERJACK -> RealCivConfig.professionLevelFromXp(lumberjackXp());
                 case HUNTER -> RealCivConfig.professionLevelFromXp(hunterXp());
                 case WARRIOR -> RealCivConfig.professionLevelFromXp(warriorXp());
+                case EXPLOSIVES_EXPERT -> RealCivConfig.professionLevelFromXp(explosivesExpertXp());
                 case CRAFTER -> RealCivConfig.professionLevelFromXp(crafterXp());
                 case NONE -> 0;
             };

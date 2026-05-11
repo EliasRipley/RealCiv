@@ -158,6 +158,26 @@ public final class RealCivCommands {
                                                 .executes(ctx -> civFriendlyFireSet(ctx.getSource(), true)))
                                         .then(Commands.literal("off")
                                                 .executes(ctx -> civFriendlyFireSet(ctx.getSource(), false)))))
+                        .then(Commands.literal("explosives")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civExplosivesShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civExplosivesShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> civExplosivesSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        true))))
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> civExplosivesSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        false)))))
                 .then(Commands.literal("town")
                         .then(Commands.literal("info")
                                 .executes(ctx -> townInfo(ctx.getSource())))
@@ -532,6 +552,7 @@ public final class RealCivCommands {
         int lumberjackLevel = record.levelFor(Profession.LUMBERJACK);
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int warriorLevel = record.levelFor(Profession.WARRIOR);
+        int explosivesLevel = record.levelFor(Profession.EXPLOSIVES_EXPERT);
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int generalLevel = record.generalLevel();
 
@@ -568,6 +589,10 @@ public final class RealCivCommands {
                 "Warrior L" + warriorLevel + " | player kills " + record.warriorActions() + "/"
                         + RealCivConfig.warriorLimitForLevel(warriorLevel)
                         + " | XP " + record.warriorXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Explosives Expert L" + explosivesLevel + " | actions " + record.explosivesExpertActions() + "/"
+                        + RealCivConfig.explosivesExpertLimitForLevel(explosivesLevel)
+                        + " | XP " + record.explosivesExpertXp()), false);
         source.sendSuccess(() -> Component.literal(
                 "Crafter L" + crafterLevel + " | crafted " + record.crafterActions() + "/"
                         + RealCivConfig.crafterLimitForLevel(crafterLevel)
@@ -946,6 +971,84 @@ public final class RealCivCommands {
         }
         source.sendSuccess(() -> Component.literal(
                 "Friendly fire for " + civDisplay(data, civId) + " is now " + (allowed ? "ENABLED" : "DISABLED") + "."), true);
+        return 1;
+    }
+
+    private static int civExplosivesShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId;
+        if (civRef == null || civRef.isBlank()) {
+            civId = civOfSource(source, data);
+        } else {
+            civId = resolveCivilizationId(data, civRef);
+            if (civId == null) {
+                source.sendFailure(Component.literal("Civilization not found: " + civRef));
+                return 0;
+            }
+        }
+
+        int cap = RealCivConfig.maxExplosivesExpertsPerCivilization();
+        List<UUID> experts = data.explosivesExpertsSorted(civId);
+        source.sendSuccess(() -> Component.literal(
+                "Explosives experts for " + civDisplay(data, civId) + " [" + civId + "]: "
+                        + experts.size() + "/" + cap),
+                false);
+        if (cap <= 0) {
+            source.sendSuccess(() -> Component.literal(
+                    "Role is disabled by server config (civ.maxExplosivesExpertsPerCivilization=0)."), false);
+        }
+        if (experts.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No members are designated as explosives experts."), false);
+            return 1;
+        }
+        for (UUID expert : experts) {
+            source.sendSuccess(() -> Component.literal("- " + playerNameOrShortId(source, expert) + " | " + expert), false);
+        }
+        return 1;
+    }
+
+    private static int civExplosivesSet(CommandSourceStack source, ServerPlayer target, boolean allowed) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can manage explosives experts."));
+            return 0;
+        }
+
+        String targetCiv = data.getOrAssignCivilization(target.getUUID());
+        if (!civId.equals(targetCiv)) {
+            source.sendFailure(Component.literal(
+                    "Target player is not in your civilization. Current civ: " + civDisplay(data, targetCiv) + "."));
+            return 0;
+        }
+
+        int cap = RealCivConfig.maxExplosivesExpertsPerCivilization();
+        if (allowed) {
+            if (cap <= 0) {
+                source.sendFailure(Component.literal(
+                        "Explosives Expert role is disabled by server config for all civilizations."));
+                return 0;
+            }
+            if (!data.isExplosivesExpert(civId, target.getUUID())
+                    && data.explosivesExpertCount(civId) >= cap) {
+                source.sendFailure(Component.literal(
+                        "Cannot add more explosives experts. Cap reached (" + cap + ")."));
+                return 0;
+            }
+        }
+
+        if (!data.setExplosivesExpert(civId, target.getUUID(), allowed, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Player is already " + (allowed ? "" : "not ") + "an explosives expert."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                (allowed ? "Designated " : "Removed ")
+                        + target.getGameProfile().getName()
+                        + (allowed ? " as an" : " from")
+                        + " explosives expert for " + civDisplay(data, civId) + "."),
+                true);
         return 1;
     }
 
@@ -2835,6 +2938,15 @@ public final class RealCivCommands {
             return civId;
         }
         return civ.displayName();
+    }
+
+    private static String playerNameOrShortId(CommandSourceStack source, UUID playerId) {
+        ServerPlayer online = source.getServer().getPlayerList().getPlayer(playerId);
+        if (online != null) {
+            return online.getGameProfile().getName();
+        }
+        String raw = playerId.toString();
+        return raw.length() > 8 ? raw.substring(0, 8) : raw;
     }
 
     private static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId) {

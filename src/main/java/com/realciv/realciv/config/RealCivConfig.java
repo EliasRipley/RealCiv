@@ -8,9 +8,11 @@ import com.realciv.realciv.logic.RewardRule;
 import com.realciv.realciv.logic.TagResetRule;
 import com.realciv.realciv.logic.TagRewardRule;
 import java.util.ArrayList;
+import java.util.HashSet;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
 import net.neoforged.neoforge.common.ModConfigSpec;
 import org.jetbrains.annotations.Nullable;
@@ -70,6 +72,14 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> EXPLOSIVES_EXPERT_LIMITS = BUILDER
+            .comment("Explosives Expert action limits by level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.explosivesExpertLimits",
+                    List.of(1, 2, 4, 6, 10, 16),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> CRAFTER_LIMITS = BUILDER
             .comment("Crafter output-item limits by crafter level index (level 0 = first value).")
             .defineListAllowEmpty(
@@ -113,6 +123,14 @@ public final class RealCivConfig {
     public static final ModConfigSpec.IntValue WARRIOR_GENERAL_XP_PER_PLAYER_KILL = BUILDER
             .comment("General XP awarded instantly per enemy player kill that counts toward warrior progression.")
             .defineInRange("progression.warriorGeneralXpPerPlayerKill", 10, 0, 100_000);
+
+    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_XP_PER_USE = BUILDER
+            .comment("Explosives Expert profession XP awarded instantly per valid explosive action.")
+            .defineInRange("progression.explosivesExpertXpPerUse", 120, 0, 100_000);
+
+    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_GENERAL_XP_PER_USE = BUILDER
+            .comment("General XP awarded instantly per valid explosive action.")
+            .defineInRange("progression.explosivesExpertGeneralXpPerUse", 8, 0, 100_000);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> HUB_REWARD_RULES = BUILDER
             .comment("Accepted hub item rewards. Format: item_id|profession|credits|profession_xp|general_xp")
@@ -316,6 +334,7 @@ public final class RealCivConfig {
                             "LUMBERJACK|1.0",
                             "HUNTER|1.0",
                             "WARRIOR|1.0",
+                            "EXPLOSIVES_EXPERT|1.0",
                             "CRAFTER|1.0"),
                     () -> "",
                     RealCivConfig::isString);
@@ -411,9 +430,30 @@ public final class RealCivConfig {
             .comment("Display name used when creating the default civilization automatically.")
             .define("civ.defaultName", "Unaligned");
 
+    public static final ModConfigSpec.IntValue MAX_EXPLOSIVES_EXPERTS_PER_CIV = BUILDER
+            .comment("Maximum number of designated explosives experts per civilization. Set to 0 to disable the role.")
+            .defineInRange("civ.maxExplosivesExpertsPerCivilization", 1, 0, 256);
+
     public static final ModConfigSpec.BooleanValue REQUIRE_FOUNDER_APPROVAL = BUILDER
             .comment("When true, only approved players (or admins) can found new civilizations.")
             .define("civ.requireFounderApproval", true);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> EXPLOSIVES_RESTRICTED_ITEMS = BUILDER
+            .comment("Items treated as regulated explosives. Players need Explosives Expert authorization and progression to use them.")
+            .defineListAllowEmpty(
+                    "explosives.restrictedItems",
+                    List.of(
+                            "minecraft:tnt",
+                            "minecraft:end_crystal",
+                            "minecraft:tnt_minecart",
+                            "minecraft:wither_skeleton_skull",
+                            "minecraft:respawn_anchor"),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.BooleanValue EXPLOSIVES_BLOCK_NON_PLAYER_DAMAGE_IN_CLAIMS = BUILDER
+            .comment("When true, explosions without an accountable player cannot damage claimed civilization land.")
+            .define("explosives.blockNonPlayerDamageInClaims", true);
 
     public static final ModConfigSpec.BooleanValue ADMIN_BYPASS_RESTRICTIONS = BUILDER
             .comment("When true, players with high operator permission bypass RealCiv restrictions.")
@@ -468,6 +508,10 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(warriorLevel, WARRIOR_LIMITS.get(), 1);
     }
 
+    public static int explosivesExpertLimitForLevel(int explosivesLevel) {
+        return RealCivUtil.valueForLevel(explosivesLevel, EXPLOSIVES_EXPERT_LIMITS.get(), 1);
+    }
+
     public static int crafterLimitForLevel(int crafterLevel) {
         return RealCivUtil.valueForLevel(crafterLevel, CRAFTER_LIMITS.get(), 64);
     }
@@ -478,6 +522,14 @@ public final class RealCivConfig {
 
     public static int warriorGeneralXpPerPlayerKill() {
         return Math.max(0, WARRIOR_GENERAL_XP_PER_PLAYER_KILL.get());
+    }
+
+    public static int explosivesExpertXpPerUse() {
+        return Math.max(0, EXPLOSIVES_EXPERT_XP_PER_USE.get());
+    }
+
+    public static int explosivesExpertGeneralXpPerUse() {
+        return Math.max(0, EXPLOSIVES_EXPERT_GENERAL_XP_PER_USE.get());
     }
 
     public static int professionLevelFromXp(int xp) {
@@ -580,6 +632,32 @@ public final class RealCivConfig {
         return REQUIRE_FOUNDER_APPROVAL.get();
     }
 
+    public static int maxExplosivesExpertsPerCivilization() {
+        return Math.max(0, MAX_EXPLOSIVES_EXPERTS_PER_CIV.get());
+    }
+
+    public static boolean blockNonPlayerExplosionDamageInClaims() {
+        return EXPLOSIVES_BLOCK_NON_PLAYER_DAMAGE_IN_CLAIMS.get();
+    }
+
+    public static Set<ResourceLocation> regulatedExplosiveItems() {
+        Set<ResourceLocation> out = new HashSet<>();
+        for (String raw : EXPLOSIVES_RESTRICTED_ITEMS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            try {
+                out.add(ResourceLocation.parse(line));
+            } catch (Exception ignored) {
+            }
+        }
+        return Set.copyOf(out);
+    }
+
     public static boolean carryCapPickupEnabled() {
         return CARRY_CAP_PICKUP_ENABLED.get();
     }
@@ -596,6 +674,7 @@ public final class RealCivConfig {
         multipliers.put(Profession.LUMBERJACK, 1.0D);
         multipliers.put(Profession.HUNTER, 1.0D);
         multipliers.put(Profession.WARRIOR, 1.0D);
+        multipliers.put(Profession.EXPLOSIVES_EXPERT, 1.0D);
         multipliers.put(Profession.CRAFTER, 1.0D);
 
         for (String raw : CARRY_CAP_PROFESSION_MULTIPLIERS.get()) {

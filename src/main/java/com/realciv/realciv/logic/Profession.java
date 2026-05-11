@@ -10,6 +10,7 @@ public enum Profession {
     LUMBERJACK,
     HUNTER,
     WARRIOR,
+    EXPLOSIVES_EXPERT,
     CRAFTER,
     NONE;
 
@@ -25,6 +26,7 @@ public enum Profession {
             case "LUMBERJACK", "WOODCUTTER" -> LUMBERJACK;
             case "HUNTER" -> HUNTER;
             case "WARRIOR", "SOLDIER", "PVP" -> WARRIOR;
+            case "EXPLOSIVES_EXPERT", "EXPLOSIVESEXPERT", "EXPLOSIVES", "DEMOLITIONIST", "BOMBER" -> EXPLOSIVES_EXPERT;
             case "CRAFTER" -> CRAFTER;
             case "NONE", "GENERAL" -> NONE;
             default -> null;

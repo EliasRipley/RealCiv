@@ -7,7 +7,7 @@ Players do not pick a class for passive bonuses. They progress by contributing u
 Core Player Loop
 ----------------
 
-1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/hunter/warrior/crafter).
+1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/hunter/warrior/explosives_expert/crafter).
 2. Contribute goods to your civilization's Community Hub.
 3. Gain profession XP, general XP, and contribution karma.
 4. Unlock better tools and higher limits.
@@ -31,6 +31,8 @@ Important rule behaviors:
 - Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
 - Tool tiers are level-gated (wood/stone/iron/diamond/netherite).
 - Player-vs-player combat is diplomacy-gated: WAR allows cross-civ PvP, ALLY/NEUTRAL block it, and same-civ PvP is controlled by the civilization's friendly-fire toggle.
+- Regulated explosives require a designated Explosives Expert role and respect per-level action caps.
+- Explosion block damage on claimed land is war/ownership-aware: non-war cross-civ grief is blocked.
 - Wilderness (true public) land is never buildable.
 - COMMUNITY land allows any member of that civilization to build and break.
 - CIVIC land is leadership-managed (mayor/manager).
@@ -77,6 +79,9 @@ Civilization setup and membership:
 - `/realciv civ diplomacy set <civA> <civB> <ally|neutral|war>`: Admin override variant to set diplomacy between any two civilizations.
 - `/realciv civ pvp show [civ]`: Shows whether intra-civ PvP (friendly fire) is enabled.
 - `/realciv civ pvp friendlyfire <on|off>`: Mayor/admin toggles same-civilization PvP for sparring/friendly fights.
+- `/realciv civ explosives show [civ]`: Shows designated explosives experts and civ cap usage.
+- `/realciv civ explosives add <player>`: Mayor/admin designates a same-civ player as an explosives expert (subject to server cap).
+- `/realciv civ explosives remove <player>`: Mayor/admin removes explosives expert designation.
 
 Progress and economy visibility:
 
@@ -179,6 +184,7 @@ Key areas:
   - `profession.lumberjackLimits`
   - `profession.hunterLimits`
   - `profession.warriorLimits`
+  - `profession.explosivesExpertLimits`
   - `profession.crafterLimits`
   - `profession.breakActionCostOverrides`
 - Level thresholds:
@@ -189,6 +195,8 @@ Key areas:
   - `progression.staleActionResetMinutes`
   - `progression.warriorXpPerPlayerKill`
   - `progression.warriorGeneralXpPerPlayerKill`
+  - `progression.explosivesExpertXpPerUse`
+  - `progression.explosivesExpertGeneralXpPerUse`
 - Hub rewards:
   - `hub.useProfessionRuleFiles`
   - `hub.professionRuleDirectory`
@@ -216,7 +224,11 @@ Key areas:
 - Civilization defaults:
   - `civ.defaultId`
   - `civ.defaultName`
+  - `civ.maxExplosivesExpertsPerCivilization`
   - `civ.requireFounderApproval`
+- Explosives controls:
+  - `explosives.restrictedItems`
+  - `explosives.blockNonPlayerDamageInClaims`
 - Carry cap controls:
   - `carryCap.pickupEnabled`
   - `carryCap.craftEnabled`

@@ -42,6 +42,8 @@ public class RealCivMod {
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onBlockPlace);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onAttackEntity);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onLivingDeath);
+        NeoForge.EVENT_BUS.addListener(RealCivEvents::onExplosionStart);
+        NeoForge.EVENT_BUS.addListener(RealCivEvents::onExplosionDetonate);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemCrafted);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemPickupPre);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onServerTick);

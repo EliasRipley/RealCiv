@@ -33,10 +33,17 @@ import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
+import net.minecraft.world.entity.TraceableEntity;
+import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
+import net.minecraft.world.entity.boss.wither.WitherBoss;
+import net.minecraft.world.entity.item.PrimedTnt;
 import net.minecraft.world.entity.projectile.Projectile;
+import net.minecraft.world.entity.projectile.WitherSkull;
+import net.minecraft.world.entity.vehicle.MinecartTNT;
 import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
@@ -48,6 +55,7 @@ import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
+import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import net.neoforged.neoforge.common.util.TriState;
 import org.jetbrains.annotations.Nullable;
@@ -95,6 +103,7 @@ public final class RealCivEvents {
                         + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Warrior: " + record.levelFor(Profession.WARRIOR)
+                        + " | Explosives: " + record.levelFor(Profession.EXPLOSIVES_EXPERT)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
             if (RealCivConfig.requireFounderApproval()) {
@@ -141,10 +150,12 @@ public final class RealCivEvents {
         int lumberjackRefund = refundActions(record.lumberjackActions(), ratio);
         int hunterRefund = refundActions(record.hunterActions(), ratio);
         int warriorRefund = refundActions(record.warriorActions(), ratio);
+        int explosivesRefund = refundActions(record.explosivesExpertActions(), ratio);
         int crafterRefund = refundActions(record.crafterActions(), ratio);
 
         if (farmerRefund <= 0 && minerRefund <= 0 && terraformerRefund <= 0
-                && lumberjackRefund <= 0 && hunterRefund <= 0 && warriorRefund <= 0 && crafterRefund <= 0) {
+                && lumberjackRefund <= 0 && hunterRefund <= 0 && warriorRefund <= 0
+                && explosivesRefund <= 0 && crafterRefund <= 0) {
             return;
         }
 
@@ -154,10 +165,11 @@ public final class RealCivEvents {
         record.setLumberjackActions(record.lumberjackActions() - lumberjackRefund);
         record.setHunterActions(record.hunterActions() - hunterRefund);
         record.setWarriorActions(record.warriorActions() - warriorRefund);
+        record.setExplosivesExpertActions(record.explosivesExpertActions() - explosivesRefund);
         record.setCrafterActions(record.crafterActions() - crafterRefund);
         data.setDirty();
 
-        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + warriorRefund + crafterRefund;
+        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + warriorRefund + explosivesRefund + crafterRefund;
         player.sendSystemMessage(Component.literal(
                 "Death recovery refunded " + totalRefund + " profession action(s) total. "
                         + "Refund rate: " + RealCivUtil.formatPercentFromRatio(ratio) + "."));
@@ -256,6 +268,12 @@ public final class RealCivEvents {
             return;
         }
 
+        if (isRegulatedExplosiveItem(held) && !canUseExplosivesExpertAction(player, data, true)) {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
+
         if (clickedState.is(Blocks.CRAFTING_TABLE) && !RealCivUtil.isBypass(player)) {
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             int crafterLevel = record.levelFor(Profession.CRAFTER);
@@ -286,6 +304,11 @@ public final class RealCivEvents {
         }
 
         CivSavedData data = CivSavedData.get(player.getServer());
+        if (isRegulatedExplosiveItem(event.getItemStack()) && !canUseExplosivesExpertAction(player, data, true)) {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
         if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
             if (player.isShiftKeyDown()) {
                 int radius = RealCivConfig.landWandVisualizeRadiusChunks();
@@ -351,6 +374,12 @@ public final class RealCivEvents {
             RealCivMessages.deny(
                     player,
                     "Only your civilization mayor (or admins) can place civic control blocks (Hub/Census/Tax).");
+            event.setCanceled(true);
+            return;
+        }
+
+        if ((placedBlock.is(Blocks.TNT) || placedBlock.is(Blocks.RESPAWN_ANCHOR))
+                && !canUseExplosivesExpertAction(player, data, true)) {
             event.setCanceled(true);
             return;
         }
@@ -596,12 +625,17 @@ public final class RealCivEvents {
             return;
         }
 
+        CivSavedData data = CivSavedData.get(attacker.getServer());
+        if (event.getTarget() instanceof EndCrystal && !canUseExplosivesExpertAction(attacker, data, true)) {
+            event.setCanceled(true);
+            return;
+        }
+
         if (event.getTarget() instanceof ServerPlayer target) {
             if (attacker.getUUID().equals(target.getUUID())) {
                 return;
             }
 
-            CivSavedData data = CivSavedData.get(attacker.getServer());
             String attackerCiv = data.getOrAssignCivilization(attacker.getUUID());
             String targetCiv = data.getOrAssignCivilization(target.getUUID());
             if (!isPlayerCombatAllowed(attacker, target, data, attackerCiv, targetCiv)) {
@@ -626,7 +660,6 @@ public final class RealCivEvents {
             return;
         }
 
-        CivSavedData data = CivSavedData.get(attacker.getServer());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
@@ -705,6 +738,84 @@ public final class RealCivEvents {
 
         record.setHunterActions(record.hunterActions() + 1);
         data.setDirty();
+    }
+
+    public static void onExplosionStart(ExplosionEvent.Start event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+
+        Explosion explosion = event.getExplosion();
+        @Nullable Entity direct = explosion.getDirectSourceEntity();
+        if (!isRegulatedExplosionSource(direct)) {
+            return;
+        }
+
+        @Nullable ServerPlayer actor = responsiblePlayerForExplosion(explosion);
+        if (actor == null || actor.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(actor)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(actor.getServer());
+        if (!canUseExplosivesExpertAction(actor, data, true)) {
+            event.setCanceled(true);
+            return;
+        }
+
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(actor.getUUID());
+        record.setExplosivesExpertActions(record.explosivesExpertActions() + 1);
+        record.addExplosivesExpertXp(RealCivConfig.explosivesExpertXpPerUse());
+        record.addGeneralXp(RealCivConfig.explosivesExpertGeneralXpPerUse());
+        data.setDirty();
+    }
+
+    public static void onExplosionDetonate(ExplosionEvent.Detonate event) {
+        if (event.getLevel().isClientSide() || event.getLevel().getServer() == null) {
+            return;
+        }
+
+        Level level = event.getLevel();
+        Explosion explosion = event.getExplosion();
+        @Nullable ServerPlayer actor = responsiblePlayerForExplosion(explosion);
+        boolean actorBypass = actor != null && RealCivUtil.isBypass(actor);
+        CivSavedData data = CivSavedData.get(level.getServer());
+
+        String actorCiv = actor == null ? null : data.getOrAssignCivilization(actor.getUUID());
+        java.util.Iterator<BlockPos> iterator = event.getAffectedBlocks().iterator();
+        while (iterator.hasNext()) {
+            BlockPos pos = iterator.next();
+            @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                    level.dimension().location().toString(),
+                    pos.getX() >> 4,
+                    pos.getZ() >> 4);
+            if (lookup == null) {
+                continue;
+            }
+            if (actorBypass) {
+                continue;
+            }
+            if (actor == null || actorCiv == null) {
+                if (RealCivConfig.blockNonPlayerExplosionDamageInClaims()) {
+                    iterator.remove();
+                }
+                continue;
+            }
+
+            String targetCiv = lookup.civilizationId();
+            if (actorCiv.equals(targetCiv)) {
+                if (!data.canBreakOnPlot(targetCiv, lookup.plot(), actor.getUUID(), false)) {
+                    iterator.remove();
+                }
+                continue;
+            }
+
+            if (data.diplomacyState(actorCiv, targetCiv) != CivSavedData.DiplomacyState.WAR) {
+                iterator.remove();
+            }
+        }
     }
 
     private static boolean isPlayerCombatAllowed(
@@ -817,6 +928,7 @@ public final class RealCivEvents {
                         + " | Lumberjack " + record.lumberjackActions() + "/" + RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK))
                         + " | Hunter " + record.hunterActions() + "/" + RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER))
                         + " | Warrior " + record.warriorActions() + "/" + RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR))
+                        + " | Explosives " + record.explosivesExpertActions() + "/" + RealCivConfig.explosivesExpertLimitForLevel(record.levelFor(Profession.EXPLOSIVES_EXPERT))
                         + " | Crafter " + record.crafterActions() + "/" + RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER))));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
@@ -1091,6 +1203,85 @@ public final class RealCivEvents {
         return data.canBreakOnPlot(lookup.civilizationId(), lookup.plot(), player.getUUID(), false);
     }
 
+    private static boolean isRegulatedExplosiveItem(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(stack.getItem());
+        return RealCivConfig.regulatedExplosiveItems().contains(itemId);
+    }
+
+    private static boolean isRegulatedExplosionSource(@Nullable Entity source) {
+        return source instanceof PrimedTnt
+                || source instanceof MinecartTNT
+                || source instanceof EndCrystal
+                || source instanceof WitherSkull
+                || source instanceof WitherBoss;
+    }
+
+    @Nullable
+    private static ServerPlayer responsiblePlayerForExplosion(Explosion explosion) {
+        @Nullable ServerPlayer indirect = resolvePlayerOwner(explosion.getIndirectSourceEntity());
+        if (indirect != null) {
+            return indirect;
+        }
+        return resolvePlayerOwner(explosion.getDirectSourceEntity());
+    }
+
+    @Nullable
+    private static ServerPlayer resolvePlayerOwner(@Nullable Entity entity) {
+        if (entity instanceof ServerPlayer player) {
+            return player;
+        }
+        if (entity instanceof Projectile projectile && projectile.getOwner() instanceof ServerPlayer owner) {
+            return owner;
+        }
+        if (entity instanceof TraceableEntity traceable && traceable.getOwner() instanceof ServerPlayer owner) {
+            return owner;
+        }
+        return null;
+    }
+
+    private static boolean canUseExplosivesExpertAction(ServerPlayer player, CivSavedData data, boolean sendMessage) {
+        if (RealCivUtil.isBypass(player)) {
+            return true;
+        }
+
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        int maxExperts = RealCivConfig.maxExplosivesExpertsPerCivilization();
+        if (maxExperts <= 0) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "Explosives are disabled by server configuration (max experts per civilization is 0).");
+            }
+            return false;
+        }
+        if (!data.isExplosivesExpert(civId, player.getUUID())) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "You are not designated as an Explosives Expert for your civilization. "
+                                + "Ask your mayor to run /realciv civ explosives add <player>.");
+            }
+            return false;
+        }
+
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        int level = record.levelFor(Profession.EXPLOSIVES_EXPERT);
+        int limit = RealCivConfig.explosivesExpertLimitForLevel(level);
+        if (record.explosivesExpertActions() >= limit) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "Explosives Expert limit reached (" + limit + "). "
+                                + "Wait for timed recovery or level progression before more explosive actions.");
+            }
+            return false;
+        }
+        return true;
+    }
+
     private static boolean isToolLocked(ServerPlayer player, ItemStack itemStack, CivSavedData data) {
         if (itemStack.isEmpty() || RealCivUtil.isBypass(player)) {
             return false;
@@ -1178,10 +1369,12 @@ public final class RealCivEvents {
         int lumberjackReset = staleResetValue(record.lumberjackActions(), record.lumberjackActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int hunterReset = staleResetValue(record.hunterActions(), record.hunterActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int warriorReset = staleResetValue(record.warriorActions(), record.warriorActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int explosivesReset = staleResetValue(record.explosivesExpertActions(), record.explosivesExpertActionsUpdatedAtMillis(), nowMillis, staleMillis);
         int crafterReset = staleResetValue(record.crafterActions(), record.crafterActionsUpdatedAtMillis(), nowMillis, staleMillis);
 
         if (farmerReset <= 0 && minerReset <= 0 && terraformerReset <= 0
-                && lumberjackReset <= 0 && hunterReset <= 0 && warriorReset <= 0 && crafterReset <= 0) {
+                && lumberjackReset <= 0 && hunterReset <= 0 && warriorReset <= 0
+                && explosivesReset <= 0 && crafterReset <= 0) {
             return;
         }
 
@@ -1203,12 +1396,15 @@ public final class RealCivEvents {
         if (warriorReset > 0) {
             record.setWarriorActions(0);
         }
+        if (explosivesReset > 0) {
+            record.setExplosivesExpertActions(0);
+        }
         if (crafterReset > 0) {
             record.setCrafterActions(0);
         }
         data.setDirty();
 
-        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + warriorReset + crafterReset;
+        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + warriorReset + explosivesReset + crafterReset;
         player.sendSystemMessage(Component.literal(
                 "Timed recovery reset " + totalReset + " stale profession action(s) after "
                         + (staleMillis / 60_000L) + " minute(s) without progression reset."));
