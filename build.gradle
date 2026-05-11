@@ -40,6 +40,25 @@ repositories {
             includeGroup 'dev.ftb.mods'
         }
     }
+    // FTB mirror fallbacks for transient upstream outages.
+    maven {
+        url = 'https://maven.saps.dev/minecraft'
+        content {
+            includeGroup 'dev.ftb.mods'
+        }
+    }
+    maven {
+        url = 'https://maven.saps.dev/releases'
+        content {
+            includeGroup 'dev.ftb.mods'
+        }
+    }
+    maven {
+        url = 'https://maven.saps.dev/snapshots'
+        content {
+            includeGroup 'dev.ftb.mods'
+        }
+    }
     maven {
         url = 'https://maven.architectury.dev/'
         content {

@@ -21,5 +21,11 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
 
-      - name: Build with Gradle
-        run: ./gradlew build
+      - name: Build with Gradle (retry once on transient repository errors)
+        shell: bash
+        run: |
+          ./gradlew build --stacktrace || {
+            echo "Initial Gradle build failed; retrying once after a short backoff."
+            sleep 20
+            ./gradlew build --stacktrace
+          }
