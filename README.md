@@ -31,8 +31,10 @@ Important rule behaviors:
 - Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
 - Tool tiers are level-gated (wood/stone/iron/diamond/netherite).
 - Player-vs-player combat is diplomacy-gated: WAR allows cross-civ PvP, ALLY/NEUTRAL block it, and same-civ PvP is controlled by the civilization's friendly-fire toggle.
-- Public/wilderness land is break-only.
-- Building is only allowed in CIVIC land (mayor/manager permission) or PRIVATE land (owner).
+- Wilderness (true public) land is never buildable.
+- COMMUNITY land allows any member of that civilization to build and break.
+- CIVIC land is leadership-managed (mayor/manager).
+- PRIVATE land is owner-managed.
 - If `land.blockUnclaimedBuilding=true`, even wilderness breaking is denied.
 - First mayor Community Hub placement auto-claims starter CIVIC land around the hub.
 - Only the owning civilization mayor (or admin) can move that civilization's Community Hub.
@@ -102,7 +104,7 @@ Town and private land claiming (chunk model):
 
 Land governance and staff controls:
 
-- `/realciv land zone <public|civic|private> [owner] [days]`: Mayor/admin direct zoning override for current chunk.
+- `/realciv land zone <community|civic|private> [owner] [days]`: Mayor/admin direct zoning override for current chunk (`public` still works as an alias).
 - `/realciv land grant <player> [days]`: Mayor/admin shortcut to grant current chunk as private to a player.
 - `/realciv land revoke`: Mayor/admin clears zoning on current chunk.
 - `/realciv land manager add <player>`: Mayor/admin grants civic manager role.
@@ -110,7 +112,7 @@ Land governance and staff controls:
 - `/realciv land wand [player]`: Gives land wand (or gives to target if admin).
 - `/realciv land selection info`: Shows current wand selection bounds.
 - `/realciv land selection clear`: Clears wand selection.
-- `/realciv land zone-selection <public|civic|private> [owner] [days]`: Mayor/admin bulk zone selected chunk area.
+- `/realciv land zone-selection <community|civic|private> [owner] [days]`: Mayor/admin bulk zone selected chunk area (`public` still works as an alias).
 - `/realciv land clear-selection`: Mayor/admin bulk clear selected zoning.
 - `/realciv land visualize [radius]`: Visual boundary debug for nearby claimed chunks.
 - `/realciv land ftb-mode [auto|civic|private]`: Mayor/admin sets personal FTB map claim mode. Non-mayors always claim PRIVATE plots.
@@ -161,7 +163,7 @@ Territory notifications:
 - Players receive chat updates when crossing territory boundaries.
 - CIVIC entry message example: `You've now entered <civilization name>'s territory.`
 - PRIVATE entry message example: `You've now entered <player name>'s private plot in <civilization name>.`
-- Wilderness message example: `You've entered public wilderness.`
+- Wilderness message example: `You've entered true public wilderness.`
 
 Configuration
 -------------

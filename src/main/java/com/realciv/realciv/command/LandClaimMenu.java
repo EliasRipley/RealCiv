@@ -403,9 +403,9 @@ public class LandClaimMenu extends AbstractContainerMenu {
         } else if (lookup.plot().landClass() == LandClass.CIVIC) {
             stack = new ItemStack(Items.LIGHT_BLUE_STAINED_GLASS_PANE);
             status = "Your civ CIVIC";
-        } else if (lookup.plot().landClass() == LandClass.PUBLIC) {
+        } else if (lookup.plot().landClass() == LandClass.COMMUNITY) {
             stack = new ItemStack(Items.WHITE_STAINED_GLASS_PANE);
-            status = "Your civ PUBLIC";
+            status = "Your civ COMMUNITY";
         } else if (lookup.plot().ownerId() != null && lookup.plot().ownerId().equals(viewer.getUUID())) {
             stack = new ItemStack(Items.YELLOW_STAINED_GLASS_PANE);
             status = "Your PRIVATE plot";

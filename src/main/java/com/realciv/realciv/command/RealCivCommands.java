@@ -1002,7 +1002,7 @@ public final class RealCivCommands {
         }
 
         source.sendSuccess(() -> Component.literal(
-                "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, u=your PUBLIC zoning, x=other civ claim, .=wilderness/public"),
+                "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, m=your COMMUNITY zoning, x=other civ claim, .=wilderness"),
                 false);
         source.sendSuccess(() -> Component.literal(
                 "Chunk claiming: mayor uses /realciv town claim, citizens use /realciv plot claim."),
@@ -1142,7 +1142,7 @@ public final class RealCivCommands {
                     "Mayor allotment must be on a chunk already claimed by your civilization."));
             return 0;
         }
-        if (existing.plot().landClass() == LandClass.CIVIC || existing.plot().landClass() == LandClass.PUBLIC) {
+        if (existing.plot().landClass() == LandClass.CIVIC || existing.plot().landClass() == LandClass.COMMUNITY) {
             data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, target.getUUID(), now, paidTicks);
             data.addAuditLog(
                     civId,
@@ -1386,7 +1386,7 @@ public final class RealCivCommands {
                     : "break allowed, building denied";
             source.sendSuccess(() -> Component.literal(
                     "Chunk [" + chunkX + ", " + chunkZ + "] in " + dimension
-                            + " is wilderness/public (" + wildernessRule + ")."), false);
+                            + " is wilderness/unzoned (" + wildernessRule + ")."), false);
             return 1;
         }
 
@@ -1427,7 +1427,7 @@ public final class RealCivCommands {
 
         LandClass landClass = LandClass.fromConfig(landClassRaw);
         if (landClass == null) {
-            source.sendFailure(Component.literal("Invalid land class. Use: public, civic, private."));
+            source.sendFailure(Component.literal("Invalid land class. Use: community, civic, private (public also works)."));
             return 0;
         }
 
@@ -1707,7 +1707,7 @@ public final class RealCivCommands {
 
         LandClass landClass = LandClass.fromConfig(landClassRaw);
         if (landClass == null) {
-            source.sendFailure(Component.literal("Invalid land class. Use: public, civic, private."));
+            source.sendFailure(Component.literal("Invalid land class. Use: community, civic, private (public also works)."));
             return 0;
         }
 
@@ -2749,7 +2749,7 @@ public final class RealCivCommands {
         return switch (lookup.plot().landClass()) {
             case CIVIC -> 'C';
             case PRIVATE -> lookup.plot().ownerId() != null && lookup.plot().ownerId().equals(viewerId) ? 'P' : 'p';
-            case PUBLIC -> 'u';
+            case COMMUNITY -> 'm';
         };
     }
 

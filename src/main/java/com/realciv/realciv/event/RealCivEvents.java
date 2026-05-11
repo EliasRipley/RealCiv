@@ -400,8 +400,7 @@ public final class RealCivEvents {
             if (lookup == null) {
                 RealCivMessages.deny(
                         player,
-                        "You can't place blocks here. Public/wilderness chunks are break-only. "
-                                + "Build in CIVIC (with permission) or PRIVATE land.");
+                        "You can't place blocks in wilderness. Build in your civilization's COMMUNITY, CIVIC, or PRIVATE land.");
             } else {
                 RealCivMessages.deny(
                         player,
@@ -1005,7 +1004,7 @@ public final class RealCivEvents {
         }
 
         if (current.isWilderness()) {
-            player.sendSystemMessage(Component.literal("You've entered public wilderness."));
+            player.sendSystemMessage(Component.literal("You've entered true public wilderness."));
             return;
         }
 
@@ -1028,7 +1027,7 @@ public final class RealCivEvents {
         }
 
         player.sendSystemMessage(Component.literal(
-                "You've now entered public land of " + civName + "."));
+                "You've now entered community land of " + civName + "."));
     }
 
     private static TerritoryState territoryStateForPlayer(ServerPlayer player, CivSavedData data) {

@@ -667,6 +667,12 @@ public class CivSavedData extends SavedData {
         return civ.mayorId() != null && civ.mayorId().equals(playerId);
     }
 
+    public boolean isCivilizationMember(String civIdRaw, UUID playerId) {
+        String civId = normalizeCivId(civIdRaw);
+        String memberCivId = normalizeCivId(playerCivilization.get(playerId));
+        return civId != null && memberCivId != null && civId.equals(memberCivId);
+    }
+
     @Nullable
     public UUID getMayorId(String civIdRaw) {
         return getOrCreateCivilization(civIdRaw).mayorId();
@@ -1080,7 +1086,7 @@ public class CivSavedData extends SavedData {
             return true;
         }
         return switch (plot.landClass()) {
-            case PUBLIC -> false;
+            case COMMUNITY -> isCivilizationMember(civIdRaw, playerId);
             case CIVIC -> isMayor(civIdRaw, playerId) || isCivicManager(civIdRaw, playerId);
             case PRIVATE -> plot.ownerId() != null && plot.ownerId().equals(playerId);
         };
@@ -1091,7 +1097,7 @@ public class CivSavedData extends SavedData {
             return true;
         }
         return switch (plot.landClass()) {
-            case PUBLIC -> true;
+            case COMMUNITY -> isCivilizationMember(civIdRaw, playerId);
             case CIVIC -> isMayor(civIdRaw, playerId) || isCivicManager(civIdRaw, playerId);
             case PRIVATE -> plot.ownerId() != null && plot.ownerId().equals(playerId);
         };
@@ -1204,7 +1210,7 @@ public class CivSavedData extends SavedData {
 
                 if (plot.delinquentSinceTick() >= 0L && gameTime - plot.delinquentSinceTick() >= grace) {
                     UUID previousOwner = plot.ownerId();
-                    plot.setLandClass(LandClass.PUBLIC);
+                    plot.setLandClass(LandClass.COMMUNITY);
                     plot.setOwnerId(null);
                     plot.setDelinquentSinceTick(-1L);
                     plot.setNextUpkeepTick(gameTime + interval);
@@ -1679,7 +1685,7 @@ public class CivSavedData extends SavedData {
                 long chunkX = tag.getLong("chunkX");
                 long chunkZ = tag.getLong("chunkZ");
 
-                LandClass landClass = LandClass.PUBLIC;
+                LandClass landClass = LandClass.COMMUNITY;
                 if (tag.contains("landClass")) {
                     LandClass parsed = LandClass.fromConfig(tag.getString("landClass"));
                     if (parsed != null) {

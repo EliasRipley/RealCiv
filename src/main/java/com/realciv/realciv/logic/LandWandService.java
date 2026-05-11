@@ -272,7 +272,7 @@ public final class LandWandService {
 
     private static ParticleOptions particleFor(LandClass landClass) {
         return switch (landClass) {
-            case PUBLIC -> ParticleTypes.HAPPY_VILLAGER;
+            case COMMUNITY -> ParticleTypes.HAPPY_VILLAGER;
             case CIVIC -> ParticleTypes.END_ROD;
             case PRIVATE -> ParticleTypes.FLAME;
         };

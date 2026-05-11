@@ -4,7 +4,7 @@ import java.util.Locale;
 import org.jetbrains.annotations.Nullable;
 
 public enum LandClass {
-    PUBLIC,
+    COMMUNITY,
     CIVIC,
     PRIVATE;
 
@@ -14,7 +14,7 @@ public enum LandClass {
             return null;
         }
         return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-            case "PUBLIC" -> PUBLIC;
+            case "COMMUNITY", "PUBLIC" -> COMMUNITY;
             case "CIVIC" -> CIVIC;
             case "PRIVATE" -> PRIVATE;
             default -> null;
