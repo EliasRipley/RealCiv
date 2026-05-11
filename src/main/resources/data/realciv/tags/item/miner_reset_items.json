@@ -1,0 +1,21 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:cobblestone",
+    "minecraft:stone",
+    "minecraft:deepslate",
+    "minecraft:cobbled_deepslate",
+    "#minecraft:coals",
+    "minecraft:raw_iron",
+    "minecraft:raw_copper",
+    "minecraft:raw_gold",
+    "minecraft:diamond",
+    "minecraft:emerald",
+    "minecraft:redstone",
+    "minecraft:lapis_lazuli",
+    "minecraft:quartz",
+    "minecraft:amethyst_shard",
+    "minecraft:netherite_scrap"
+  ]
+}
+

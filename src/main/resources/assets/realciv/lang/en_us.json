@@ -3,5 +3,7 @@
   "block.realciv.census_block": "Census Block",
   "block.realciv.tax_block": "Tax Block",
   "item.realciv.land_wand": "Land Wand",
-  "itemGroup.realciv": "Real Civilization"
+  "itemGroup.realciv": "Real Civilization",
+  "realciv.ftbchunks.claim_denied": "Claim denied by RealCiv rules. See chat for details.",
+  "realciv.ftbchunks.unclaim_denied": "Unclaim denied by RealCiv rules. See chat for details."
 }

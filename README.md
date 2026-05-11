@@ -26,6 +26,9 @@ New citizen flow:
 Important rule behaviors:
 
 - If you hit an action limit, you must contribute relevant resources to hub to reset that profession action counter.
+- Profession action restoration is item- and quantity-based (configured per profession in `config/realciv/hub/*_resets.txt` by default), not a full reset from any single cheap item.
+- On death, action counters can be partially/fully refunded by `progression.deathActionRefundPercent` to prevent hard lockouts after item loss.
+- Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
 - Tool tiers are level-gated (wood/stone/iron/diamond/netherite).
 - Public/wilderness land is break-only.
 - Building is only allowed in CIVIC land (mayor/manager permission) or PRIVATE land (owner).
@@ -47,7 +50,8 @@ In-Game Civic Blocks
 - Land Wand (`realciv:land_wand`)
   - Left-click block: set selection `pos1` (chunk).
   - Right-click block: set selection `pos2` (chunk).
-  - Sneak-right-click (or command visualize): draw chunk boundaries.
+  - Right-click in air: opens FTB Chunks claim map (falls back to legacy RealCiv map if unavailable).
+  - Sneak-right-click: draw chunk boundaries.
 
 Command Guide
 -------------
@@ -103,6 +107,8 @@ Land governance and staff controls:
 - `/realciv land zone-selection <public|civic|private> [owner] [days]`: Mayor/admin bulk zone selected chunk area.
 - `/realciv land clear-selection`: Mayor/admin bulk clear selected zoning.
 - `/realciv land visualize [radius]`: Visual boundary debug for nearby claimed chunks.
+- `/realciv land ftb-mode [auto|civic|private]`: Mayor/admin sets personal FTB map claim mode. Non-mayors always claim PRIVATE plots.
+- `/realciv land gui`: Opens FTB Chunks claim map with RealCiv rules (fallback to legacy RealCiv map if FTB map cannot open).
 
 Mayor and census governance:
 
@@ -169,9 +175,15 @@ Key areas:
 - Level thresholds:
   - `progression.professionXpThresholds`
   - `progression.generalXpThresholds`
+  - `progression.deathActionRefundPercent`
+  - `progression.staleActionResetEnabled`
+  - `progression.staleActionResetMinutes`
 - Hub rewards:
+  - `hub.useProfessionRuleFiles`
+  - `hub.professionRuleDirectory`
   - `hub.rewardRules`
   - `hub.tagRewardRules`
+  - `hub.tagResetRules`
   - `hub.defaultPersonalWithdrawalPercent`
   - `economy.hubWithdrawCreditPenaltyPercent`
 - Tool unlock gates:
@@ -189,6 +201,7 @@ Key areas:
   - `land.blockUnclaimedBuilding`
   - `land.wandVisualizeRadiusChunks`
   - `land.wandMaxSelectionChunks`
+  - `land.ftbMayorDefaultClaimMode` (`civic` or `private`)
 - Civilization defaults:
   - `civ.defaultId`
   - `civ.defaultName`
@@ -204,13 +217,38 @@ Key areas:
   - `ui.denyMessageCooldownTicks`
   - `ui.hubStockListLimit`
 
-Reward rule format:
+Per-profession hub files (default path):
 
-`item_id|profession|credits|profession_xp|general_xp`
+- `config/realciv/hub/farmer_rewards.txt`
+- `config/realciv/hub/miner_rewards.txt`
+- `config/realciv/hub/terraformer_rewards.txt`
+- `config/realciv/hub/lumberjack_rewards.txt`
+- `config/realciv/hub/hunter_rewards.txt`
+- `config/realciv/hub/crafter_rewards.txt`
+- `config/realciv/hub/farmer_resets.txt` (and equivalent for each profession)
 
-Example:
+If a file is missing, RealCiv generates a starter file from current legacy defaults.
 
-`minecraft:wheat|FARMER|1.0|2|1`
+Reward file line formats (profession implied by file):
+
+- `minecraft:wheat|1.0|2|1` (item shorthand)
+- `ITEM|minecraft:wheat|1.0|2|1`
+- `ITEM_TAG|realciv:farmer_contributions|1.0|2|1`
+- `BLOCK_TAG|minecraft:logs|1.0|2|1`
+
+Reset file line formats (profession implied by file):
+
+- `minecraft:wheat|1.0` (exact item shorthand, actions restored per item)
+- `ITEM|minecraft:wheat|1.0`
+- `ITEM_TAG|realciv:farmer_reset_items|1.0`
+- `BLOCK_TAG|minecraft:logs|1.0`
+
+Legacy fallback:
+
+- Set `hub.useProfessionRuleFiles=false` to keep using legacy list configs:
+- `hub.rewardRules` format: `item_id|profession|credits|profession_xp|general_xp`
+- `hub.tagRewardRules` format: `selector_type|tag_id|profession|credits|profession_xp|general_xp`
+- `hub.tagResetRules` format: `selector_type|tag_id|profession|actions_per_item`
 
 Carry-cap multiplier format:
 
@@ -235,4 +273,12 @@ Build and Test
 - Full build: `gradlew build`
 - Run dedicated server: `gradlew runServer`
 - Run local client: `gradlew runClient`
+
+FTB Chunks Integration Notes
+----------------------------
+
+- RealCiv now hooks into FTB Chunks claim/unclaim events and enforces RealCiv zoning, adjacency, treasury/social-credit costs, and role permissions.
+- Non-mayors always claim PRIVATE via FTB map; mayor/admin can use `auto`, `civic`, or `private` via `/realciv land ftb-mode`.
+- `auto` uses `land.ftbMayorDefaultClaimMode` from `config/realciv-common.toml`.
+- Players must be in an FTB Team before opening the map (`/ftbteams create <name>`).
 

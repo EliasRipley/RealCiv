@@ -2,6 +2,7 @@ package com.realciv.realciv.event;
 
 import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.census.CensusMenu;
+import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
@@ -80,6 +81,7 @@ public final class RealCivEvents {
 
         String civId = data.getOrAssignCivilization(player.getUUID());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        applyStaleActionTimeoutReset(player, data, record, System.currentTimeMillis());
 
         player.sendSystemMessage(Component.literal("RealCiv profile loaded."));
         player.sendSystemMessage(Component.literal(
@@ -115,6 +117,47 @@ public final class RealCivEvents {
         LAST_TERRITORY.remove(player.getUUID());
     }
 
+    public static void onPlayerClone(PlayerEvent.Clone event) {
+        if (!event.isWasDeath()) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+
+        double ratio = RealCivConfig.deathActionRefundRatio();
+        if (ratio <= 0.0D) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        int farmerRefund = refundActions(record.farmerActions(), ratio);
+        int minerRefund = refundActions(record.minerActions(), ratio);
+        int terraformerRefund = refundActions(record.terraformerActions(), ratio);
+        int lumberjackRefund = refundActions(record.lumberjackActions(), ratio);
+        int hunterRefund = refundActions(record.hunterActions(), ratio);
+        int crafterRefund = refundActions(record.crafterActions(), ratio);
+
+        if (farmerRefund <= 0 && minerRefund <= 0 && terraformerRefund <= 0
+                && lumberjackRefund <= 0 && hunterRefund <= 0 && crafterRefund <= 0) {
+            return;
+        }
+
+        record.setFarmerActions(record.farmerActions() - farmerRefund);
+        record.setMinerActions(record.minerActions() - minerRefund);
+        record.setTerraformerActions(record.terraformerActions() - terraformerRefund);
+        record.setLumberjackActions(record.lumberjackActions() - lumberjackRefund);
+        record.setHunterActions(record.hunterActions() - hunterRefund);
+        record.setCrafterActions(record.crafterActions() - crafterRefund);
+        data.setDirty();
+
+        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + crafterRefund;
+        player.sendSystemMessage(Component.literal(
+                "Death recovery refunded " + totalRefund + " profession action(s) total. "
+                        + "Refund rate: " + RealCivUtil.formatPercentFromRatio(ratio) + "."));
+    }
+
     public static void onServerTick(ServerTickEvent.Post event) {
         if (event.getServer().overworld() == null) {
             return;
@@ -130,7 +173,15 @@ public final class RealCivEvents {
             return;
         }
         lastUpkeepTick = now;
-        CivSavedData.get(event.getServer()).processUpkeep(now);
+        CivSavedData data = CivSavedData.get(event.getServer());
+        data.processUpkeep(now);
+        if (RealCivConfig.staleActionResetEnabled()) {
+            long nowMillis = System.currentTimeMillis();
+            for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
+                CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+                applyStaleActionTimeoutReset(player, data, record, nowMillis);
+            }
+        }
     }
 
     public static void onItemPickupPre(ItemEntityPickupEvent.Pre event) {
@@ -231,14 +282,18 @@ public final class RealCivEvents {
 
         CivSavedData data = CivSavedData.get(player.getServer());
         if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
-            int radius = RealCivConfig.landWandVisualizeRadiusChunks();
-            int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
-            int selectedEdges = LandWandService.visualizeSelection(player);
-            player.sendSystemMessage(Component.literal(
-                    "[RealCiv] Land Wand visualized " + edges
-                            + " nearby boundary line(s) within " + radius + " chunks"
-                            + " (all distinct nearby claim boundaries)."
-                            + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
+            if (player.isShiftKeyDown()) {
+                int radius = RealCivConfig.landWandVisualizeRadiusChunks();
+                int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
+                int selectedEdges = LandWandService.visualizeSelection(player);
+                player.sendSystemMessage(Component.literal(
+                        "[RealCiv] Land Wand visualized " + edges
+                                + " nearby boundary line(s) within " + radius + " chunks"
+                                + " (all distinct nearby claim boundaries)."
+                                + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
+            } else {
+                RealCivCommands.openLandGuiForPlayer(player, data);
+            }
             event.setCancellationResult(InteractionResult.SUCCESS);
             event.setCanceled(true);
             return;
@@ -969,6 +1024,82 @@ public final class RealCivEvents {
         ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
         int configured = RealCivConfig.breakActionCostOverrides().getOrDefault(blockId, 1);
         return Math.max(1, configured);
+    }
+
+    private static int refundActions(int spentActions, double ratio) {
+        int current = Math.max(0, spentActions);
+        if (current <= 0 || ratio <= 0.0D) {
+            return 0;
+        }
+        int refunded = (int) Math.floor(current * ratio);
+        if (refunded <= 0) {
+            refunded = 1;
+        }
+        return Math.min(current, refunded);
+    }
+
+    private static void applyStaleActionTimeoutReset(
+            ServerPlayer player,
+            CivSavedData data,
+            CivSavedData.PlayerRecord record,
+            long nowMillis) {
+        if (!RealCivConfig.staleActionResetEnabled()) {
+            return;
+        }
+        long staleMillis = RealCivConfig.staleActionResetMillis();
+        if (staleMillis <= 0L) {
+            return;
+        }
+
+        int farmerReset = staleResetValue(record.farmerActions(), record.farmerActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int minerReset = staleResetValue(record.minerActions(), record.minerActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int terraformerReset = staleResetValue(record.terraformerActions(), record.terraformerActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int lumberjackReset = staleResetValue(record.lumberjackActions(), record.lumberjackActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int hunterReset = staleResetValue(record.hunterActions(), record.hunterActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int crafterReset = staleResetValue(record.crafterActions(), record.crafterActionsUpdatedAtMillis(), nowMillis, staleMillis);
+
+        if (farmerReset <= 0 && minerReset <= 0 && terraformerReset <= 0
+                && lumberjackReset <= 0 && hunterReset <= 0 && crafterReset <= 0) {
+            return;
+        }
+
+        if (farmerReset > 0) {
+            record.setFarmerActions(0);
+        }
+        if (minerReset > 0) {
+            record.setMinerActions(0);
+        }
+        if (terraformerReset > 0) {
+            record.setTerraformerActions(0);
+        }
+        if (lumberjackReset > 0) {
+            record.setLumberjackActions(0);
+        }
+        if (hunterReset > 0) {
+            record.setHunterActions(0);
+        }
+        if (crafterReset > 0) {
+            record.setCrafterActions(0);
+        }
+        data.setDirty();
+
+        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + crafterReset;
+        player.sendSystemMessage(Component.literal(
+                "Timed recovery reset " + totalReset + " stale profession action(s) after "
+                        + (staleMillis / 60_000L) + " minute(s) without progression reset."));
+    }
+
+    private static int staleResetValue(int current, long lastUpdatedMillis, long nowMillis, long staleMillis) {
+        if (current <= 0 || staleMillis <= 0L) {
+            return 0;
+        }
+        if (lastUpdatedMillis <= 0L) {
+            return 0;
+        }
+        if (nowMillis < lastUpdatedMillis) {
+            return 0;
+        }
+        return (nowMillis - lastUpdatedMillis) >= staleMillis ? current : 0;
     }
 
     @Nullable

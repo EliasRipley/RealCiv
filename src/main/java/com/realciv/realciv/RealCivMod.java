@@ -4,6 +4,7 @@ import com.mojang.logging.LogUtils;
 import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.event.RealCivEvents;
+import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -27,9 +28,12 @@ public class RealCivMod {
 
         modContainer.registerConfig(ModConfig.Type.COMMON, RealCivConfig.SPEC);
 
+        RealCivFTBChunksBridge.register();
+
         NeoForge.EVENT_BUS.addListener(RealCivCommands::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogout);
+        NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerClone);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onRightClickBlock);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onRightClickItem);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onLeftClickBlock);
@@ -46,12 +50,14 @@ public class RealCivMod {
     private void onConfigLoading(ModConfigEvent.Loading event) {
         if (event.getConfig().getSpec() == RealCivConfig.SPEC) {
             RealCivConfig.migrateLegacyCommonConfigIfNeeded();
+            RealCivConfig.invalidateExternalRuleFileCache();
         }
     }
 
     private void onConfigReloading(ModConfigEvent.Reloading event) {
         if (event.getConfig().getSpec() == RealCivConfig.SPEC) {
             RealCivConfig.migrateLegacyCommonConfigIfNeeded();
+            RealCivConfig.invalidateExternalRuleFileCache();
         }
     }
 

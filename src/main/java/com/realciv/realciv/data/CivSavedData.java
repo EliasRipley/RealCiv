@@ -504,6 +504,7 @@ public class CivSavedData extends SavedData {
             ResourceLocation itemId,
             int itemCount,
             RewardRule rewardRule,
+            int restoredActions,
             String actorName) {
         if (itemCount <= 0) {
             return;
@@ -523,37 +524,42 @@ public class CivSavedData extends SavedData {
         }
 
         int professionGain = rewardRule.professionXpPerItem() * itemCount;
+        int safeRestoredActions = Math.max(0, restoredActions);
         switch (rewardRule.profession()) {
             case FARMER -> {
                 record.farmerXp += professionGain;
-                record.farmerActions = 0;
+                record.setFarmerActions(record.farmerActions() - safeRestoredActions);
             }
             case MINER -> {
                 record.minerXp += professionGain;
-                record.minerActions = 0;
+                record.setMinerActions(record.minerActions() - safeRestoredActions);
             }
             case TERRAFORMER -> {
                 record.terraformerXp += professionGain;
-                record.terraformerActions = 0;
+                record.setTerraformerActions(record.terraformerActions() - safeRestoredActions);
             }
             case LUMBERJACK -> {
                 record.lumberjackXp += professionGain;
-                record.lumberjackActions = 0;
+                record.setLumberjackActions(record.lumberjackActions() - safeRestoredActions);
             }
             case HUNTER -> {
                 record.hunterXp += professionGain;
-                record.hunterActions = 0;
+                record.setHunterActions(record.hunterActions() - safeRestoredActions);
             }
             case CRAFTER -> {
                 record.crafterXp += professionGain;
-                record.crafterActions = 0;
+                record.setCrafterActions(record.crafterActions() - safeRestoredActions);
             }
             case NONE -> {
             }
         }
 
         record.generalXp += rewardRule.generalXpPerItem() * itemCount;
-        addAuditLog(civ.id(), actorName + " deposited " + itemCount + "x " + itemId, RealCivConfig.MAX_AUDIT_LOGS.get());
+        addAuditLog(
+                civ.id(),
+                actorName + " deposited " + itemCount + "x " + itemId
+                        + " | restored " + safeRestoredActions + " " + rewardRule.profession().name().toLowerCase(java.util.Locale.ROOT) + " action(s)",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
     }
 
@@ -983,7 +989,14 @@ public class CivSavedData extends SavedData {
     }
 
     public void applyDeposit(UUID playerId, ResourceLocation itemId, int itemCount, RewardRule rewardRule, String actorName) {
-        applyDeposit(RealCivConfig.defaultCivilizationId(), playerId, itemId, itemCount, rewardRule, actorName);
+        applyDeposit(
+                RealCivConfig.defaultCivilizationId(),
+                playerId,
+                itemId,
+                itemCount,
+                rewardRule,
+                itemCount,
+                actorName);
     }
 
     public boolean isMayor(UUID playerId) {
@@ -1409,15 +1422,21 @@ public class CivSavedData extends SavedData {
         private long socialCreditCents;
         private int farmerActions;
         private int minerActions;
+        private long farmerActionsUpdatedAtMillis;
+        private long minerActionsUpdatedAtMillis;
         private int farmerXp;
         private int minerXp;
         private int terraformerActions;
+        private long terraformerActionsUpdatedAtMillis;
         private int terraformerXp;
         private int lumberjackActions;
+        private long lumberjackActionsUpdatedAtMillis;
         private int lumberjackXp;
         private int hunterActions;
+        private long hunterActionsUpdatedAtMillis;
         private int hunterXp;
         private int crafterActions;
+        private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
         private int generalXp;
         private final Map<String, CivAccount> civAccounts = new HashMap<>();
@@ -1427,6 +1446,8 @@ public class CivSavedData extends SavedData {
         private final Map<String, Long> personalWithdrawals = new HashMap<>();
         @Nullable
         private Double personalWithdrawRatioOverride;
+        @Nullable
+        private String ftbClaimModeOverride;
 
         private CivAccount account(String civIdRaw) {
             String civId = normalizeCivId(civIdRaw);
@@ -1500,7 +1521,11 @@ public class CivSavedData extends SavedData {
         }
 
         public void setFarmerActions(int value) {
-            this.farmerActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.farmerActions != updated) {
+                this.farmerActions = updated;
+                this.farmerActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
         }
 
         public int minerActions() {
@@ -1508,7 +1533,19 @@ public class CivSavedData extends SavedData {
         }
 
         public void setMinerActions(int value) {
-            this.minerActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.minerActions != updated) {
+                this.minerActions = updated;
+                this.minerActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long farmerActionsUpdatedAtMillis() {
+            return farmerActionsUpdatedAtMillis;
+        }
+
+        public long minerActionsUpdatedAtMillis() {
+            return minerActionsUpdatedAtMillis;
         }
 
         public int farmerXp() {
@@ -1524,7 +1561,15 @@ public class CivSavedData extends SavedData {
         }
 
         public void setTerraformerActions(int value) {
-            this.terraformerActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.terraformerActions != updated) {
+                this.terraformerActions = updated;
+                this.terraformerActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long terraformerActionsUpdatedAtMillis() {
+            return terraformerActionsUpdatedAtMillis;
         }
 
         public int terraformerXp() {
@@ -1536,7 +1581,15 @@ public class CivSavedData extends SavedData {
         }
 
         public void setLumberjackActions(int value) {
-            this.lumberjackActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.lumberjackActions != updated) {
+                this.lumberjackActions = updated;
+                this.lumberjackActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long lumberjackActionsUpdatedAtMillis() {
+            return lumberjackActionsUpdatedAtMillis;
         }
 
         public int lumberjackXp() {
@@ -1548,7 +1601,15 @@ public class CivSavedData extends SavedData {
         }
 
         public void setHunterActions(int value) {
-            this.hunterActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.hunterActions != updated) {
+                this.hunterActions = updated;
+                this.hunterActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long hunterActionsUpdatedAtMillis() {
+            return hunterActionsUpdatedAtMillis;
         }
 
         public int hunterXp() {
@@ -1560,7 +1621,15 @@ public class CivSavedData extends SavedData {
         }
 
         public void setCrafterActions(int value) {
-            this.crafterActions = Math.max(0, value);
+            int updated = Math.max(0, value);
+            if (this.crafterActions != updated) {
+                this.crafterActions = updated;
+                this.crafterActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long crafterActionsUpdatedAtMillis() {
+            return crafterActionsUpdatedAtMillis;
         }
 
         public int crafterXp() {
@@ -1622,6 +1691,15 @@ public class CivSavedData extends SavedData {
             account(civId).personalWithdrawals.merge(itemId.toString(), count, Long::sum);
         }
 
+        @Nullable
+        public String ftbClaimModeOverride() {
+            return ftbClaimModeOverride;
+        }
+
+        public void setFtbClaimModeOverride(@Nullable String rawMode) {
+            ftbClaimModeOverride = normalizeFtbClaimMode(rawMode);
+        }
+
         // Compatibility wrappers (default civ).
         public long socialCreditCents() {
             return socialCreditCents(RealCivConfig.defaultCivilizationId());
@@ -1665,15 +1743,21 @@ public class CivSavedData extends SavedData {
             tag.putLong("socialCreditCents", socialCreditCents);
             tag.putInt("farmerActions", farmerActions);
             tag.putInt("minerActions", minerActions);
+            tag.putLong("farmerActionsUpdatedAtMillis", farmerActionsUpdatedAtMillis);
+            tag.putLong("minerActionsUpdatedAtMillis", minerActionsUpdatedAtMillis);
             tag.putInt("farmerXp", farmerXp);
             tag.putInt("minerXp", minerXp);
             tag.putInt("terraformerActions", terraformerActions);
+            tag.putLong("terraformerActionsUpdatedAtMillis", terraformerActionsUpdatedAtMillis);
             tag.putInt("terraformerXp", terraformerXp);
             tag.putInt("lumberjackActions", lumberjackActions);
+            tag.putLong("lumberjackActionsUpdatedAtMillis", lumberjackActionsUpdatedAtMillis);
             tag.putInt("lumberjackXp", lumberjackXp);
             tag.putInt("hunterActions", hunterActions);
+            tag.putLong("hunterActionsUpdatedAtMillis", hunterActionsUpdatedAtMillis);
             tag.putInt("hunterXp", hunterXp);
             tag.putInt("crafterActions", crafterActions);
+            tag.putLong("crafterActionsUpdatedAtMillis", crafterActionsUpdatedAtMillis);
             tag.putInt("crafterXp", crafterXp);
             tag.putInt("generalXp", generalXp);
 
@@ -1698,6 +1782,9 @@ public class CivSavedData extends SavedData {
             if (personalWithdrawRatioOverride != null) {
                 tag.putDouble("personalWithdrawRatioOverride", clampRatio(personalWithdrawRatioOverride));
             }
+            if (ftbClaimModeOverride != null) {
+                tag.putString("ftbClaimModeOverride", ftbClaimModeOverride);
+            }
             return tag;
         }
 
@@ -1718,6 +1805,26 @@ public class CivSavedData extends SavedData {
             record.crafterXp = Math.max(0, tag.getInt("crafterXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
 
+            long loadedAt = System.currentTimeMillis();
+            record.farmerActionsUpdatedAtMillis = tag.contains("farmerActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("farmerActionsUpdatedAtMillis"))
+                    : (record.farmerActions > 0 ? loadedAt : 0L);
+            record.minerActionsUpdatedAtMillis = tag.contains("minerActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("minerActionsUpdatedAtMillis"))
+                    : (record.minerActions > 0 ? loadedAt : 0L);
+            record.terraformerActionsUpdatedAtMillis = tag.contains("terraformerActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("terraformerActionsUpdatedAtMillis"))
+                    : (record.terraformerActions > 0 ? loadedAt : 0L);
+            record.lumberjackActionsUpdatedAtMillis = tag.contains("lumberjackActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("lumberjackActionsUpdatedAtMillis"))
+                    : (record.lumberjackActions > 0 ? loadedAt : 0L);
+            record.hunterActionsUpdatedAtMillis = tag.contains("hunterActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("hunterActionsUpdatedAtMillis"))
+                    : (record.hunterActions > 0 ? loadedAt : 0L);
+            record.crafterActionsUpdatedAtMillis = tag.contains("crafterActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("crafterActionsUpdatedAtMillis"))
+                    : (record.crafterActions > 0 ? loadedAt : 0L);
+
             CompoundTag accountsTag = tag.getCompound("civAccounts");
             for (String civId : accountsTag.getAllKeys()) {
                 record.civAccounts.put(civId, CivAccount.load(accountsTag.getCompound(civId)));
@@ -1735,6 +1842,9 @@ public class CivSavedData extends SavedData {
 
             if (tag.contains("personalWithdrawRatioOverride")) {
                 record.personalWithdrawRatioOverride = clampRatio(tag.getDouble("personalWithdrawRatioOverride"));
+            }
+            if (tag.contains("ftbClaimModeOverride")) {
+                record.ftbClaimModeOverride = normalizeFtbClaimMode(tag.getString("ftbClaimModeOverride"));
             }
             return record;
         }
@@ -1757,6 +1867,21 @@ public class CivSavedData extends SavedData {
 
         private static double clampRatio(double ratio) {
             return Math.max(0.0D, Math.min(1.0D, ratio));
+        }
+
+        @Nullable
+        private static String normalizeFtbClaimMode(@Nullable String rawMode) {
+            if (rawMode == null) {
+                return null;
+            }
+            String mode = rawMode.trim().toLowerCase(java.util.Locale.ROOT);
+            if (mode.isEmpty() || "auto".equals(mode)) {
+                return null;
+            }
+            if ("civic".equals(mode) || "private".equals(mode)) {
+                return mode;
+            }
+            return null;
         }
     }
 

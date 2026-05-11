@@ -8,6 +8,7 @@ import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
+import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import com.realciv.realciv.logic.HubRewardResolver;
 import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
@@ -22,6 +23,7 @@ import java.util.Map;
 import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.commands.Commands;
+import net.minecraft.commands.SharedSuggestionProvider;
 import net.minecraft.commands.arguments.EntityArgument;
 import net.minecraft.commands.arguments.ResourceLocationArgument;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -257,7 +259,21 @@ public final class RealCivCommands {
                                 .then(Commands.argument("radius", IntegerArgumentType.integer(1, 64))
                                         .executes(ctx -> landVisualize(
                                                 ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "radius"))))))
+                                                IntegerArgumentType.getInteger(ctx, "radius")))))
+                        .then(Commands.literal("ftb-mode")
+                                .executes(ctx -> landFtbModeShow(ctx.getSource()))
+                                .then(Commands.argument("mode", StringArgumentType.word())
+                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                List.of(
+                                                        RealCivFTBChunksBridge.CLAIM_MODE_AUTO,
+                                                        RealCivFTBChunksBridge.CLAIM_MODE_CIVIC,
+                                                        RealCivFTBChunksBridge.CLAIM_MODE_PRIVATE),
+                                                builder))
+                                        .executes(ctx -> landFtbModeSet(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "mode")))))
+                        .then(Commands.literal("gui")
+                                .executes(ctx -> openLandGui(ctx.getSource()))))
                 .then(Commands.literal("hub")
                         .then(Commands.literal("open")
                                 .executes(ctx -> openHubStockMenu(ctx.getSource())))
@@ -1372,6 +1388,117 @@ public final class RealCivCommands {
                         + (selectionLines > 0 ? " Selection boundary lines: " + selectionLines + "." : "")),
                 false);
         return 1;
+    }
+
+    private static int openLandGui(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        openLandGuiForPlayer(player, data);
+        return 1;
+    }
+
+    private static int landFtbModeShow(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId);
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        String storedMode = RealCivFTBChunksBridge.normalizeClaimModeOrAuto(record.ftbClaimModeOverride());
+        String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(mayorOrAdmin, record.ftbClaimModeOverride());
+
+        if (!mayorOrAdmin) {
+            source.sendSuccess(() -> Component.literal(
+                    "FTB map claim mode: PRIVATE (non-mayors always claim PRIVATE plots)."), false);
+            return 1;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "FTB map claim mode for " + civDisplay(data, civId) + ": stored="
+                        + storedMode.toUpperCase(Locale.ROOT)
+                        + ", effective=" + effectiveMode.toUpperCase(Locale.ROOT)
+                        + " (default when AUTO: " + RealCivConfig.ftbMayorDefaultClaimMode().toUpperCase(Locale.ROOT) + ")."),
+                false);
+        source.sendSuccess(() -> Component.literal(
+                "Set with: /realciv land ftb-mode <auto|civic|private>"), false);
+        return 1;
+    }
+
+    private static int landFtbModeSet(CommandSourceStack source, String rawMode)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId);
+        if (!mayorOrAdmin) {
+            source.sendFailure(Component.literal(
+                    "Only mayor/admin can change FTB map claim mode. Non-mayors always claim PRIVATE plots."));
+            return 0;
+        }
+
+        String parsed = parseFtbClaimModeArgument(rawMode);
+        if (parsed == null) {
+            source.sendFailure(Component.literal(
+                    "Invalid mode. Use one of: auto, civic, private."));
+            return 0;
+        }
+
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (RealCivFTBChunksBridge.CLAIM_MODE_AUTO.equals(parsed)) {
+            record.setFtbClaimModeOverride(null);
+        } else {
+            record.setFtbClaimModeOverride(parsed);
+        }
+
+        data.addAuditLog(
+                civId,
+                actorName(source) + " set FTB map claim mode override to " + parsed.toUpperCase(Locale.ROOT),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        String storedMode = RealCivFTBChunksBridge.normalizeClaimModeOrAuto(record.ftbClaimModeOverride());
+        String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(true, record.ftbClaimModeOverride());
+        source.sendSuccess(() -> Component.literal(
+                "FTB map mode updated: stored=" + storedMode.toUpperCase(Locale.ROOT)
+                        + ", effective=" + effectiveMode.toUpperCase(Locale.ROOT) + "."),
+                true);
+        return 1;
+    }
+
+    @Nullable
+    private static String parseFtbClaimModeArgument(String rawMode) {
+        if (rawMode == null) {
+            return null;
+        }
+        String mode = rawMode.trim().toLowerCase(Locale.ROOT);
+        return switch (mode) {
+            case "auto", "default" -> RealCivFTBChunksBridge.CLAIM_MODE_AUTO;
+            case "civic", "town" -> RealCivFTBChunksBridge.CLAIM_MODE_CIVIC;
+            case "private", "plot" -> RealCivFTBChunksBridge.CLAIM_MODE_PRIVATE;
+            default -> null;
+        };
+    }
+
+    public static void openLandGuiForPlayer(ServerPlayer player, CivSavedData data) {
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
+        String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(
+                mayorOrAdmin,
+                data.getOrCreatePlayer(player.getUUID()).ftbClaimModeOverride());
+
+        if (RealCivFTBChunksBridge.tryOpenClaimMap(player)) {
+            player.sendSystemMessage(Component.literal(
+                    "FTB chunk map opened. RealCiv mode: " + effectiveMode.toUpperCase(Locale.ROOT)
+                            + ". Use /realciv land ftb-mode <auto|civic|private> if you're mayor/admin."));
+            return;
+        }
+
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, p) -> new LandClaimMenu(containerId, playerInventory, player, data, civId),
+                Component.literal("Land Claims")));
+        player.sendSystemMessage(Component.literal(
+                "Fallback land claim map opened (FTB Chunks map unavailable)."));
     }
 
     private static int landZoneSelection(

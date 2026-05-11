@@ -1,9 +1,11 @@
 package com.realciv.realciv.config;
 
 import com.realciv.realciv.RealCivMod;
+import com.realciv.realciv.logic.ItemResetRule;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
+import com.realciv.realciv.logic.TagResetRule;
 import com.realciv.realciv.logic.TagRewardRule;
 import java.util.ArrayList;
 import java.util.HashMap;
@@ -83,6 +85,18 @@ public final class RealCivConfig {
                     List.of(0, 40, 120, 260, 480, 760, 1120, 1600, 2200),
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.DoubleValue DEATH_ACTION_REFUND_PERCENT = BUILDER
+            .comment("Percent of all profession action counters refunded on death to avoid deadlocks from lost resources.")
+            .defineInRange("progression.deathActionRefundPercent", 100.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.BooleanValue STALE_ACTION_RESET_ENABLED = BUILDER
+            .comment("When true, profession action counters auto-reset to 0 after prolonged inactivity to prevent deadlocks.")
+            .define("progression.staleActionResetEnabled", true);
+
+    public static final ModConfigSpec.IntValue STALE_ACTION_RESET_MINUTES = BUILDER
+            .comment("Real-time minutes after last profession action update before that profession counter is auto-reset to 0.")
+            .defineInRange("progression.staleActionResetMinutes", 120, 1, 60 * 24 * 30);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> HUB_REWARD_RULES = BUILDER
             .comment("Accepted hub item rewards. Format: item_id|profession|credits|profession_xp|general_xp")
@@ -212,6 +226,31 @@ public final class RealCivConfig {
                             "BLOCK_TAG|minecraft:bamboo_blocks|LUMBERJACK|1.00|2|1"),
                     () -> "",
                     RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> HUB_TAG_RESET_RULES = BUILDER
+            .comment("Tag-backed action reset rules. Format: selector_type|tag_id|profession|actions_per_item")
+            .comment("selector_type: BLOCK_TAG or ITEM_TAG")
+            .defineListAllowEmpty(
+                    "hub.tagResetRules",
+                    List.of(
+                            "ITEM_TAG|realciv:farmer_reset_items|FARMER|1.0",
+                            "ITEM_TAG|realciv:miner_reset_items|MINER|1.0",
+                            "ITEM_TAG|realciv:terraformer_reset_items|TERRAFORMER|1.0",
+                            "ITEM_TAG|realciv:lumberjack_reset_items|LUMBERJACK|1.0",
+                            "ITEM_TAG|realciv:hunter_reset_items|HUNTER|1.0",
+                            "ITEM_TAG|realciv:crafter_reset_items|CRAFTER|1.0"),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.BooleanValue HUB_USE_PROFESSION_RULE_FILES = BUILDER
+            .comment("When true, hub rules are read from per-profession text files under hub.professionRuleDirectory.")
+            .comment("If files are missing, RealCiv will generate starter files from current legacy hub.* rule lists.")
+            .define("hub.useProfessionRuleFiles", true);
+
+    public static final ModConfigSpec.ConfigValue<String> HUB_PROFESSION_RULE_DIRECTORY = BUILDER
+            .comment("Directory under config/ for per-profession hub rule files.")
+            .comment("Default produces files like config/realciv/hub/farmer_rewards.txt and farmer_resets.txt.")
+            .define("hub.professionRuleDirectory", "realciv/hub");
 
     public static final ModConfigSpec.DoubleValue DEFAULT_PERSONAL_WITHDRAW_PERCENT = BUILDER
             .comment("Default percent of a player's own contributed item count they can withdraw from the hub.")
@@ -343,6 +382,10 @@ public final class RealCivConfig {
             .comment("Maximum chunk count that can be zoned/cleared in one land-wand selection action.")
             .defineInRange("land.wandMaxSelectionChunks", 256, 1, 10_000);
 
+    public static final ModConfigSpec.ConfigValue<String> LAND_FTB_MAYOR_DEFAULT_CLAIM_MODE = BUILDER
+            .comment("Default FTB map claim mode when mayor/admin personal mode is AUTO. Valid: civic, private.")
+            .define("land.ftbMayorDefaultClaimMode", "civic");
+
     public static final ModConfigSpec.ConfigValue<String> DEFAULT_CIVILIZATION_ID = BUILDER
             .comment("Civilization id assigned to players that do not currently belong to one.")
             .define("civ.defaultId", "unaligned");
@@ -470,6 +513,18 @@ public final class RealCivConfig {
 
     public static int landWandMaxSelectionChunks() {
         return Math.max(1, LAND_WAND_MAX_SELECTION_CHUNKS.get());
+    }
+
+    public static String ftbMayorDefaultClaimMode() {
+        String raw = LAND_FTB_MAYOR_DEFAULT_CLAIM_MODE.get();
+        if (raw == null) {
+            return "civic";
+        }
+        String mode = raw.trim().toLowerCase(java.util.Locale.ROOT);
+        if ("private".equals(mode)) {
+            return "private";
+        }
+        return "civic";
     }
 
     public static String defaultCivilizationId() {
@@ -655,10 +710,94 @@ public final class RealCivConfig {
         return Math.max(0.0D, Math.min(1.0D, DEFAULT_PERSONAL_WITHDRAW_PERCENT.get() / 100.0D));
     }
 
-    public static Map<ResourceLocation, RewardRule> rewardRules() {
-        Map<ResourceLocation, RewardRule> rules = new HashMap<>();
+    public static double deathActionRefundRatio() {
+        return Math.max(0.0D, Math.min(1.0D, DEATH_ACTION_REFUND_PERCENT.get() / 100.0D));
+    }
 
-        for (String raw : HUB_REWARD_RULES.get()) {
+    public static boolean staleActionResetEnabled() {
+        return STALE_ACTION_RESET_ENABLED.get();
+    }
+
+    public static long staleActionResetMillis() {
+        long minutes = Math.max(1L, STALE_ACTION_RESET_MINUTES.get());
+        return minutes * 60_000L;
+    }
+
+    public static boolean useProfessionRuleFiles() {
+        return HUB_USE_PROFESSION_RULE_FILES.get();
+    }
+
+    public static String hubProfessionRuleDirectory() {
+        String configured = HUB_PROFESSION_RULE_DIRECTORY.get();
+        if (configured == null || configured.isBlank()) {
+            return "realciv/hub";
+        }
+        return configured.trim();
+    }
+
+    public static void invalidateExternalRuleFileCache() {
+        ProfessionRuleFileLoader.invalidateCache();
+    }
+
+    public static Map<ResourceLocation, RewardRule> rewardRules() {
+        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
+        if (external != null) {
+            Map<ResourceLocation, RewardRule> rules = new HashMap<>();
+            for (Map.Entry<ResourceLocation, ProfessionRuleFileLoader.ParsedRewardEntry> entry : external.exactRewardEntries().entrySet()) {
+                ProfessionRuleFileLoader.ParsedRewardEntry parsed = entry.getValue();
+                rules.put(
+                        entry.getKey(),
+                        new RewardRule(
+                                entry.getKey(),
+                                parsed.profession(),
+                                RealCivUtil.creditsToCents(parsed.creditsPerItem()),
+                                parsed.professionXpPerItem(),
+                                parsed.generalXpPerItem()));
+            }
+            return rules;
+        }
+        return parseLegacyRewardRules(HUB_REWARD_RULES.get());
+    }
+
+    public static List<TagRewardRule> tagRewardRules() {
+        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
+        if (external != null) {
+            return external.tagRewardRules();
+        }
+        return parseLegacyTagRewardRules(HUB_TAG_REWARD_RULES.get());
+    }
+
+    public static Map<ResourceLocation, ItemResetRule> itemResetRules() {
+        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
+        if (external != null) {
+            return external.itemResetRules();
+        }
+        return Map.of();
+    }
+
+    public static List<TagResetRule> tagResetRules() {
+        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
+        if (external != null) {
+            return external.tagResetRules();
+        }
+        return parseLegacyTagResetRules(HUB_TAG_RESET_RULES.get());
+    }
+
+    @Nullable
+    private static ProfessionRuleFileLoader.LoadedHubRules externalHubRulesOrNull() {
+        if (!useProfessionRuleFiles()) {
+            return null;
+        }
+        return ProfessionRuleFileLoader.loadFromConfiguredFiles(
+                hubProfessionRuleDirectory(),
+                HUB_REWARD_RULES.get(),
+                HUB_TAG_REWARD_RULES.get(),
+                HUB_TAG_RESET_RULES.get());
+    }
+
+    private static Map<ResourceLocation, RewardRule> parseLegacyRewardRules(List<? extends String> lines) {
+        Map<ResourceLocation, RewardRule> rules = new HashMap<>();
+        for (String raw : lines) {
             if (raw == null) {
                 continue;
             }
@@ -691,29 +830,26 @@ public final class RealCivConfig {
             Double credits = tryParseDouble(parts[2].trim());
             Integer professionXp = tryParseInt(parts[3].trim());
             Integer generalXp = tryParseInt(parts[4].trim());
-
             if (credits == null || professionXp == null || generalXp == null) {
                 RealCivMod.LOGGER.warn("Skipping reward rule with invalid numeric values: {}", line);
                 continue;
             }
 
-            RewardRule rule = new RewardRule(
+            rules.put(
                     itemId,
-                    profession,
-                    RealCivUtil.creditsToCents(Math.max(0.0D, credits)),
-                    Math.max(0, professionXp),
-                    Math.max(0, generalXp));
-
-            rules.put(itemId, rule);
+                    new RewardRule(
+                            itemId,
+                            profession,
+                            RealCivUtil.creditsToCents(Math.max(0.0D, credits)),
+                            Math.max(0, professionXp),
+                            Math.max(0, generalXp)));
         }
-
         return rules;
     }
 
-    public static List<TagRewardRule> tagRewardRules() {
-        java.util.ArrayList<TagRewardRule> rules = new java.util.ArrayList<>();
-
-        for (String raw : HUB_TAG_REWARD_RULES.get()) {
+    private static List<TagRewardRule> parseLegacyTagRewardRules(List<? extends String> lines) {
+        ArrayList<TagRewardRule> rules = new ArrayList<>();
+        for (String raw : lines) {
             if (raw == null) {
                 continue;
             }
@@ -752,7 +888,6 @@ public final class RealCivConfig {
             Double credits = tryParseDouble(parts[3].trim());
             Integer professionXp = tryParseInt(parts[4].trim());
             Integer generalXp = tryParseInt(parts[5].trim());
-
             if (credits == null || professionXp == null || generalXp == null) {
                 RealCivMod.LOGGER.warn("Skipping hub tag reward rule with invalid numeric values: {}", line);
                 continue;
@@ -766,8 +901,60 @@ public final class RealCivConfig {
                     Math.max(0, professionXp),
                     Math.max(0, generalXp)));
         }
+        return List.copyOf(rules);
+    }
 
-        return java.util.List.copyOf(rules);
+    private static List<TagResetRule> parseLegacyTagResetRules(List<? extends String> lines) {
+        ArrayList<TagResetRule> rules = new ArrayList<>();
+        for (String raw : lines) {
+            if (raw == null) {
+                continue;
+            }
+
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|");
+            if (parts.length != 4) {
+                RealCivMod.LOGGER.warn("Skipping invalid hub tag reset rule (expected 4 fields): {}", line);
+                continue;
+            }
+
+            TagRewardRule.SelectorType selectorType = TagRewardRule.SelectorType.fromConfig(parts[0].trim());
+            if (selectorType == null) {
+                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid selector '{}': {}", parts[0], line);
+                continue;
+            }
+
+            ResourceLocation tagId;
+            try {
+                tagId = ResourceLocation.parse(parts[1].trim());
+            } catch (Exception ex) {
+                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid tag id '{}': {}", parts[1], line);
+                continue;
+            }
+
+            Profession profession = Profession.fromConfigName(parts[2].trim());
+            if (profession == null || profession == Profession.NONE) {
+                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid profession '{}': {}", parts[2], line);
+                continue;
+            }
+
+            Double actionsPerItem = tryParseDouble(parts[3].trim());
+            if (actionsPerItem == null) {
+                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid actions_per_item '{}': {}", parts[3], line);
+                continue;
+            }
+
+            rules.add(new TagResetRule(
+                    selectorType,
+                    tagId,
+                    profession,
+                    Math.max(0.0D, actionsPerItem)));
+        }
+        return List.copyOf(rules);
     }
 
     @Nullable

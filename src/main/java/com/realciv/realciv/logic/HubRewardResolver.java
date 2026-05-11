@@ -42,16 +42,23 @@ public final class HubRewardResolver {
     }
 
     public static boolean matchesTagRule(ItemStack stack, TagRewardRule tagRule) {
-        if (tagRule.selectorType() == TagRewardRule.SelectorType.BLOCK_TAG) {
+        return matchesSelector(stack, tagRule.selectorType(), tagRule.tagId());
+    }
+
+    public static boolean matchesSelector(
+            ItemStack stack,
+            TagRewardRule.SelectorType selectorType,
+            ResourceLocation tagId) {
+        if (selectorType == TagRewardRule.SelectorType.BLOCK_TAG) {
             if (!(stack.getItem() instanceof BlockItem blockItem)) {
                 return false;
             }
-            TagKey<Block> blockTag = TagKey.create(Registries.BLOCK, tagRule.tagId());
+            TagKey<Block> blockTag = TagKey.create(Registries.BLOCK, tagId);
             return blockItem.getBlock().defaultBlockState().is(blockTag);
         }
 
-        if (tagRule.selectorType() == TagRewardRule.SelectorType.ITEM_TAG) {
-            TagKey<Item> itemTag = TagKey.create(Registries.ITEM, tagRule.tagId());
+        if (selectorType == TagRewardRule.SelectorType.ITEM_TAG) {
+            TagKey<Item> itemTag = TagKey.create(Registries.ITEM, tagId);
             return stack.is(itemTag);
         }
 

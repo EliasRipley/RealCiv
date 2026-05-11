@@ -1,0 +1,28 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:meat",
+    "#minecraft:fishes",
+    "#minecraft:wool",
+    "minecraft:rotten_flesh",
+    "minecraft:bone",
+    "minecraft:string",
+    "minecraft:gunpowder",
+    "minecraft:spider_eye",
+    "minecraft:ender_pearl",
+    "minecraft:blaze_rod",
+    "minecraft:magma_cream",
+    "minecraft:ghast_tear",
+    "minecraft:slime_ball",
+    "minecraft:prismarine_shard",
+    "minecraft:prismarine_crystals",
+    "minecraft:leather",
+    "minecraft:feather",
+    "minecraft:rabbit_hide",
+    "minecraft:rabbit_foot",
+    "minecraft:phantom_membrane",
+    "minecraft:shulker_shell",
+    "minecraft:wither_skeleton_skull"
+  ]
+}
+
