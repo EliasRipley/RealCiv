@@ -4128,30 +4128,68 @@ public final class RealCivCommands {
     }
 
     private static void grantMayorStarterHub(ServerPlayer player) {
-        int granted = 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.CENSUS_BLOCK_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.TAX_BLOCK_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.PROFESSION_LEDGER_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.WAR_TABLE_ITEM.get(), 1)) ? 1 : 0;
-        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.LAND_WAND.get(), 1)) ? 1 : 0;
-        if (granted > 0) {
+        List<StarterItem> starterItems = List.of(
+                new StarterItem(ModBlocks.COMMUNITY_HUB_ITEM.get(), "Community Hub"),
+                new StarterItem(ModBlocks.CENSUS_BLOCK_ITEM.get(), "Census Block"),
+                new StarterItem(ModBlocks.TAX_BLOCK_ITEM.get(), "Tax Block"),
+                new StarterItem(ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM.get(), "Civic Control Console"),
+                new StarterItem(ModBlocks.PROFESSION_LEDGER_ITEM.get(), "Profession Ledger"),
+                new StarterItem(ModBlocks.WAR_TABLE_ITEM.get(), "War Table"),
+                new StarterItem(ModBlocks.LAND_WAND.get(), "Land Wand"));
+
+        List<String> granted = new ArrayList<>();
+        List<String> dropped = new ArrayList<>();
+        List<String> unavailable = new ArrayList<>();
+
+        for (StarterItem starterItem : starterItems) {
+            if (starterItem.item() == Items.AIR) {
+                unavailable.add(starterItem.label());
+                continue;
+            }
+            if (inventoryHasItem(player, starterItem.item())) {
+                continue;
+            }
+
+            ItemStack stack = new ItemStack(starterItem.item(), 1);
+            ItemStack copy = stack.copy();
+            boolean added = player.getInventory().add(copy);
+            if (!added) {
+                player.drop(copy, false);
+                dropped.add(starterItem.label());
+            } else {
+                granted.add(starterItem.label());
+            }
+        }
+
+        if (!granted.isEmpty() || !dropped.isEmpty()) {
+            StringBuilder msg = new StringBuilder("Mayor starter kit update.");
+            if (!granted.isEmpty()) {
+                msg.append(" Added: ").append(String.join(", ", granted)).append(".");
+            }
+            if (!dropped.isEmpty()) {
+                msg.append(" Dropped near you (inventory full): ").append(String.join(", ", dropped)).append(".");
+            }
+            player.sendSystemMessage(Component.literal(msg.toString()));
+        } else {
+            player.sendSystemMessage(Component.literal("Mayor starter kit unchanged (all civic items already present)."));
+        }
+        if (!unavailable.isEmpty()) {
             player.sendSystemMessage(Component.literal(
-                    "Mayor starter kit granted: Hub, Census, Tax, Civic Control Console, Profession Ledger, War Table, Land Wand."));
+                    "Starter kit warning: unavailable registry entries: " + String.join(", ", unavailable) + "."));
         }
     }
 
-    private static boolean giveStarterIfMissing(ServerPlayer player, ItemStack stack) {
-        if (player.getInventory().contains(stack)) {
-            return false;
+    private static boolean inventoryHasItem(ServerPlayer player, Item item) {
+        for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
+            ItemStack stack = player.getInventory().getItem(slot);
+            if (stack.is(item)) {
+                return true;
+            }
         }
-        ItemStack copy = stack.copy();
-        boolean added = player.getInventory().add(copy);
-        if (!added) {
-            player.drop(copy, false);
-        }
-        return true;
+        return false;
+    }
+
+    private record StarterItem(Item item, String label) {
     }
 
     private static String actorName(CommandSourceStack source) {
