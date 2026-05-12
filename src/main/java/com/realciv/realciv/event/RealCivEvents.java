@@ -151,6 +151,11 @@ public final class RealCivEvents {
                         "Specialization focus: " + focus.name().toLowerCase(java.util.Locale.ROOT) + "."));
             }
         }
+        if (RealCivConfig.warriorRequireHubRegistration() && record.pendingWarriorHubRegistrations() > 0) {
+            player.sendSystemMessage(Component.literal(
+                    "You have " + record.pendingWarriorHubRegistrations()
+                            + " unregistered warrior kill(s). Visit your Community Hub to claim kill XP."));
+        }
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
             if (RealCivConfig.requireFounderApproval()) {
                 player.sendSystemMessage(Component.literal(
@@ -718,6 +723,10 @@ public final class RealCivEvents {
                 return;
             }
 
+            boolean defendingHomeLand = isWarriorHomeDefenseExempt(attackerCiv, target, data);
+            if (defendingHomeLand) {
+                return;
+            }
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
             int warriorLevel = record.levelFor(Profession.WARRIOR);
             int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
@@ -744,6 +753,8 @@ public final class RealCivEvents {
                     attacker,
                     "You can't kill another mob until you've contributed mob loot to the Community Hub. "
                             + "Hunter limit reached (" + limit + ").");
+            event.setCanceled(true);
+            return;
         }
     }
 
@@ -775,21 +786,32 @@ public final class RealCivEvents {
                 return;
             }
 
+            boolean defendingHomeLand = isWarriorHomeDefenseExempt(killerCiv, victim, data);
             CivSavedData.PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
-            int warriorLevel = killerRecord.levelFor(Profession.WARRIOR);
-            int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
-            if (killerRecord.warriorActions() >= limit) {
-                notifyWarriorLimitReached(killer, limit);
-                event.setCanceled(true);
-                if (victim.getHealth() <= 0.0F) {
-                    victim.setHealth(1.0F);
+            if (!defendingHomeLand) {
+                int warriorLevel = killerRecord.levelFor(Profession.WARRIOR);
+                int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
+                if (killerRecord.warriorActions() >= limit) {
+                    notifyWarriorLimitReached(killer, limit);
+                    event.setCanceled(true);
+                    if (victim.getHealth() <= 0.0F) {
+                        victim.setHealth(1.0F);
+                    }
+                    return;
                 }
-                return;
             }
 
-            killerRecord.setWarriorActions(killerRecord.warriorActions() + 1);
-            killerRecord.addWarriorXp(RealCivConfig.warriorXpPerPlayerKill());
-            killerRecord.addGeneralXp(RealCivConfig.warriorGeneralXpPerPlayerKill());
+            if (!defendingHomeLand) {
+                killerRecord.setWarriorActions(killerRecord.warriorActions() + 1);
+            }
+            if (RealCivConfig.warriorRequireHubRegistration()) {
+                killerRecord.addPendingWarriorHubRegistrations(1);
+                killer.sendSystemMessage(Component.literal(
+                        "Warrior kill recorded. Return to your Community Hub to register this kill for Warrior XP."));
+            } else {
+                killerRecord.addWarriorXp(RealCivConfig.warriorXpPerPlayerKill());
+                killerRecord.addGeneralXp(RealCivConfig.warriorGeneralXpPerPlayerKill());
+            }
             data.setDirty();
             return;
         }
@@ -1365,11 +1387,53 @@ public final class RealCivEvents {
                 && data.diplomacyState(attackerCiv, targetCiv) == CivSavedData.DiplomacyState.WAR;
     }
 
+    private static boolean isWarriorHomeDefenseExempt(String defenderCivId, ServerPlayer enemy, CivSavedData data) {
+        if (!RealCivConfig.warriorHomeDefenseNoActionCost()) {
+            return false;
+        }
+        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                enemy.serverLevel().dimension().location().toString(),
+                enemy.getBlockX() >> 4,
+                enemy.getBlockZ() >> 4);
+        return lookup != null && defenderCivId.equals(lookup.civilizationId());
+    }
+
     private static void notifyWarriorLimitReached(ServerPlayer player, int limit) {
         RealCivMessages.deny(
                 player,
                 "Warrior limit reached (" + limit + "). "
                         + "You cannot kill another enemy player until your warrior cap resets.");
+    }
+
+    private static void registerPendingWarriorHubProgress(ServerPlayer player, CivSavedData data, String civId) {
+        if (!RealCivConfig.warriorRequireHubRegistration() || RealCivUtil.isBypass(player)) {
+            return;
+        }
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        int pendingKills = record.pendingWarriorHubRegistrations();
+        if (pendingKills <= 0) {
+            return;
+        }
+
+        int warriorXpGain = safeMultiply(RealCivConfig.warriorXpPerPlayerKill(), pendingKills);
+        int generalXpGain = safeMultiply(RealCivConfig.warriorGeneralXpPerPlayerKill(), pendingKills);
+        if (warriorXpGain > 0) {
+            record.addWarriorXp(warriorXpGain);
+        }
+        if (generalXpGain > 0) {
+            record.addGeneralXp(generalXpGain);
+        }
+        record.clearPendingWarriorHubRegistrations();
+        data.addAuditLog(
+                civId,
+                player.getGameProfile().getName() + " registered " + pendingKills
+                        + " warrior kill(s) at the Community Hub.",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        player.sendSystemMessage(Component.literal(
+                "Community Hub registered " + pendingKills + " warrior kill(s). "
+                        + "+" + warriorXpGain + " Warrior XP, +" + generalXpGain + " General XP."));
     }
 
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
@@ -1409,6 +1473,7 @@ public final class RealCivEvents {
 
     private static void openHubDepositMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
+        registerPendingWarriorHubProgress(player, data, civId);
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         player.openMenu(new SimpleMenuProvider(
@@ -1445,6 +1510,7 @@ public final class RealCivEvents {
 
     private static void openHubStockMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
+        registerPendingWarriorHubProgress(player, data, civId);
         boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player);
 
         player.openMenu(new SimpleMenuProvider(
@@ -2397,20 +2463,12 @@ public final class RealCivEvents {
 
     @Nullable
     private static ServerPlayer getResponsiblePlayer(DamageSource source) {
-        Entity sourceEntity = source.getEntity();
-        if (sourceEntity instanceof ServerPlayer player) {
-            return player;
+        @Nullable ServerPlayer fromSource = resolvePlayerOwner(source.getEntity());
+        if (fromSource != null) {
+            return fromSource;
         }
 
-        Entity directEntity = source.getDirectEntity();
-        if (directEntity instanceof ServerPlayer player) {
-            return player;
-        }
-        if (directEntity instanceof Projectile projectile && projectile.getOwner() instanceof ServerPlayer owner) {
-            return owner;
-        }
-
-        return null;
+        return resolvePlayerOwner(source.getDirectEntity());
     }
 
     private record TerritoryState(

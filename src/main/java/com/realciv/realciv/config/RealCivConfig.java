@@ -170,6 +170,15 @@ public final class RealCivConfig {
             .comment("General XP awarded instantly per enemy player kill that counts toward warrior progression.")
             .defineInRange("progression.warriorGeneralXpPerPlayerKill", 10, 0, 100_000);
 
+    public static final ModConfigSpec.BooleanValue WARRIOR_REQUIRE_HUB_REGISTRATION = BUILDER
+            .comment("When true, warrior kill XP is queued and only awarded when the player returns to the Community Hub.")
+            .define("progression.warriorRequireHubRegistration", false);
+
+    public static final ModConfigSpec.BooleanValue WARRIOR_HOME_DEFENSE_NO_ACTION_COST = BUILDER
+            .comment("When true, kills against enemy players inside your civilization's land do not consume warrior actions.")
+            .comment("This lets defenders repel invaders without being hard-capped by warrior action limits.")
+            .define("combat.warriorHomeDefenseNoActionCost", true);
+
     public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_XP_PER_USE = BUILDER
             .comment("Explosives Expert profession XP awarded instantly per valid explosive action.")
             .defineInRange("progression.explosivesExpertXpPerUse", 120, 0, 100_000);
@@ -633,6 +642,14 @@ public final class RealCivConfig {
 
     public static int warriorGeneralXpPerPlayerKill() {
         return Math.max(0, WARRIOR_GENERAL_XP_PER_PLAYER_KILL.get());
+    }
+
+    public static boolean warriorRequireHubRegistration() {
+        return WARRIOR_REQUIRE_HUB_REGISTRATION.get();
+    }
+
+    public static boolean warriorHomeDefenseNoActionCost() {
+        return WARRIOR_HOME_DEFENSE_NO_ACTION_COST.get();
     }
 
     public static int explosivesExpertXpPerUse() {

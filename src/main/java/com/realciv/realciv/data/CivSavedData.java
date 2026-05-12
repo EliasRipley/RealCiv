@@ -1911,6 +1911,7 @@ public class CivSavedData extends SavedData {
         private int warriorActions;
         private long warriorActionsUpdatedAtMillis;
         private int warriorXp;
+        private int pendingWarriorHubRegistrations;
         private int explosivesExpertActions;
         private long explosivesExpertActionsUpdatedAtMillis;
         private int explosivesExpertXp;
@@ -2137,6 +2138,21 @@ public class CivSavedData extends SavedData {
 
         public int warriorXp() {
             return warriorXp;
+        }
+
+        public int pendingWarriorHubRegistrations() {
+            return Math.max(0, pendingWarriorHubRegistrations);
+        }
+
+        public void addPendingWarriorHubRegistrations(int delta) {
+            if (delta <= 0) {
+                return;
+            }
+            pendingWarriorHubRegistrations = Math.max(0, pendingWarriorHubRegistrations + delta);
+        }
+
+        public void clearPendingWarriorHubRegistrations() {
+            pendingWarriorHubRegistrations = 0;
         }
 
         public void addWarriorXp(int delta) {
@@ -2504,6 +2520,7 @@ public class CivSavedData extends SavedData {
             tag.putInt("warriorActions", warriorActions);
             tag.putLong("warriorActionsUpdatedAtMillis", warriorActionsUpdatedAtMillis);
             tag.putInt("warriorXp", warriorXp);
+            tag.putInt("pendingWarriorHubRegistrations", pendingWarriorHubRegistrations);
             tag.putInt("explosivesExpertActions", explosivesExpertActions);
             tag.putLong("explosivesExpertActionsUpdatedAtMillis", explosivesExpertActionsUpdatedAtMillis);
             tag.putInt("explosivesExpertXp", explosivesExpertXp);
@@ -2577,6 +2594,7 @@ public class CivSavedData extends SavedData {
             record.hunterXp = Math.max(0, tag.getInt("hunterXp"));
             record.warriorActions = Math.max(0, tag.getInt("warriorActions"));
             record.warriorXp = Math.max(0, tag.getInt("warriorXp"));
+            record.pendingWarriorHubRegistrations = Math.max(0, tag.getInt("pendingWarriorHubRegistrations"));
             record.explosivesExpertActions = Math.max(0, tag.getInt("explosivesExpertActions"));
             record.explosivesExpertXp = Math.max(0, tag.getInt("explosivesExpertXp"));
             record.crafterActions = Math.max(0, tag.getInt("crafterActions"));

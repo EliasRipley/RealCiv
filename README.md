@@ -213,8 +213,10 @@ Key areas:
   - `specialization.xpDecayRate`
   - `progression.warriorXpPerPlayerKill`
   - `progression.warriorGeneralXpPerPlayerKill`
+  - `progression.warriorRequireHubRegistration`
   - `progression.explosivesExpertXpPerUse`
   - `progression.explosivesExpertGeneralXpPerUse`
+  - `combat.warriorHomeDefenseNoActionCost`
 - Hub rewards:
   - `hub.useProfessionRuleFiles`
   - `hub.professionRuleDirectory`
