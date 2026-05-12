@@ -201,6 +201,12 @@ public final class RealCivFTBChunksBridge {
         long chunkZ = chunk.getPos().z();
         long now = source.getServer().overworld().getGameTime();
 
+        if (!source.hasPermission(3) && !RealCivConfig.canClaimDimension(dimension)) {
+            return ClaimDecision.denied(
+                    "Land claiming is disabled in dimension '" + dimension + "' by server policy "
+                            + "(" + RealCivConfig.claimDimensionPolicyLabel() + ").");
+        }
+
         boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId, player.getUUID());
         String mode = effectiveClaimModeLabel(
                 mayorOrAdmin,

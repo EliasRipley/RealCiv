@@ -155,6 +155,9 @@ public class LandClaimMenu extends AbstractContainerMenu {
 
     private void claimTownChunk(long chunkX, long chunkZ) {
         String dimension = viewer.serverLevel().dimension().location().toString();
+        if (!isClaimDimensionAllowed(dimension)) {
+            return;
+        }
         long now = viewer.serverLevel().getServer().overworld().getGameTime();
 
         @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
@@ -226,6 +229,9 @@ public class LandClaimMenu extends AbstractContainerMenu {
 
     private void claimOrRenewPrivateChunk(long chunkX, long chunkZ) {
         String dimension = viewer.serverLevel().dimension().location().toString();
+        if (!isClaimDimensionAllowed(dimension)) {
+            return;
+        }
         long now = viewer.serverLevel().getServer().overworld().getGameTime();
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
         int days = Math.max(1, RealCivConfig.LAND_RENT_DAYS.get());
@@ -335,6 +341,20 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         viewer.sendSystemMessage(Component.literal("Private plot unclaimed [" + chunkX + ", " + chunkZ + "]."));
+    }
+
+    private boolean isClaimDimensionAllowed(String dimension) {
+        if (admin) {
+            return true;
+        }
+        if (RealCivConfig.canClaimDimension(dimension)) {
+            return true;
+        }
+        RealCivMessages.deny(
+                viewer,
+                "Land claiming is disabled in dimension '" + dimension + "' by server policy ("
+                        + RealCivConfig.claimDimensionPolicyLabel() + ").");
+        return false;
     }
 
     private void refresh() {

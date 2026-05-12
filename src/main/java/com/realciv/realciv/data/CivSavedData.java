@@ -769,8 +769,8 @@ public class CivSavedData extends SavedData {
         civ.hubStock().merge(itemId.toString(), count, Long::sum);
         record.contributions(civ.id()).merge(itemId.toString(), count, Long::sum);
         long earnedCredits = rewardRule.creditsPerItemCents() * count;
-        record.addSocialCreditCents(civ.id(), earnedCredits);
-        long treasuryShare = Math.round(earnedCredits * RealCivConfig.civTreasuryDepositRatio());
+        long appliedCredits = record.addSocialCreditCents(civ.id(), earnedCredits);
+        long treasuryShare = Math.round(appliedCredits * RealCivConfig.civTreasuryDepositRatio());
         if (treasuryShare > 0L) {
             civ.setTreasuryCents(civ.treasuryCents() + treasuryShare);
         }
@@ -794,7 +794,7 @@ public class CivSavedData extends SavedData {
                 record.setFisherActions(record.fisherActions() - safeRestoredActions);
             }
             case HUNTER -> {
-                record.setHunterActions(record.hunterActions() - safeRestoredActions);
+                record.restoreHunterActions(safeRestoredActions);
             }
             case WARRIOR -> {
                 record.setWarriorActions(record.warriorActions() - safeRestoredActions);
@@ -810,7 +810,7 @@ public class CivSavedData extends SavedData {
         }
         record.addProfessionXp(rewardRule.profession(), professionGain);
 
-        record.generalXp += rewardRule.generalXpPerItem() * itemCount;
+        record.addGeneralXp(rewardRule.generalXpPerItem() * itemCount);
         addAuditLog(
                 civ.id(),
                 actorName + " deposited " + itemCount + "x " + itemId
@@ -2462,6 +2462,7 @@ public class CivSavedData extends SavedData {
     }
 
     public static final class PlayerRecord {
+        private static final long DAY_MILLIS = 86_400_000L;
         private long socialCreditCents;
         private int farmerActions;
         private int minerActions;
@@ -2494,6 +2495,12 @@ public class CivSavedData extends SavedData {
         private int generalXp;
         private long firstSeenAtMillis;
         private final Map<String, HookWindowUsage> hookWindowUsage = new HashMap<>();
+        private final Map<String, Integer> hunterMobActions = new HashMap<>();
+        private long professionProgressDayIndex = -1L;
+        private int generalLevelsGainedToday;
+        private final Map<String, Integer> professionLevelsGainedToday = new HashMap<>();
+        private long contributionGainDayIndex = -1L;
+        private final Map<String, Long> contributionGainTodayCents = new HashMap<>();
         @Nullable
         private Profession focusedProfession;
         private final Map<String, CivAccount> civAccounts = new HashMap<>();
@@ -2569,8 +2576,24 @@ public class CivSavedData extends SavedData {
             account(civId).socialCreditCents = Math.max(0L, cents);
         }
 
-        public void addSocialCreditCents(String civId, long delta) {
-            setSocialCreditCents(civId, socialCreditCents(civId) + delta);
+        public long addSocialCreditCents(String civId, long delta) {
+            if (delta == 0L) {
+                return 0L;
+            }
+            if (delta < 0L) {
+                long before = socialCreditCents(civId);
+                setSocialCreditCents(civId, socialCreditCents(civId) + delta);
+                long after = socialCreditCents(civId);
+                return after - before;
+            }
+            long allowed = clampContributionGainForToday(civId, delta);
+            if (allowed <= 0L) {
+                return 0L;
+            }
+            long before = socialCreditCents(civId);
+            setSocialCreditCents(civId, socialCreditCents(civId) + allowed);
+            long after = socialCreditCents(civId);
+            return after - before;
         }
 
         public int farmerActions() {
@@ -2680,6 +2703,9 @@ public class CivSavedData extends SavedData {
         public void setHunterActions(int value) {
             int updated = Math.max(0, value);
             if (this.hunterActions != updated) {
+                if (updated < this.hunterActions) {
+                    trimHunterMobActions(this.hunterActions - updated);
+                }
                 this.hunterActions = updated;
                 this.hunterActionsUpdatedAtMillis = System.currentTimeMillis();
             }
@@ -2691,6 +2717,62 @@ public class CivSavedData extends SavedData {
 
         public int hunterXp() {
             return hunterXp;
+        }
+
+        public int hunterMobActions(ResourceLocation entityId) {
+            if (entityId == null) {
+                return 0;
+            }
+            return Math.max(0, hunterMobActions.getOrDefault(entityId.toString(), 0));
+        }
+
+        public void addHunterMobActions(ResourceLocation entityId, int delta) {
+            if (entityId == null || delta <= 0) {
+                return;
+            }
+            String key = entityId.toString();
+            int current = Math.max(0, hunterMobActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            hunterMobActions.put(key, (int) next);
+        }
+
+        public void restoreHunterActions(int restoredActions) {
+            int refund = Math.min(Math.max(0, restoredActions), hunterActions);
+            if (refund <= 0) {
+                return;
+            }
+            setHunterActions(hunterActions - refund);
+        }
+
+        private void trimHunterMobActions(int reduction) {
+            if (reduction <= 0 || hunterMobActions.isEmpty()) {
+                return;
+            }
+            // Keep per-mob counters in sync with the generic hunter action pool.
+            int remaining = reduction;
+            List<String> keys = new ArrayList<>(hunterMobActions.keySet());
+            keys.sort(String::compareTo);
+            for (String key : keys) {
+                if (remaining <= 0) {
+                    break;
+                }
+                int used = Math.max(0, hunterMobActions.getOrDefault(key, 0));
+                if (used <= 0) {
+                    hunterMobActions.remove(key);
+                    continue;
+                }
+                int reduce = Math.min(used, remaining);
+                int next = used - reduce;
+                if (next <= 0) {
+                    hunterMobActions.remove(key);
+                } else {
+                    hunterMobActions.put(key, next);
+                }
+                remaining -= reduce;
+            }
         }
 
         public int warriorActions() {
@@ -2908,15 +2990,207 @@ public class CivSavedData extends SavedData {
                     && (focusedProfession == null || focusedProfession != profession)) {
                 return;
             }
-            setProfessionXpValue(profession, professionXpValue(profession) + delta);
-            applyProfessionXpDecay(profession, delta);
+            int startXp = professionXpValue(profession);
+            int startLevel = RealCivConfig.professionLevelFromXp(profession, startXp);
+            int maxLevelCap = RealCivConfig.professionLevelCap(profession);
+            if (startLevel >= maxLevelCap) {
+                return;
+            }
+
+            int cappedTargetXp = capProfessionXpByDailyLevelGain(profession, startXp, delta, startLevel, maxLevelCap);
+            int appliedDelta = Math.max(0, cappedTargetXp - startXp);
+            if (appliedDelta <= 0) {
+                return;
+            }
+
+            setProfessionXpValue(profession, cappedTargetXp);
+            applyProfessionXpDecay(profession, appliedDelta);
+            int endLevel = RealCivConfig.professionLevelFromXp(profession, professionXpValue(profession));
+            recordProfessionLevelGain(profession, Math.max(0, endLevel - startLevel));
         }
 
         public void addGeneralXp(int delta) {
             if (delta <= 0) {
                 return;
             }
-            generalXp = Math.max(0, generalXp + delta);
+            int startXp = generalXp;
+            int startLevel = RealCivConfig.generalLevelFromXp(startXp);
+            int targetXp = capGeneralXpByDailyLevelGain(startXp, delta, startLevel);
+            if (targetXp <= startXp) {
+                return;
+            }
+            generalXp = Math.max(0, targetXp);
+            int endLevel = RealCivConfig.generalLevelFromXp(generalXp);
+            recordGeneralLevelGain(Math.max(0, endLevel - startLevel));
+        }
+
+        private int capProfessionXpByDailyLevelGain(
+                Profession profession,
+                int startXp,
+                int delta,
+                int startLevel,
+                int maxLevelCap) {
+            int targetXp = safeAddPositive(startXp, delta);
+            int absoluteMaxXp = maxXpForProfessionLevel(maxLevelCap);
+            if (targetXp > absoluteMaxXp) {
+                targetXp = absoluteMaxXp;
+            }
+
+            int maxDailyLevels = RealCivConfig.maxProfessionLevelGainsPerDay();
+            if (maxDailyLevels <= 0) {
+                return targetXp;
+            }
+
+            rotateProfessionProgressDay();
+            String key = profession.name();
+            int used = Math.max(0, professionLevelsGainedToday.getOrDefault(key, 0));
+            int remaining = Math.max(0, maxDailyLevels - used);
+            if (remaining <= 0) {
+                return startXp;
+            }
+
+            int allowedLevel = Math.min(maxLevelCap, safeAddPositive(startLevel, remaining));
+            int maxByDailyLimit = maxXpForProfessionLevel(allowedLevel);
+            return Math.min(targetXp, maxByDailyLimit);
+        }
+
+        private int capGeneralXpByDailyLevelGain(int startXp, int delta, int startLevel) {
+            int targetXp = safeAddPositive(startXp, delta);
+            int maxDailyLevels = RealCivConfig.maxGeneralLevelGainsPerDay();
+            if (maxDailyLevels <= 0) {
+                return targetXp;
+            }
+            rotateProfessionProgressDay();
+            int used = Math.max(0, generalLevelsGainedToday);
+            int remaining = Math.max(0, maxDailyLevels - used);
+            if (remaining <= 0) {
+                return startXp;
+            }
+            int allowedLevel = safeAddPositive(startLevel, remaining);
+            int maxByDailyLimit = maxXpForGeneralLevel(allowedLevel);
+            return Math.min(targetXp, maxByDailyLimit);
+        }
+
+        private long clampContributionGainForToday(String civIdRaw, long delta) {
+            if (delta <= 0L) {
+                return 0L;
+            }
+            long dailyCap = RealCivConfig.maxContributionKarmaGainPerDayCents();
+            if (dailyCap <= 0L) {
+                return delta;
+            }
+            rotateContributionGainDay();
+            @Nullable String normalized = CivSavedData.normalizeCivId(civIdRaw);
+            String civId = normalized == null ? RealCivConfig.defaultCivilizationId() : normalized;
+            long used = Math.max(0L, contributionGainTodayCents.getOrDefault(civId, 0L));
+            long remaining = Math.max(0L, dailyCap - used);
+            if (remaining <= 0L) {
+                return 0L;
+            }
+            long allowed = Math.min(delta, remaining);
+            if (allowed <= 0L) {
+                return 0L;
+            }
+            contributionGainTodayCents.put(civId, used + allowed);
+            return allowed;
+        }
+
+        private void recordProfessionLevelGain(Profession profession, int gained) {
+            if (gained <= 0 || profession == null || profession == Profession.NONE) {
+                return;
+            }
+            rotateProfessionProgressDay();
+            String key = profession.name();
+            int used = Math.max(0, professionLevelsGainedToday.getOrDefault(key, 0));
+            professionLevelsGainedToday.put(key, safeAddPositive(used, gained));
+        }
+
+        private void recordGeneralLevelGain(int gained) {
+            if (gained <= 0) {
+                return;
+            }
+            rotateProfessionProgressDay();
+            generalLevelsGainedToday = safeAddPositive(generalLevelsGainedToday, gained);
+        }
+
+        private void rotateProfessionProgressDay() {
+            long nowDay = currentDayIndex();
+            if (professionProgressDayIndex == nowDay) {
+                return;
+            }
+            professionProgressDayIndex = nowDay;
+            generalLevelsGainedToday = 0;
+            professionLevelsGainedToday.clear();
+        }
+
+        private void rotateContributionGainDay() {
+            long nowDay = currentDayIndex();
+            if (contributionGainDayIndex == nowDay) {
+                return;
+            }
+            contributionGainDayIndex = nowDay;
+            contributionGainTodayCents.clear();
+        }
+
+        private int maxXpForProfessionLevel(int level) {
+            if (level < 0) {
+                return 0;
+            }
+            List<? extends Integer> thresholds = RealCivConfig.PROFESSION_XP_THRESHOLDS.get();
+            if (thresholds.isEmpty()) {
+                return Integer.MAX_VALUE;
+            }
+            int nextIndex = safeAddPositive(level, 1);
+            if (nextIndex >= thresholds.size()) {
+                return Integer.MAX_VALUE;
+            }
+            Integer next = thresholds.get(nextIndex);
+            if (next == null) {
+                return Integer.MAX_VALUE;
+            }
+            int nextThreshold = Math.max(0, next);
+            if (nextThreshold <= 0) {
+                return 0;
+            }
+            return nextThreshold - 1;
+        }
+
+        private int maxXpForGeneralLevel(int level) {
+            if (level < 0) {
+                return 0;
+            }
+            List<? extends Integer> thresholds = RealCivConfig.GENERAL_XP_THRESHOLDS.get();
+            if (thresholds.isEmpty()) {
+                return Integer.MAX_VALUE;
+            }
+            int nextIndex = safeAddPositive(level, 1);
+            if (nextIndex >= thresholds.size()) {
+                return Integer.MAX_VALUE;
+            }
+            Integer next = thresholds.get(nextIndex);
+            if (next == null) {
+                return Integer.MAX_VALUE;
+            }
+            int nextThreshold = Math.max(0, next);
+            if (nextThreshold <= 0) {
+                return 0;
+            }
+            return nextThreshold - 1;
+        }
+
+        private static long currentDayIndex() {
+            return Math.floorDiv(System.currentTimeMillis(), DAY_MILLIS);
+        }
+
+        private static int safeAddPositive(int left, int right) {
+            long value = (long) left + (long) right;
+            if (value <= 0L) {
+                return 0;
+            }
+            if (value > Integer.MAX_VALUE) {
+                return Integer.MAX_VALUE;
+            }
+            return (int) value;
         }
 
         private int professionXpValue(Profession profession) {
@@ -3123,6 +3397,40 @@ public class CivSavedData extends SavedData {
             }
             tag.put("hookWindowUsage", hookUsageTag);
 
+            CompoundTag hunterMobTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : hunterMobActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    hunterMobTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("hunterMobActions", hunterMobTag);
+
+            if (professionProgressDayIndex >= 0L) {
+                tag.putLong("professionProgressDayIndex", professionProgressDayIndex);
+            }
+            tag.putInt("generalLevelsGainedToday", Math.max(0, generalLevelsGainedToday));
+            CompoundTag professionGainTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : professionLevelsGainedToday.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    professionGainTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("professionLevelsGainedToday", professionGainTag);
+
+            if (contributionGainDayIndex >= 0L) {
+                tag.putLong("contributionGainDayIndex", contributionGainDayIndex);
+            }
+            CompoundTag contributionGainTag = new CompoundTag();
+            for (Map.Entry<String, Long> entry : contributionGainTodayCents.entrySet()) {
+                long value = Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    contributionGainTag.putLong(entry.getKey(), value);
+                }
+            }
+            tag.put("contributionGainTodayCents", contributionGainTag);
+
             CompoundTag accountsTag = new CompoundTag();
             for (Map.Entry<String, CivAccount> entry : civAccounts.entrySet()) {
                 accountsTag.put(entry.getKey(), entry.getValue().save());
@@ -3235,6 +3543,37 @@ public class CivSavedData extends SavedData {
                 record.hookWindowUsage.put(key, usage);
             }
 
+            CompoundTag hunterMobTag = tag.getCompound("hunterMobActions");
+            for (String key : hunterMobTag.getAllKeys()) {
+                int value = Math.max(0, hunterMobTag.getInt(key));
+                if (value > 0) {
+                    record.hunterMobActions.put(key, value);
+                }
+            }
+
+            record.professionProgressDayIndex = tag.contains("professionProgressDayIndex")
+                    ? tag.getLong("professionProgressDayIndex")
+                    : -1L;
+            record.generalLevelsGainedToday = Math.max(0, tag.getInt("generalLevelsGainedToday"));
+            CompoundTag professionGainTag = tag.getCompound("professionLevelsGainedToday");
+            for (String key : professionGainTag.getAllKeys()) {
+                int value = Math.max(0, professionGainTag.getInt(key));
+                if (value > 0) {
+                    record.professionLevelsGainedToday.put(key, value);
+                }
+            }
+
+            record.contributionGainDayIndex = tag.contains("contributionGainDayIndex")
+                    ? tag.getLong("contributionGainDayIndex")
+                    : -1L;
+            CompoundTag contributionGainTag = tag.getCompound("contributionGainTodayCents");
+            for (String key : contributionGainTag.getAllKeys()) {
+                long value = Math.max(0L, contributionGainTag.getLong(key));
+                if (value > 0L) {
+                    record.contributionGainTodayCents.put(key, value);
+                }
+            }
+
             CompoundTag accountsTag = tag.getCompound("civAccounts");
             for (String civId : accountsTag.getAllKeys()) {
                 record.civAccounts.put(civId, CivAccount.load(accountsTag.getCompound(civId)));
@@ -3261,15 +3600,15 @@ public class CivSavedData extends SavedData {
 
         public int levelFor(Profession profession) {
             return switch (profession) {
-                case FARMER -> RealCivConfig.professionLevelFromXp(farmerXp());
-                case MINER -> RealCivConfig.professionLevelFromXp(minerXp());
-                case TERRAFORMER -> RealCivConfig.professionLevelFromXp(terraformerXp());
-                case LUMBERJACK -> RealCivConfig.professionLevelFromXp(lumberjackXp());
-                case FISHER -> RealCivConfig.professionLevelFromXp(fisherXp());
-                case HUNTER -> RealCivConfig.professionLevelFromXp(hunterXp());
-                case WARRIOR -> RealCivConfig.professionLevelFromXp(warriorXp());
-                case EXPLOSIVES_EXPERT -> RealCivConfig.professionLevelFromXp(explosivesExpertXp());
-                case CRAFTER -> RealCivConfig.professionLevelFromXp(crafterXp());
+                case FARMER -> RealCivConfig.professionLevelFromXp(Profession.FARMER, farmerXp());
+                case MINER -> RealCivConfig.professionLevelFromXp(Profession.MINER, minerXp());
+                case TERRAFORMER -> RealCivConfig.professionLevelFromXp(Profession.TERRAFORMER, terraformerXp());
+                case LUMBERJACK -> RealCivConfig.professionLevelFromXp(Profession.LUMBERJACK, lumberjackXp());
+                case FISHER -> RealCivConfig.professionLevelFromXp(Profession.FISHER, fisherXp());
+                case HUNTER -> RealCivConfig.professionLevelFromXp(Profession.HUNTER, hunterXp());
+                case WARRIOR -> RealCivConfig.professionLevelFromXp(Profession.WARRIOR, warriorXp());
+                case EXPLOSIVES_EXPERT -> RealCivConfig.professionLevelFromXp(Profession.EXPLOSIVES_EXPERT, explosivesExpertXp());
+                case CRAFTER -> RealCivConfig.professionLevelFromXp(Profession.CRAFTER, crafterXp());
                 case NONE -> 0;
             };
         }

@@ -77,6 +77,17 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> HUNTER_MOB_ACTION_CAPS = BUILDER
+            .comment("Optional per-mob Hunter action caps by hunter level.")
+            .comment("Format: entity_id|cap0,cap1,cap2,...")
+            .comment("Cap value <= 0 means no cap for that level. Missing level values reuse the last provided value.")
+            .comment("Example: minecraft:ender_dragon|0,0,0,0,0,0,1")
+            .defineListAllowEmpty(
+                    "profession.hunterMobActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> WARRIOR_LIMITS = BUILDER
             .comment("Warrior player-kill limits by warrior level index (level 0 = first value).")
             .defineListAllowEmpty(
@@ -136,6 +147,23 @@ public final class RealCivConfig {
                     List.of(0, 40, 120, 260, 480, 760, 1120, 1600, 2200),
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_LEVEL_CAPS = BUILDER
+            .comment("Optional max level caps by profession. Format: profession|max_level.")
+            .comment("Example: MINER|120")
+            .defineListAllowEmpty(
+                    "progression.professionLevelCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.IntValue MAX_PROFESSION_LEVEL_GAINS_PER_DAY = BUILDER
+            .comment("Max profession levels a player can gain per real-world day, per profession. 0 disables this cap.")
+            .defineInRange("progression.maxProfessionLevelGainsPerDay", 0, 0, 100_000);
+
+    public static final ModConfigSpec.IntValue MAX_GENERAL_LEVEL_GAINS_PER_DAY = BUILDER
+            .comment("Max general levels a player can gain per real-world day. 0 disables this cap.")
+            .defineInRange("progression.maxGeneralLevelGainsPerDay", 0, 0, 100_000);
 
     public static final ModConfigSpec.DoubleValue DEATH_ACTION_REFUND_PERCENT = BUILDER
             .comment("Percent of all profession action counters refunded on death to avoid deadlocks from lost resources.")
@@ -458,6 +486,11 @@ public final class RealCivConfig {
             .comment("Percent of the item's deposit credit value to deduct from recipient contribution karma on hub withdrawal.")
             .defineInRange("economy.hubWithdrawCreditPenaltyPercent", 100.0D, 0.0D, 1000.0D);
 
+    public static final ModConfigSpec.DoubleValue MAX_CONTRIBUTION_KARMA_GAIN_PER_DAY = BUILDER
+            .comment("Max contribution karma a player can gain per real-world day per civilization.")
+            .comment("Set to 0 to disable this cap.")
+            .defineInRange("economy.maxContributionKarmaGainPerDay", 0.0D, 0.0D, 100_000_000.0D);
+
     public static final ModConfigSpec.DoubleValue LAND_UPKEEP_COST = BUILDER
             .comment("Recurring contribution karma upkeep cost per private plot per upkeep interval.")
             .defineInRange("land.upkeepCost", 20.0D, 0.0D, 1_000_000.0D);
@@ -473,6 +506,21 @@ public final class RealCivConfig {
     public static final ModConfigSpec.BooleanValue LAND_BLOCK_UNCLAIMED_BUILDING = BUILDER
             .comment("When true, breaking is denied in wilderness/unzoned chunks. Placement is always denied there.")
             .define("land.blockUnclaimedBuilding", false);
+
+    public static final ModConfigSpec.ConfigValue<String> LAND_CLAIM_DIMENSION_POLICY = BUILDER
+            .comment("Land-claim policy for dimensions.")
+            .comment("Valid: allow_all, allowlist, denylist")
+            .define("land.claimDimensionPolicy", "denylist");
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LAND_CLAIM_DIMENSIONS = BUILDER
+            .comment("Dimension ids used by land.claimDimensionPolicy.")
+            .comment("With denylist, claims are blocked in listed dimensions.")
+            .comment("With allowlist, claims are only allowed in listed dimensions.")
+            .defineListAllowEmpty(
+                    "land.claimDimensions",
+                    List.of("minecraft:the_end"),
+                    () -> "",
+                    RealCivConfig::isString);
 
     public static final ModConfigSpec.IntValue LAND_WAND_VISUALIZE_RADIUS_CHUNKS = BUILDER
             .comment("How many chunks around the player the land wand will visualize.")
@@ -594,6 +642,43 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(hunterLevel, HUNTER_LIMITS.get(), 1);
     }
 
+    public static int hunterMobActionCapForLevel(ResourceLocation entityId, int hunterLevel) {
+        if (entityId == null) {
+            return 0;
+        }
+        Integer direct = hunterMobActionCapsForLevel(hunterLevel).get(entityId);
+        if (direct == null) {
+            return 0;
+        }
+        return Math.max(0, direct);
+    }
+
+    public static Map<ResourceLocation, Integer> hunterMobActionCapsForLevel(int hunterLevel) {
+        Map<ResourceLocation, Integer> caps = new HashMap<>();
+        for (String raw : HUNTER_MOB_ACTION_CAPS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|", 2);
+            if (parts.length != 2) {
+                continue;
+            }
+            ResourceLocation entityId;
+            try {
+                entityId = ResourceLocation.parse(parts[0].trim());
+            } catch (Exception ex) {
+                continue;
+            }
+            int cap = parseLevelIndexedValue(parts[1], hunterLevel);
+            caps.put(entityId, Math.max(0, cap));
+        }
+        return caps;
+    }
+
     public static int warriorLimitForLevel(int warriorLevel) {
         return RealCivUtil.valueForLevel(warriorLevel, WARRIOR_LIMITS.get(), 1);
     }
@@ -664,8 +749,59 @@ public final class RealCivConfig {
         return RealCivUtil.levelFromThresholds(xp, PROFESSION_XP_THRESHOLDS.get());
     }
 
+    public static int professionLevelFromXp(@Nullable Profession profession, int xp) {
+        int raw = professionLevelFromXp(xp);
+        return Math.min(raw, professionLevelCap(profession));
+    }
+
+    public static int professionLevelCap(@Nullable Profession profession) {
+        if (profession == null || profession == Profession.NONE) {
+            return 0;
+        }
+        Integer configured = professionLevelCaps().get(profession);
+        if (configured == null) {
+            return Integer.MAX_VALUE;
+        }
+        return Math.max(0, configured);
+    }
+
+    public static Map<Profession, Integer> professionLevelCaps() {
+        Map<Profession, Integer> caps = new HashMap<>();
+        for (String raw : PROFESSION_LEVEL_CAPS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|");
+            if (parts.length != 2) {
+                continue;
+            }
+            Profession profession = Profession.fromConfigName(parts[0].trim());
+            if (profession == null || profession == Profession.NONE) {
+                continue;
+            }
+            Integer cap = tryParseInt(parts[1].trim());
+            if (cap == null || cap < 0) {
+                continue;
+            }
+            caps.put(profession, cap);
+        }
+        return caps;
+    }
+
     public static int generalLevelFromXp(int xp) {
         return RealCivUtil.levelFromThresholds(xp, GENERAL_XP_THRESHOLDS.get());
+    }
+
+    public static int maxProfessionLevelGainsPerDay() {
+        return Math.max(0, MAX_PROFESSION_LEVEL_GAINS_PER_DAY.get());
+    }
+
+    public static int maxGeneralLevelGainsPerDay() {
+        return Math.max(0, MAX_GENERAL_LEVEL_GAINS_PER_DAY.get());
     }
 
     public static long rentCostCents() {
@@ -700,6 +836,10 @@ public final class RealCivConfig {
         return Math.max(0.0D, HUB_WITHDRAW_CREDIT_PENALTY_PERCENT.get() / 100.0D);
     }
 
+    public static long maxContributionKarmaGainPerDayCents() {
+        return RealCivUtil.creditsToCents(Math.max(0.0D, MAX_CONTRIBUTION_KARMA_GAIN_PER_DAY.get()));
+    }
+
     public static double civTreasuryDepositRatio() {
         return Math.max(0.0D, Math.min(1.0D, CIV_TREASURY_DEPOSIT_PERCENT.get() / 100.0D));
     }
@@ -714,6 +854,41 @@ public final class RealCivConfig {
 
     public static boolean blockUnclaimedBuilding() {
         return LAND_BLOCK_UNCLAIMED_BUILDING.get();
+    }
+
+    public static boolean canClaimDimension(@Nullable String dimensionIdRaw) {
+        String dimensionId = normalizeDimensionId(dimensionIdRaw);
+        if (dimensionId == null) {
+            return false;
+        }
+        ClaimDimensionPolicy policy = claimDimensionPolicy();
+        if (policy == ClaimDimensionPolicy.ALLOW_ALL) {
+            return true;
+        }
+        Set<String> configured = claimDimensionSet();
+        if (policy == ClaimDimensionPolicy.ALLOWLIST) {
+            return configured.contains(dimensionId);
+        }
+        return !configured.contains(dimensionId);
+    }
+
+    public static String claimDimensionPolicyLabel() {
+        return switch (claimDimensionPolicy()) {
+            case ALLOW_ALL -> "allow_all";
+            case ALLOWLIST -> "allowlist";
+            case DENYLIST -> "denylist";
+        };
+    }
+
+    public static Set<String> claimDimensionSet() {
+        Set<String> out = new HashSet<>();
+        for (String raw : LAND_CLAIM_DIMENSIONS.get()) {
+            String normalized = normalizeDimensionId(raw);
+            if (normalized != null) {
+                out.add(normalized);
+            }
+        }
+        return Set.copyOf(out);
     }
 
     public static int landWandVisualizeRadiusChunks() {
@@ -1463,6 +1638,56 @@ public final class RealCivConfig {
                     Math.max(0.0D, actionsPerItem)));
         }
         return List.copyOf(rules);
+    }
+
+    private static int parseLevelIndexedValue(String rawLevels, int level) {
+        if (rawLevels == null || rawLevels.isBlank()) {
+            return 0;
+        }
+        String[] tokens = rawLevels.split(",");
+        int fallback = 0;
+        for (int index = 0; index < tokens.length; index++) {
+            Integer parsed = tryParseInt(tokens[index].trim());
+            if (parsed == null) {
+                continue;
+            }
+            fallback = Math.max(0, parsed);
+            if (index >= Math.max(0, level)) {
+                return fallback;
+            }
+        }
+        return fallback;
+    }
+
+    private static ClaimDimensionPolicy claimDimensionPolicy() {
+        String raw = LAND_CLAIM_DIMENSION_POLICY.get();
+        if (raw == null) {
+            return ClaimDimensionPolicy.DENYLIST;
+        }
+        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
+            case "allow_all", "all", "allowall" -> ClaimDimensionPolicy.ALLOW_ALL;
+            case "allowlist", "allow_list", "whitelist" -> ClaimDimensionPolicy.ALLOWLIST;
+            case "denylist", "deny_list", "blacklist" -> ClaimDimensionPolicy.DENYLIST;
+            default -> ClaimDimensionPolicy.DENYLIST;
+        };
+    }
+
+    @Nullable
+    private static String normalizeDimensionId(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String normalized = raw.trim().toLowerCase(Locale.ROOT);
+        if (normalized.isEmpty()) {
+            return null;
+        }
+        return normalized;
+    }
+
+    private enum ClaimDimensionPolicy {
+        ALLOW_ALL,
+        ALLOWLIST,
+        DENYLIST
     }
 
     @Nullable

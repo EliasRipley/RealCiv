@@ -748,6 +748,10 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
+        if (isHunterMobCapReached(attacker, record, (Mob) event.getTarget(), hunterLevel)) {
+            event.setCanceled(true);
+            return;
+        }
         if (record.hunterActions() >= limit) {
             RealCivMessages.deny(
                     attacker,
@@ -836,6 +840,13 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(killer.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
+        if (isHunterMobCapReached(killer, record, mob, hunterLevel)) {
+            event.setCanceled(true);
+            if (mob.getHealth() <= 0.0F) {
+                mob.setHealth(1.0F);
+            }
+            return;
+        }
         if (record.hunterActions() >= limit) {
             RealCivMessages.deny(
                     killer,
@@ -849,6 +860,8 @@ public final class RealCivEvents {
         }
 
         record.setHunterActions(record.hunterActions() + 1);
+        ResourceLocation mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+        record.addHunterMobActions(mobId, 1);
         data.setDirty();
     }
 
@@ -1405,6 +1418,27 @@ public final class RealCivEvents {
                         + "You cannot kill another enemy player until your warrior cap resets.");
     }
 
+    private static boolean isHunterMobCapReached(
+            ServerPlayer player,
+            CivSavedData.PlayerRecord record,
+            Mob mob,
+            int hunterLevel) {
+        ResourceLocation mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+        int mobCap = RealCivConfig.hunterMobActionCapForLevel(mobId, hunterLevel);
+        if (mobCap <= 0) {
+            return false;
+        }
+        int used = record.hunterMobActions(mobId);
+        if (used < mobCap) {
+            return false;
+        }
+        RealCivMessages.deny(
+                player,
+                "Hunter cap reached for " + mobId + " (" + used + "/" + mobCap + "). "
+                        + "Contribute mob loot to the Community Hub to reset actions.");
+        return true;
+    }
+
     private static void registerPendingWarriorHubProgress(ServerPlayer player, CivSavedData data, String civId) {
         if (!RealCivConfig.warriorRequireHubRegistration() || RealCivUtil.isBypass(player)) {
             return;
@@ -1651,6 +1685,14 @@ public final class RealCivEvents {
         long minChunkZ = minZ >> 4;
         long maxChunkZ = maxZ >> 4;
         String dimension = level.dimension().location().toString();
+
+        if (!player.hasPermissions(3) && !RealCivConfig.canClaimDimension(dimension)) {
+            RealCivMessages.deny(
+                    player,
+                    "Cannot seed starter town area here. Land claiming is disabled in dimension '" + dimension
+                            + "' by server policy (" + RealCivConfig.claimDimensionPolicyLabel() + ").");
+            return false;
+        }
 
         for (long chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
             for (long chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {

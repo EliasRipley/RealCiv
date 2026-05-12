@@ -1867,6 +1867,9 @@ public final class RealCivCommands {
         }
 
         String dimension = actor.serverLevel().dimension().location().toString();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         long chunkX = actor.chunkPosition().x;
         long chunkZ = actor.chunkPosition().z;
         long now = source.getServer().overworld().getGameTime();
@@ -1977,6 +1980,9 @@ public final class RealCivCommands {
         }
 
         String dimension = actor.serverLevel().dimension().location().toString();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         long chunkX = actor.chunkPosition().x;
         long chunkZ = actor.chunkPosition().z;
         long now = source.getServer().overworld().getGameTime();
@@ -2022,6 +2028,9 @@ public final class RealCivCommands {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         String dimension = player.serverLevel().dimension().location().toString();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         long chunkX = player.chunkPosition().x;
         long chunkZ = player.chunkPosition().z;
         long now = source.getServer().overworld().getGameTime();
@@ -2134,6 +2143,9 @@ public final class RealCivCommands {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         String dimension = player.serverLevel().dimension().location().toString();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         long chunkX = player.chunkPosition().x;
         long chunkZ = player.chunkPosition().z;
         long now = source.getServer().overworld().getGameTime();
@@ -2278,6 +2290,9 @@ public final class RealCivCommands {
         }
 
         String dimension = actor.serverLevel().dimension().location().toString();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         long chunkX = actor.chunkPosition().x;
         long chunkZ = actor.chunkPosition().z;
         long now = source.getServer().overworld().getGameTime();
@@ -2575,6 +2590,9 @@ public final class RealCivCommands {
 
         long now = source.getServer().overworld().getGameTime();
         String dimension = selection.dimension();
+        if (!ensureClaimDimensionAllowed(source, dimension)) {
+            return 0;
+        }
         for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
             for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
                 @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
@@ -3475,19 +3493,25 @@ public final class RealCivCommands {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         long cents = RealCivUtil.creditsToCents(amount);
-        record.addSocialCreditCents(civId, cents);
+        long applied = record.addSocialCreditCents(civId, cents);
         data.addAuditLog(
                 civId,
-                actorName(source) + " added " + RealCivUtil.formatCredits(cents)
+                actorName(source) + " added " + RealCivUtil.formatCredits(applied)
                         + " contribution karma to " + player.getGameProfile().getName(),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
+        String capSuffix = "";
+        if (cents > 0 && applied < cents) {
+            capSuffix = " (daily gain cap applied)";
+        }
+        final String finalCapSuffix = capSuffix;
         source.sendSuccess(() -> Component.literal(
-                "Added " + RealCivUtil.formatCredits(cents)
+                "Added " + RealCivUtil.formatCredits(applied)
                         + " credits to " + player.getGameProfile().getName()
                         + " in " + civDisplay(data, civId)
-                        + ". New balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))),
+                        + ". New balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                        + finalCapSuffix),
                 true);
         return 1;
     }
@@ -3653,6 +3677,19 @@ public final class RealCivCommands {
         long base = RealCivConfig.townClaimCostCents();
         long extra = RealCivConfig.townClaimCostAddedPerOwnedCents() * Math.max(0, civicChunksOwned);
         return Math.max(0L, base + extra);
+    }
+
+    private static boolean ensureClaimDimensionAllowed(CommandSourceStack source, String dimension) {
+        if (source.hasPermission(3)) {
+            return true;
+        }
+        if (RealCivConfig.canClaimDimension(dimension)) {
+            return true;
+        }
+        source.sendFailure(Component.literal(
+                "Land claiming is disabled in dimension '" + dimension + "' by server policy "
+                        + "(" + RealCivConfig.claimDimensionPolicyLabel() + ")."));
+        return false;
     }
 
     private static long nextPrivateClaimCostCents(int privateOwnedByPlayer) {
