@@ -4132,10 +4132,13 @@ public final class RealCivCommands {
         granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.COMMUNITY_HUB_ITEM.get(), 1)) ? 1 : 0;
         granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.CENSUS_BLOCK_ITEM.get(), 1)) ? 1 : 0;
         granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.TAX_BLOCK_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.PROFESSION_LEDGER_ITEM.get(), 1)) ? 1 : 0;
+        granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.WAR_TABLE_ITEM.get(), 1)) ? 1 : 0;
         granted += giveStarterIfMissing(player, new ItemStack(ModBlocks.LAND_WAND.get(), 1)) ? 1 : 0;
         if (granted > 0) {
             player.sendSystemMessage(Component.literal(
-                    "Mayor starter kit granted: Community Hub, Census Block, Tax Block, Land Wand."));
+                    "Mayor starter kit granted: Hub, Census, Tax, Civic Control Console, Profession Ledger, War Table, Land Wand."));
         }
     }
 

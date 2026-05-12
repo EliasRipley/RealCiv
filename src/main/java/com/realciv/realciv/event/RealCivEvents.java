@@ -300,11 +300,18 @@ public final class RealCivEvents {
             return;
         }
 
+        if (clickedState.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())
+                || clickedState.is(ModBlocks.PROFESSION_LEDGER.get())
+                || clickedState.is(ModBlocks.WAR_TABLE.get())) {
+            CivControlPanelEvents.openControlPanel(event, player, data);
+            return;
+        }
+
         if (clickedState.is(ModBlocks.CENSUS_BLOCK.get())) {
             if (player.isShiftKeyDown()) {
-                CivControlPanelEvents.openControlPanel(event, player, data);
-            } else {
                 openCensusPanel(event, player, data);
+            } else {
+                CivControlPanelEvents.openControlPanel(event, player, data);
             }
             return;
         }
@@ -423,13 +430,10 @@ public final class RealCivEvents {
         boolean placingCommunityHub = placedBlock.is(ModBlocks.COMMUNITY_HUB.get());
         boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
 
-        if ((placedBlock.is(ModBlocks.COMMUNITY_HUB.get())
-                || placedBlock.is(ModBlocks.CENSUS_BLOCK.get())
-                || placedBlock.is(ModBlocks.TAX_BLOCK.get()))
-                && !mayorOrAdmin) {
+        if (isCivicControlBlock(placedBlock) && !mayorOrAdmin) {
             RealCivMessages.deny(
                     player,
-                    "Only your civilization mayor (or admins) can place civic control blocks (Hub/Census/Tax).");
+                    "Only your civilization mayor (or admins) can place civic control blocks.");
             event.setCanceled(true);
             return;
         }
@@ -570,11 +574,10 @@ public final class RealCivEvents {
                     return;
                 }
             }
-        } else if ((state.is(ModBlocks.CENSUS_BLOCK.get()) || state.is(ModBlocks.TAX_BLOCK.get()))
-                && !player.hasPermissions(3)) {
+        } else if (isProtectedCivicControlBlock(state) && !player.hasPermissions(3)) {
             String civId = data.getOrAssignCivilization(player.getUUID());
             if (!data.isMayor(civId, player.getUUID())) {
-                RealCivMessages.deny(player, "Civic control blocks (Hub/Census/Tax) are protected.");
+                RealCivMessages.deny(player, "Civic control blocks are protected.");
                 event.setCanceled(true);
                 return;
             }
@@ -1576,7 +1579,9 @@ public final class RealCivEvents {
                 "Census opened for " + civilizationDisplayName(data, civId)
                         + ". Use left/right click actions inside the menu to manage members, requests, and invites."));
         player.sendSystemMessage(Component.literal(
-                "Shift + right-click this Census Block to open the new Civilization Control Panel."));
+                "Right-click this Census Block for the modern Civilization Control Panel."));
+        player.sendSystemMessage(Component.literal(
+                "Shift + right-click opens this legacy Census management grid."));
         if (canManage) {
             player.sendSystemMessage(Component.literal(
                     "Tip: /realciv census invite <player> sends invites, and requests can be approved/denied in the menu."));
@@ -2420,12 +2425,27 @@ public final class RealCivEvents {
         return player.getServer().overworld().getGameTime();
     }
 
+    private static boolean isCivicControlBlock(BlockState state) {
+        return state.is(ModBlocks.COMMUNITY_HUB.get())
+                || state.is(ModBlocks.CENSUS_BLOCK.get())
+                || state.is(ModBlocks.TAX_BLOCK.get())
+                || state.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())
+                || state.is(ModBlocks.PROFESSION_LEDGER.get())
+                || state.is(ModBlocks.WAR_TABLE.get());
+    }
+
+    private static boolean isProtectedCivicControlBlock(BlockState state) {
+        return state.is(ModBlocks.CENSUS_BLOCK.get())
+                || state.is(ModBlocks.TAX_BLOCK.get())
+                || state.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())
+                || state.is(ModBlocks.PROFESSION_LEDGER.get())
+                || state.is(ModBlocks.WAR_TABLE.get());
+    }
+
     private static BreakProfession breakProfessionFor(BlockState state) {
         if (state.isAir()
                 || state.is(BlockTags.CROPS)
-                || state.is(ModBlocks.COMMUNITY_HUB.get())
-                || state.is(ModBlocks.CENSUS_BLOCK.get())
-                || state.is(ModBlocks.TAX_BLOCK.get())) {
+                || isCivicControlBlock(state)) {
             return BreakProfession.NONE;
         }
         if (state.is(BlockTags.LOGS) || state.is(BAMBOO_BLOCKS_TAG)) {

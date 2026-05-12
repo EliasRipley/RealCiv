@@ -1,0 +1,7 @@
+{
+  "variants": {
+    "": {
+      "model": "realciv:block/civic_control_console"
+    }
+  }
+}

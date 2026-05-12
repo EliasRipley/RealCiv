@@ -2,18 +2,13 @@ package com.realciv.realciv.panel;
 
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
-import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
-import java.util.Map;
-import java.util.Set;
 import java.util.UUID;
 import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 public final class CivGovernanceWorkflowService {
     private static final long PROPOSAL_TTL_MILLIS = 30L * 60L * 1000L;
-    private static final Map<String, PendingProposal> PENDING = new HashMap<>();
 
     private CivGovernanceWorkflowService() {
     }
@@ -35,36 +30,35 @@ public final class CivGovernanceWorkflowService {
             return Decision.denied("You are not eligible to propose policy changes under current governance rules.");
         }
 
-        clearExpired(civId);
-        PendingProposal existing = PENDING.get(civId);
+        @Nullable CivSavedData.GovernanceProposalRecord existing = clearExpiredAndGet(data, civId);
         if (existing != null) {
-            if (!existing.action.matches(action)) {
+            if (!existing.matchesAction(action.type(), action.payload(), action.permissionKey())) {
                 return Decision.denied("Another policy proposal is already pending. Resolve it first.");
             }
             existing.voteYes(actor.getUUID());
-            return evaluate(existing);
+            return evaluateAndPersist(data, civId, existing);
         }
 
         int requiredYes = requiredYesVotes(model, data, civId);
-        PendingProposal proposal = new PendingProposal(
-                civId,
-                action,
-                actor.getUUID(),
+        CivSavedData.GovernanceProposalRecord proposal = new CivSavedData.GovernanceProposalRecord(
+                action.type(),
+                action.payload(),
+                action.summary(),
+                action.permissionKey(),
                 model,
+                actor.getUUID(),
                 requiredYes,
                 System.currentTimeMillis() + PROPOSAL_TTL_MILLIS);
         proposal.voteYes(actor.getUUID());
-        PENDING.put(civId, proposal);
-        return evaluate(proposal);
+        return evaluateAndPersist(data, civId, proposal);
     }
 
     public static synchronized Decision vote(ServerPlayer actor, CivSavedData data, String civId, boolean yes) {
-        clearExpired(civId);
-        PendingProposal proposal = PENDING.get(civId);
+        @Nullable CivSavedData.GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
         if (proposal == null) {
             return Decision.denied("No pending policy proposal for your civilization.");
         }
-        if (!isEligibleVoter(proposal.model, data, civId, actor.getUUID())) {
+        if (!isEligibleVoter(proposal.governanceModel(), data, civId, actor.getUUID())) {
             return Decision.denied("You are not eligible to vote on this proposal.");
         }
         if (yes) {
@@ -72,33 +66,58 @@ public final class CivGovernanceWorkflowService {
         } else {
             proposal.voteNo(actor.getUUID());
         }
-        return evaluate(proposal);
+        return evaluateAndPersist(data, civId, proposal);
     }
 
     public static synchronized @Nullable ProposalView proposalView(CivSavedData data, String civId) {
-        clearExpired(civId);
-        PendingProposal proposal = PENDING.get(civId);
+        @Nullable CivSavedData.GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
         if (proposal == null) {
             return null;
         }
-        int eligibleVoters = eligibleVoterCount(proposal.model, data, civId);
+        int eligibleVoters = eligibleVoterCount(proposal.governanceModel(), data, civId);
         return new ProposalView(
-                proposal.action.summary,
-                proposal.model.serializedName(),
-                proposal.requiredYes,
-                proposal.yesVotes.size(),
-                proposal.noVotes.size(),
+                proposal.summary(),
+                proposal.governanceModel().serializedName(),
+                proposal.requiredYesVotes(),
+                proposal.yesVotes().size(),
+                proposal.noVotes().size(),
                 Math.max(0, eligibleVoters),
-                proposal.expiresAtMillis);
+                proposal.expiresAtMillis());
     }
 
-    private static Decision evaluate(PendingProposal proposal) {
-        if (GovernanceMath.quorumReached(proposal.yesVotes.size(), proposal.requiredYes)) {
-            PENDING.remove(proposal.civId);
-            return Decision.approved("Proposal reached quorum and is now applied.", proposal.action);
+    private static @Nullable CivSavedData.GovernanceProposalRecord clearExpiredAndGet(CivSavedData data, String civId) {
+        @Nullable CivSavedData.GovernanceProposalRecord proposal = data.governanceProposal(civId);
+        if (proposal == null) {
+            return null;
         }
+        if (System.currentTimeMillis() > proposal.expiresAtMillis()) {
+            data.clearGovernanceProposal(civId);
+            return null;
+        }
+        return proposal;
+    }
+
+    private static Decision evaluateAndPersist(
+            CivSavedData data,
+            String civId,
+            CivSavedData.GovernanceProposalRecord proposal) {
+        if (GovernanceMath.quorumReached(proposal.yesVotes().size(), proposal.requiredYesVotes())) {
+            data.clearGovernanceProposal(civId);
+            return Decision.approved(
+                    "Proposal reached quorum and is now applied.",
+                    panelActionFromProposal(proposal));
+        }
+        data.setGovernanceProposal(civId, proposal);
         return Decision.proposed(
-                "Proposal pending: " + proposal.yesVotes.size() + "/" + proposal.requiredYes + " yes vote(s).");
+                "Proposal pending: " + proposal.yesVotes().size() + "/" + proposal.requiredYesVotes() + " yes vote(s).");
+    }
+
+    private static PanelAction panelActionFromProposal(CivSavedData.GovernanceProposalRecord proposal) {
+        return new PanelAction(
+                proposal.actionType(),
+                proposal.payload(),
+                proposal.summary(),
+                proposal.permissionKey());
     }
 
     private static boolean isEligibleVoter(
@@ -134,24 +153,11 @@ public final class CivGovernanceWorkflowService {
         return eligible;
     }
 
-    private static void clearExpired(String civId) {
-        PendingProposal proposal = PENDING.get(civId);
-        if (proposal == null) {
-            return;
-        }
-        if (System.currentTimeMillis() > proposal.expiresAtMillis) {
-            PENDING.remove(civId);
-        }
-    }
-
     public record PanelAction(
             String type,
             String payload,
             String summary,
             String permissionKey) {
-        private boolean matches(PanelAction other) {
-            return type.equals(other.type) && payload.equals(other.payload) && permissionKey.equals(other.permissionKey);
-        }
     }
 
     public record Decision(
@@ -190,41 +196,5 @@ public final class CivGovernanceWorkflowService {
             int noVotes,
             int eligibleVoters,
             long expiresAtMillis) {
-    }
-
-    private static final class PendingProposal {
-        private final String civId;
-        private final PanelAction action;
-        private final UUID proposerId;
-        private final CivSavedData.GovernanceModel model;
-        private final int requiredYes;
-        private final long expiresAtMillis;
-        private final Set<UUID> yesVotes = new HashSet<>();
-        private final Set<UUID> noVotes = new HashSet<>();
-
-        private PendingProposal(
-                String civId,
-                PanelAction action,
-                UUID proposerId,
-                CivSavedData.GovernanceModel model,
-                int requiredYes,
-                long expiresAtMillis) {
-            this.civId = civId;
-            this.action = action;
-            this.proposerId = proposerId;
-            this.model = model;
-            this.requiredYes = requiredYes;
-            this.expiresAtMillis = expiresAtMillis;
-        }
-
-        private void voteYes(UUID voter) {
-            noVotes.remove(voter);
-            yesVotes.add(voter);
-        }
-
-        private void voteNo(UUID voter) {
-            yesVotes.remove(voter);
-            noVotes.add(voter);
-        }
     }
 }

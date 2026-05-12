@@ -1,6 +1,11 @@
 {
   "replace": false,
   "values": [
-    "realciv:community_hub"
+    "realciv:community_hub",
+    "realciv:census_block",
+    "realciv:tax_block",
+    "realciv:civic_control_console",
+    "realciv:profession_ledger",
+    "realciv:war_table"
   ]
 }

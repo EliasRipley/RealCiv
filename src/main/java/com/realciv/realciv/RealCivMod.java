@@ -85,6 +85,9 @@ public class RealCivMod {
             event.accept(ModBlocks.COMMUNITY_HUB_ITEM);
             event.accept(ModBlocks.CENSUS_BLOCK_ITEM);
             event.accept(ModBlocks.TAX_BLOCK_ITEM);
+            event.accept(ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM);
+            event.accept(ModBlocks.PROFESSION_LEDGER_ITEM);
+            event.accept(ModBlocks.WAR_TABLE_ITEM);
         }
         if (event.getTabKey() == CreativeModeTabs.TOOLS_AND_UTILITIES) {
             event.accept(ModBlocks.LAND_WAND);

@@ -50,11 +50,17 @@ In-Game Civic Blocks
   - Right-click: deposit UI.
   - Sneak + right-click: stock/withdraw UI.
 - Census Block (`realciv:census_block`)
-  - Opens a census management UI (members, invites, join requests, manager actions).
-  - Sneak + right-click: opens the Civilization Control Panel.
+  - Right-click: opens the Civilization Control Panel (modern policy dashboard).
+  - Sneak + right-click: opens legacy census management UI (members, invites, join requests, manager actions).
     - Includes governance/economy policy buttons (with civ permission checks).
-    - Includes optional governance approval workflow for council/democratic models.
+    - Includes optional governance approval workflow for council/democratic models, persisted across restarts.
     - Includes starter template actions for profession hooks and hunter selector caps.
+- Civic Control Console (`realciv:civic_control_console`)
+  - Right-click: opens the Civilization Control Panel.
+- Profession Ledger (`realciv:profession_ledger`)
+  - Right-click: opens the Civilization Control Panel for profession/economy policy controls.
+- War Table (`realciv:war_table`)
+  - Right-click: opens the Civilization Control Panel for governance/war policy controls.
 - Tax Block (`realciv:tax_block`)
   - Private plot upkeep information and prepay flow.
 - Land Wand (`realciv:land_wand`)
@@ -87,7 +93,7 @@ Civilization setup and membership:
 - `/realciv civ role member list <roleId>`: Lists members assigned to that role.
 - `/realciv civ role member add <roleId> <player>`: Assigns a civ member to a role.
 - `/realciv civ role member remove <roleId> <player>`: Removes a civ member from a role.
-- `/realciv civ found <name>`: Player-led civ creation. Creates the civilization, assigns founder as mayor, and grants mayor starter kit (Hub/Census/Tax/Land Wand). Requires founder approval if enabled.
+- `/realciv civ found <name>`: Player-led civ creation. Creates the civilization, assigns founder as mayor, and grants mayor starter kit (Hub/Census/Tax/Civic Control Console/Profession Ledger/War Table/Land Wand). Requires founder approval if enabled.
 - `/realciv civ join <civ>`: Joins directly if invited; otherwise creates a join request for mayor/manager approval.
 - `/realciv civ leave`: Leaves your current civilization and moves you to default unaligned civ.
 - `/realciv civ create <name>`: Admin scaffolding command. Creates civ record only. Does not auto-assign mayor and does not move players.

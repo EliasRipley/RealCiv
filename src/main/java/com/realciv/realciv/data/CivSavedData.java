@@ -1088,10 +1088,40 @@ public class CivSavedData extends SavedData {
             return false;
         }
         civ.setGovernanceModel(normalized);
+        // Model changes can alter voter eligibility/quorum math, so discard any in-flight proposal safely.
+        civ.setGovernanceProposal(null);
         addAuditLog(
                 civ.id(),
                 actorName + " set governance model to " + normalized.serializedName(),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    @Nullable
+    public GovernanceProposalRecord governanceProposal(String civIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null || civ.governanceProposal() == null) {
+            return null;
+        }
+        return civ.governanceProposal().copy();
+    }
+
+    public void setGovernanceProposal(String civIdRaw, @Nullable GovernanceProposalRecord proposal) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return;
+        }
+        civ.setGovernanceProposal(proposal == null ? null : proposal.copy());
+        setDirty();
+    }
+
+    public boolean clearGovernanceProposal(String civIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null || civ.governanceProposal() == null) {
+            return false;
+        }
+        civ.setGovernanceProposal(null);
         setDirty();
         return true;
     }
@@ -1983,6 +2013,184 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    public static final class GovernanceProposalRecord {
+        private final String actionType;
+        private final String payload;
+        private final String summary;
+        private final String permissionKey;
+        private final GovernanceModel governanceModel;
+        @Nullable
+        private final UUID proposerId;
+        private final int requiredYesVotes;
+        private final long expiresAtMillis;
+        private final Set<UUID> yesVotes = new HashSet<>();
+        private final Set<UUID> noVotes = new HashSet<>();
+
+        public GovernanceProposalRecord(
+                String actionType,
+                String payload,
+                String summary,
+                String permissionKey,
+                GovernanceModel governanceModel,
+                @Nullable UUID proposerId,
+                int requiredYesVotes,
+                long expiresAtMillis) {
+            this.actionType = actionType;
+            this.payload = payload;
+            this.summary = summary;
+            this.permissionKey = permissionKey;
+            this.governanceModel = governanceModel == null ? GovernanceModel.AUTOCRATIC : governanceModel;
+            this.proposerId = proposerId;
+            this.requiredYesVotes = Math.max(1, requiredYesVotes);
+            this.expiresAtMillis = expiresAtMillis;
+        }
+
+        public String actionType() {
+            return actionType;
+        }
+
+        public String payload() {
+            return payload;
+        }
+
+        public String summary() {
+            return summary;
+        }
+
+        public String permissionKey() {
+            return permissionKey;
+        }
+
+        public GovernanceModel governanceModel() {
+            return governanceModel;
+        }
+
+        @Nullable
+        public UUID proposerId() {
+            return proposerId;
+        }
+
+        public int requiredYesVotes() {
+            return requiredYesVotes;
+        }
+
+        public long expiresAtMillis() {
+            return expiresAtMillis;
+        }
+
+        public Set<UUID> yesVotes() {
+            return Collections.unmodifiableSet(yesVotes);
+        }
+
+        public Set<UUID> noVotes() {
+            return Collections.unmodifiableSet(noVotes);
+        }
+
+        public void voteYes(UUID playerId) {
+            noVotes.remove(playerId);
+            yesVotes.add(playerId);
+        }
+
+        public void voteNo(UUID playerId) {
+            yesVotes.remove(playerId);
+            noVotes.add(playerId);
+        }
+
+        public boolean matchesAction(String type, String actionPayload, String permission) {
+            return actionType.equals(type)
+                    && payload.equals(actionPayload)
+                    && permissionKey.equals(permission);
+        }
+
+        public GovernanceProposalRecord copy() {
+            GovernanceProposalRecord copy = new GovernanceProposalRecord(
+                    actionType,
+                    payload,
+                    summary,
+                    permissionKey,
+                    governanceModel,
+                    proposerId,
+                    requiredYesVotes,
+                    expiresAtMillis);
+            copy.yesVotes.addAll(yesVotes);
+            copy.noVotes.addAll(noVotes);
+            return copy;
+        }
+
+        public CompoundTag save() {
+            CompoundTag tag = new CompoundTag();
+            tag.putString("actionType", actionType);
+            tag.putString("payload", payload);
+            tag.putString("summary", summary);
+            tag.putString("permissionKey", permissionKey);
+            tag.putString("governanceModel", governanceModel.serializedName());
+            if (proposerId != null) {
+                tag.putString("proposerId", proposerId.toString());
+            }
+            tag.putInt("requiredYesVotes", Math.max(1, requiredYesVotes));
+            tag.putLong("expiresAtMillis", expiresAtMillis);
+            ListTag yesTags = new ListTag();
+            for (UUID id : yesVotes) {
+                yesTags.add(StringTag.valueOf(id.toString()));
+            }
+            tag.put("yesVotes", yesTags);
+            ListTag noTags = new ListTag();
+            for (UUID id : noVotes) {
+                noTags.add(StringTag.valueOf(id.toString()));
+            }
+            tag.put("noVotes", noTags);
+            return tag;
+        }
+
+        @Nullable
+        public static GovernanceProposalRecord load(CompoundTag tag) {
+            if (!tag.contains("actionType", Tag.TAG_STRING)
+                    || !tag.contains("payload", Tag.TAG_STRING)
+                    || !tag.contains("permissionKey", Tag.TAG_STRING)
+                    || !tag.contains("governanceModel", Tag.TAG_STRING)) {
+                return null;
+            }
+            @Nullable GovernanceModel model = GovernanceModel.fromSerializedName(tag.getString("governanceModel"));
+            if (model == null) {
+                return null;
+            }
+            String summary = tag.contains("summary", Tag.TAG_STRING)
+                    ? tag.getString("summary")
+                    : tag.getString("actionType");
+            @Nullable UUID proposerId = null;
+            if (tag.contains("proposerId", Tag.TAG_STRING)) {
+                try {
+                    proposerId = UUID.fromString(tag.getString("proposerId"));
+                } catch (Exception ignored) {
+                }
+            }
+            GovernanceProposalRecord out = new GovernanceProposalRecord(
+                    tag.getString("actionType"),
+                    tag.getString("payload"),
+                    summary,
+                    tag.getString("permissionKey"),
+                    model,
+                    proposerId,
+                    Math.max(1, tag.getInt("requiredYesVotes")),
+                    tag.getLong("expiresAtMillis"));
+            ListTag yesTags = tag.getList("yesVotes", Tag.TAG_STRING);
+            for (Tag entry : yesTags) {
+                try {
+                    out.yesVotes.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+            ListTag noTags = tag.getList("noVotes", Tag.TAG_STRING);
+            for (Tag entry : noTags) {
+                try {
+                    out.noVotes.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+            return out;
+        }
+    }
+
     public record CivRoleView(
             String roleId,
             String displayName,
@@ -2030,6 +2238,8 @@ public class CivSavedData extends SavedData {
         private GovernanceModel governanceModel = GovernanceModel.AUTOCRATIC;
         private HubDistributionMode hubDistributionMode = HubDistributionMode.CONTRIBUTION_RATIO;
         private final Map<String, Integer> hubDailyAllowances = new HashMap<>();
+        @Nullable
+        private GovernanceProposalRecord governanceProposal;
         private boolean allowIntraCivPvp;
         private boolean starterTownAreaGranted;
 
@@ -2076,6 +2286,15 @@ public class CivSavedData extends SavedData {
 
         public Map<String, Integer> hubDailyAllowances() {
             return hubDailyAllowances;
+        }
+
+        @Nullable
+        public GovernanceProposalRecord governanceProposal() {
+            return governanceProposal;
+        }
+
+        public void setGovernanceProposal(@Nullable GovernanceProposalRecord proposal) {
+            this.governanceProposal = proposal;
         }
 
         public boolean allowIntraCivPvp() {
@@ -2252,6 +2471,9 @@ public class CivSavedData extends SavedData {
                 }
             }
             tag.put("hubDailyAllowances", dailyAllowanceTag);
+            if (governanceProposal != null) {
+                tag.put("governanceProposal", governanceProposal.save());
+            }
 
             ListTag roleTags = new ListTag();
             for (RoleRecord role : customRoles.values()) {
@@ -2369,6 +2591,12 @@ public class CivSavedData extends SavedData {
                 int value = Math.max(0, dailyAllowanceTag.getInt(key));
                 if (value > 0) {
                     record.hubDailyAllowances.put(key, value);
+                }
+            }
+            if (tag.contains("governanceProposal", Tag.TAG_COMPOUND)) {
+                @Nullable GovernanceProposalRecord proposal = GovernanceProposalRecord.load(tag.getCompound("governanceProposal"));
+                if (proposal != null) {
+                    record.governanceProposal = proposal;
                 }
             }
             ListTag roleTags = tag.getList("customRoles", Tag.TAG_COMPOUND);
