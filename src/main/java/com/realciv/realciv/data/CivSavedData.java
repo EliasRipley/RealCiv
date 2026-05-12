@@ -6,11 +6,13 @@ import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RewardRule;
 import java.time.Instant;
 import java.util.ArrayList;
+import java.util.Collections;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
@@ -28,6 +30,53 @@ import org.jetbrains.annotations.Nullable;
 
 public class CivSavedData extends SavedData {
     private static final String DATA_NAME = "realciv_data";
+    private static final String DEFAULT_LEADER_TITLE = "Mayor";
+    private static final int MAX_ROLE_ID_LENGTH = 48;
+    private static final int MAX_ROLE_DISPLAY_NAME_LENGTH = 40;
+    private static final int MAX_PERMISSION_KEY_LENGTH = 64;
+    private static final int MAX_LEADER_TITLE_LENGTH = 32;
+
+    // Shared permission keys that role assignments can grant to non-mayor civ staff.
+    public static final String ROLE_PERMISSION_MANAGE_DIPLOMACY = "manage_diplomacy";
+    public static final String ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE = "manage_friendly_fire";
+    public static final String ROLE_PERMISSION_MANAGE_PROFESSION_FOCUS = "manage_profession_focus";
+    public static final String ROLE_PERMISSION_MANAGE_EXPLOSIVES = "manage_explosives";
+    public static final String ROLE_PERMISSION_MANAGE_REDSTONERS = "manage_redstoners";
+    public static final String ROLE_PERMISSION_MANAGE_TOWN_CLAIMS = "manage_town_claims";
+    public static final String ROLE_PERMISSION_MANAGE_LAND_ZONING = "manage_land_zoning";
+    public static final String ROLE_PERMISSION_MANAGE_LAND_MANAGERS = "manage_land_managers";
+    public static final String ROLE_PERMISSION_MANAGE_FTB_MODE = "manage_ftb_mode";
+    public static final String ROLE_PERMISSION_MANAGE_CENSUS = "manage_census";
+    public static final String ROLE_PERMISSION_POLICE_MEMBERS = "police_members";
+    public static final String ROLE_PERMISSION_MANAGE_CENSUS_ROLES = "manage_census_roles";
+    public static final String ROLE_PERMISSION_MANAGE_LEADERSHIP = "manage_leadership";
+    public static final String ROLE_PERMISSION_MANAGE_WITHDRAW_RATES = "manage_withdraw_rates";
+    public static final String ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS = "manage_hub_withdrawals";
+    public static final String ROLE_PERMISSION_VIEW_HUB_LOGS = "view_hub_logs";
+    public static final String ROLE_PERMISSION_VIEW_HUB_QUOTAS = "view_hub_quotas";
+    public static final String ROLE_PERMISSION_MANAGE_UPKEEP = "manage_upkeep";
+    public static final String ROLE_PERMISSION_MANAGE_GOVERNANCE = "manage_governance";
+
+    private static final List<String> KNOWN_ROLE_PERMISSIONS = List.of(
+            ROLE_PERMISSION_MANAGE_DIPLOMACY,
+            ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE,
+            ROLE_PERMISSION_MANAGE_PROFESSION_FOCUS,
+            ROLE_PERMISSION_MANAGE_EXPLOSIVES,
+            ROLE_PERMISSION_MANAGE_REDSTONERS,
+            ROLE_PERMISSION_MANAGE_TOWN_CLAIMS,
+            ROLE_PERMISSION_MANAGE_LAND_ZONING,
+            ROLE_PERMISSION_MANAGE_LAND_MANAGERS,
+            ROLE_PERMISSION_MANAGE_FTB_MODE,
+            ROLE_PERMISSION_MANAGE_CENSUS,
+            ROLE_PERMISSION_POLICE_MEMBERS,
+            ROLE_PERMISSION_MANAGE_CENSUS_ROLES,
+            ROLE_PERMISSION_MANAGE_LEADERSHIP,
+            ROLE_PERMISSION_MANAGE_WITHDRAW_RATES,
+            ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS,
+            ROLE_PERMISSION_VIEW_HUB_LOGS,
+            ROLE_PERMISSION_VIEW_HUB_QUOTAS,
+            ROLE_PERMISSION_MANAGE_UPKEEP,
+            ROLE_PERMISSION_MANAGE_GOVERNANCE);
 
     private final Map<UUID, PlayerRecord> players = new HashMap<>();
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
@@ -205,6 +254,100 @@ public class CivSavedData extends SavedData {
         }
         String id = raw.trim().toLowerCase(java.util.Locale.ROOT);
         return id.isEmpty() ? null : id;
+    }
+
+    @Nullable
+    private static String normalizeRoleId(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String input = raw.trim().toLowerCase(Locale.ROOT);
+        if (input.isEmpty()) {
+            return null;
+        }
+        StringBuilder out = new StringBuilder();
+        boolean previousSeparator = false;
+        for (int i = 0; i < input.length() && out.length() < MAX_ROLE_ID_LENGTH; i++) {
+            char ch = input.charAt(i);
+            boolean alphaNum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+            boolean separator = ch == '_' || ch == '-' || ch == '.';
+            if (alphaNum) {
+                out.append(ch);
+                previousSeparator = false;
+                continue;
+            }
+            if (Character.isWhitespace(ch) || separator) {
+                if (!previousSeparator && out.length() > 0) {
+                    out.append('_');
+                    previousSeparator = true;
+                }
+            }
+        }
+        while (out.length() > 0 && out.charAt(out.length() - 1) == '_') {
+            out.deleteCharAt(out.length() - 1);
+        }
+        return out.isEmpty() ? null : out.toString();
+    }
+
+    private static String sanitizeRoleDisplayName(@Nullable String raw) {
+        if (raw == null) {
+            return "Role";
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return "Role";
+        }
+        if (trimmed.length() > MAX_ROLE_DISPLAY_NAME_LENGTH) {
+            return trimmed.substring(0, MAX_ROLE_DISPLAY_NAME_LENGTH);
+        }
+        return trimmed;
+    }
+
+    @Nullable
+    private static String normalizePermissionKey(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String input = raw.trim().toLowerCase(Locale.ROOT);
+        if (input.isEmpty()) {
+            return null;
+        }
+        StringBuilder out = new StringBuilder();
+        boolean previousSeparator = false;
+        for (int i = 0; i < input.length() && out.length() < MAX_PERMISSION_KEY_LENGTH; i++) {
+            char ch = input.charAt(i);
+            boolean alphaNum = (ch >= 'a' && ch <= 'z') || (ch >= '0' && ch <= '9');
+            boolean separator = ch == '_' || ch == '-' || ch == '.';
+            if (alphaNum) {
+                out.append(ch);
+                previousSeparator = false;
+                continue;
+            }
+            if (Character.isWhitespace(ch) || separator) {
+                if (!previousSeparator && out.length() > 0) {
+                    out.append('_');
+                    previousSeparator = true;
+                }
+            }
+        }
+        while (out.length() > 0 && out.charAt(out.length() - 1) == '_') {
+            out.deleteCharAt(out.length() - 1);
+        }
+        return out.isEmpty() ? null : out.toString();
+    }
+
+    private static String sanitizeLeaderTitle(@Nullable String raw) {
+        if (raw == null) {
+            return DEFAULT_LEADER_TITLE;
+        }
+        String trimmed = raw.trim();
+        if (trimmed.isEmpty()) {
+            return DEFAULT_LEADER_TITLE;
+        }
+        if (trimmed.length() > MAX_LEADER_TITLE_LENGTH) {
+            return trimmed.substring(0, MAX_LEADER_TITLE_LENGTH);
+        }
+        return trimmed;
     }
 
     @Nullable
@@ -531,6 +674,7 @@ public class CivSavedData extends SavedData {
             each.civicManagers().remove(playerId);
             each.explosivesExperts().remove(playerId);
             each.redstoners().remove(playerId);
+            removePlayerFromAllCustomRoles(each, playerId);
             if (each.mayorId() != null && each.mayorId().equals(playerId) && !each.id().equals(civ.id())) {
                 each.setMayorId(null);
                 addAuditLog(each.id(), actorName + " cleared mayor assignment for migrating player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
@@ -892,6 +1036,268 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    public static List<String> knownRolePermissions() {
+        return KNOWN_ROLE_PERMISSIONS;
+    }
+
+    @Nullable
+    public static String canonicalRoleId(@Nullable String raw) {
+        return normalizeRoleId(raw);
+    }
+
+    @Nullable
+    public static String canonicalRolePermission(@Nullable String raw) {
+        return normalizePermissionKey(raw);
+    }
+
+    public String leaderTitle(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).leaderTitle();
+    }
+
+    public boolean setLeaderTitle(String civIdRaw, String titleRaw, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        String newTitle = sanitizeLeaderTitle(titleRaw);
+        if (civ.leaderTitle().equals(newTitle)) {
+            return false;
+        }
+        civ.setLeaderTitle(newTitle);
+        addAuditLog(
+                civ.id(),
+                actorName + " set leadership title to '" + newTitle + "'",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public GovernanceModel governanceModel(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).governanceModel();
+    }
+
+    public boolean setGovernanceModel(String civIdRaw, GovernanceModel model, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        GovernanceModel normalized = model == null ? GovernanceModel.AUTOCRATIC : model;
+        if (civ.governanceModel() == normalized) {
+            return false;
+        }
+        civ.setGovernanceModel(normalized);
+        addAuditLog(
+                civ.id(),
+                actorName + " set governance model to " + normalized.serializedName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public List<CivRoleView> customRolesSorted(String civIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return List.of();
+        }
+        List<CivRoleView> out = new ArrayList<>();
+        for (CivilizationRecord.RoleRecord role : civ.customRoles().values()) {
+            List<UUID> members = role.members().stream()
+                    .sorted(Comparator.comparing(UUID::toString))
+                    .toList();
+            List<String> sortedPermissions = role.permissions().stream().sorted().toList();
+            out.add(new CivRoleView(
+                    role.roleId(),
+                    role.displayName(),
+                    Collections.unmodifiableSet(new java.util.LinkedHashSet<>(sortedPermissions)),
+                    members));
+        }
+        out.sort(Comparator.comparing(CivRoleView::roleId));
+        return out;
+    }
+
+    public boolean customRoleExists(String civIdRaw, String roleIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        if (roleId == null) {
+            return false;
+        }
+        return civ.customRoles().containsKey(roleId);
+    }
+
+    public boolean createCustomRole(
+            String civIdRaw,
+            String roleIdRaw,
+            @Nullable String displayNameRaw,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        if (roleId == null || civ.customRoles().containsKey(roleId)) {
+            return false;
+        }
+        String displayName = sanitizeRoleDisplayName(displayNameRaw == null || displayNameRaw.isBlank()
+                ? roleId
+                : displayNameRaw);
+        civ.customRoles().put(roleId, new CivilizationRecord.RoleRecord(roleId, displayName));
+        addAuditLog(
+                civ.id(),
+                actorName + " created civ role '" + displayName + "' [" + roleId + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean renameCustomRole(String civIdRaw, String roleIdRaw, String displayNameRaw, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        if (roleId == null) {
+            return false;
+        }
+        CivilizationRecord.RoleRecord role = civ.customRoles().get(roleId);
+        if (role == null) {
+            return false;
+        }
+        String displayName = sanitizeRoleDisplayName(displayNameRaw);
+        if (role.displayName().equals(displayName)) {
+            return false;
+        }
+        role.setDisplayName(displayName);
+        addAuditLog(
+                civ.id(),
+                actorName + " renamed civ role [" + roleId + "] to '" + displayName + "'",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean deleteCustomRole(String civIdRaw, String roleIdRaw, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        if (roleId == null) {
+            return false;
+        }
+        CivilizationRecord.RoleRecord removed = civ.customRoles().remove(roleId);
+        if (removed == null) {
+            return false;
+        }
+        addAuditLog(
+                civ.id(),
+                actorName + " deleted civ role '" + removed.displayName() + "' [" + roleId + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean setCustomRolePermission(
+            String civIdRaw,
+            String roleIdRaw,
+            String permissionRaw,
+            boolean allowed,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        @Nullable String permission = normalizePermissionKey(permissionRaw);
+        if (roleId == null || permission == null) {
+            return false;
+        }
+        CivilizationRecord.RoleRecord role = civ.customRoles().get(roleId);
+        if (role == null) {
+            return false;
+        }
+        boolean changed;
+        if (allowed) {
+            changed = role.permissions().add(permission);
+        } else {
+            changed = role.permissions().remove(permission);
+        }
+        if (!changed) {
+            return false;
+        }
+        addAuditLog(
+                civ.id(),
+                actorName + (allowed ? " granted " : " revoked ")
+                        + "permission '" + permission + "' for role '" + role.displayName() + "' [" + roleId + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean setCustomRoleMember(
+            String civIdRaw,
+            String roleIdRaw,
+            UUID playerId,
+            boolean allowed,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String roleId = normalizeRoleId(roleIdRaw);
+        if (roleId == null) {
+            return false;
+        }
+        CivilizationRecord.RoleRecord role = civ.customRoles().get(roleId);
+        if (role == null) {
+            return false;
+        }
+        @Nullable String memberCiv = normalizeCivId(playerCivilization.get(playerId));
+        if (allowed && (memberCiv == null || !memberCiv.equals(civ.id()))) {
+            return false;
+        }
+        boolean changed;
+        if (allowed) {
+            changed = role.members().add(playerId);
+        } else {
+            changed = role.members().remove(playerId);
+        }
+        if (!changed) {
+            return false;
+        }
+        addAuditLog(
+                civ.id(),
+                actorName + (allowed ? " assigned " : " removed ")
+                        + "player " + playerId + (allowed ? " to " : " from ")
+                        + "role '" + role.displayName() + "' [" + roleId + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public boolean hasCustomRolePermission(String civIdRaw, UUID playerId, String permissionRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        @Nullable String permission = normalizePermissionKey(permissionRaw);
+        if (permission == null) {
+            return false;
+        }
+        @Nullable String memberCiv = normalizeCivId(playerCivilization.get(playerId));
+        if (memberCiv == null || !memberCiv.equals(civ.id())) {
+            return false;
+        }
+        for (CivilizationRecord.RoleRecord role : civ.customRoles().values()) {
+            if (role.members().contains(playerId) && role.permissions().contains(permission)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public boolean hasJoinRequest(String civIdRaw, UUID playerId) {
         return getOrCreateCivilization(civIdRaw).joinRequests().contains(playerId);
     }
@@ -1076,6 +1482,12 @@ public class CivSavedData extends SavedData {
         return removed;
     }
 
+    private static void removePlayerFromAllCustomRoles(CivilizationRecord civ, UUID playerId) {
+        for (CivilizationRecord.RoleRecord role : civ.customRoles().values()) {
+            role.members().remove(playerId);
+        }
+    }
+
     public boolean removeMemberToDefault(String civIdRaw, UUID playerId, String actorName) {
         String civId = normalizeCivId(civIdRaw);
         if (civId == null) {
@@ -1091,6 +1503,7 @@ public class CivSavedData extends SavedData {
         civ.civicManagers().remove(playerId);
         civ.explosivesExperts().remove(playerId);
         civ.redstoners().remove(playerId);
+        removePlayerFromAllCustomRoles(civ, playerId);
         civ.joinRequests().remove(playerId);
         civ.invitedPlayers().remove(playerId);
         if (civ.mayorId() != null && civ.mayorId().equals(playerId)) {
@@ -1437,6 +1850,36 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    public enum GovernanceModel {
+        AUTOCRATIC,
+        COUNCIL,
+        DEMOCRATIC;
+
+        @Nullable
+        public static GovernanceModel fromSerializedName(@Nullable String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+                case "AUTOCRATIC", "AUTOCRACY", "AUTO" -> AUTOCRATIC;
+                case "COUNCIL", "OLIGARCHY" -> COUNCIL;
+                case "DEMOCRATIC", "DEMOCRACY", "DEMO" -> DEMOCRATIC;
+                default -> null;
+            };
+        }
+
+        public String serializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    public record CivRoleView(
+            String roleId,
+            String displayName,
+            Set<String> permissions,
+            List<UUID> members) {
+    }
+
     public record DiplomacyView(String otherCivilizationId, DiplomacyState state) {
     }
 
@@ -1465,6 +1908,7 @@ public class CivSavedData extends SavedData {
         private final Set<UUID> redstoners = new HashSet<>();
         private final Set<UUID> joinRequests = new HashSet<>();
         private final Set<UUID> invitedPlayers = new HashSet<>();
+        private final Map<String, RoleRecord> customRoles = new HashMap<>();
         @Nullable
         private UUID mayorId;
         @Nullable
@@ -1472,6 +1916,8 @@ public class CivSavedData extends SavedData {
         private int hubX;
         private int hubY;
         private int hubZ;
+        private String leaderTitle = DEFAULT_LEADER_TITLE;
+        private GovernanceModel governanceModel = GovernanceModel.AUTOCRATIC;
         private boolean allowIntraCivPvp;
         private boolean starterTownAreaGranted;
 
@@ -1490,6 +1936,22 @@ public class CivSavedData extends SavedData {
 
         public void setDisplayName(String displayName) {
             this.displayName = displayName;
+        }
+
+        public String leaderTitle() {
+            return leaderTitle;
+        }
+
+        public void setLeaderTitle(String title) {
+            this.leaderTitle = sanitizeLeaderTitle(title);
+        }
+
+        public GovernanceModel governanceModel() {
+            return governanceModel;
+        }
+
+        public void setGovernanceModel(GovernanceModel governanceModel) {
+            this.governanceModel = governanceModel == null ? GovernanceModel.AUTOCRATIC : governanceModel;
         }
 
         public boolean allowIntraCivPvp() {
@@ -1538,6 +2000,10 @@ public class CivSavedData extends SavedData {
 
         public Set<UUID> invitedPlayers() {
             return invitedPlayers;
+        }
+
+        public Map<String, RoleRecord> customRoles() {
+            return customRoles;
         }
 
         @Nullable
@@ -1651,6 +2117,14 @@ public class CivSavedData extends SavedData {
                 tag.putInt("hubY", hubY);
                 tag.putInt("hubZ", hubZ);
             }
+            tag.putString("leaderTitle", sanitizeLeaderTitle(leaderTitle));
+            tag.putString("governanceModel", governanceModel.serializedName());
+
+            ListTag roleTags = new ListTag();
+            for (RoleRecord role : customRoles.values()) {
+                roleTags.add(role.save());
+            }
+            tag.put("customRoles", roleTags);
             tag.putBoolean("allowIntraCivPvp", allowIntraCivPvp);
             tag.putBoolean("starterTownAreaGranted", starterTownAreaGranted);
             return tag;
@@ -1742,6 +2216,26 @@ public class CivSavedData extends SavedData {
                 record.hubY = tag.getInt("hubY");
                 record.hubZ = tag.getInt("hubZ");
             }
+            if (tag.contains("leaderTitle")) {
+                record.leaderTitle = sanitizeLeaderTitle(tag.getString("leaderTitle"));
+            }
+            if (tag.contains("governanceModel")) {
+                @Nullable GovernanceModel parsed = GovernanceModel.fromSerializedName(tag.getString("governanceModel"));
+                if (parsed != null) {
+                    record.governanceModel = parsed;
+                }
+            }
+            ListTag roleTags = tag.getList("customRoles", Tag.TAG_COMPOUND);
+            for (Tag entry : roleTags) {
+                if (!(entry instanceof CompoundTag roleTag)) {
+                    continue;
+                }
+                @Nullable RoleRecord role = RoleRecord.load(roleTag);
+                if (role == null) {
+                    continue;
+                }
+                record.customRoles.put(role.roleId(), role);
+            }
             record.allowIntraCivPvp = tag.getBoolean("allowIntraCivPvp");
             if (tag.contains("starterTownAreaGranted")) {
                 record.starterTownAreaGranted = tag.getBoolean("starterTownAreaGranted");
@@ -1754,6 +2248,85 @@ public class CivSavedData extends SavedData {
                 }
             }
             return record;
+        }
+
+        private static final class RoleRecord {
+            private final String roleId;
+            private String displayName;
+            private final Set<String> permissions = new HashSet<>();
+            private final Set<UUID> members = new HashSet<>();
+
+            private RoleRecord(String roleId, String displayName) {
+                this.roleId = roleId;
+                this.displayName = displayName;
+            }
+
+            private String roleId() {
+                return roleId;
+            }
+
+            private String displayName() {
+                return displayName;
+            }
+
+            private void setDisplayName(String displayName) {
+                this.displayName = displayName;
+            }
+
+            private Set<String> permissions() {
+                return permissions;
+            }
+
+            private Set<UUID> members() {
+                return members;
+            }
+
+            private CompoundTag save() {
+                CompoundTag tag = new CompoundTag();
+                tag.putString("roleId", roleId);
+                tag.putString("displayName", displayName);
+                ListTag permissionTags = new ListTag();
+                for (String permission : permissions) {
+                    permissionTags.add(StringTag.valueOf(permission));
+                }
+                tag.put("permissions", permissionTags);
+                ListTag memberTags = new ListTag();
+                for (UUID memberId : members) {
+                    memberTags.add(StringTag.valueOf(memberId.toString()));
+                }
+                tag.put("members", memberTags);
+                return tag;
+            }
+
+            @Nullable
+            private static RoleRecord load(CompoundTag tag) {
+                @Nullable String roleId = normalizeRoleId(tag.getString("roleId"));
+                if (roleId == null) {
+                    return null;
+                }
+                String displayName = sanitizeRoleDisplayName(tag.contains("displayName")
+                        ? tag.getString("displayName")
+                        : roleId);
+                RoleRecord record = new RoleRecord(roleId, displayName);
+
+                ListTag permissionTags = tag.getList("permissions", Tag.TAG_STRING);
+                for (Tag permissionTag : permissionTags) {
+                    @Nullable String permission = normalizePermissionKey(permissionTag.getAsString());
+                    if (permission != null) {
+                        record.permissions.add(permission);
+                    }
+                }
+
+                ListTag memberTags = tag.getList("members", Tag.TAG_STRING);
+                for (Tag memberTag : memberTags) {
+                    try {
+                        record.members.add(UUID.fromString(memberTag.getAsString()));
+                    } catch (Exception ignored) {
+                    }
+                }
+
+                return record;
+            }
         }
     }
 

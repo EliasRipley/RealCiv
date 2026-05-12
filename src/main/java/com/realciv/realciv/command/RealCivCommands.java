@@ -118,6 +118,140 @@ public final class RealCivCommands {
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("list")
                                 .executes(ctx -> civList(ctx.getSource())))
+                        .then(Commands.literal("title")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civTitleShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civTitleShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("title", StringArgumentType.greedyString())
+                                                .executes(ctx -> civTitleSetSelf(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "title"))))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(3))
+                                                .then(Commands.argument("title", StringArgumentType.greedyString())
+                                                        .executes(ctx -> civTitleSetAdmin(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "civ"),
+                                                                StringArgumentType.getString(ctx, "title"))))))
+                                .then(Commands.literal("reset")
+                                        .executes(ctx -> civTitleResetSelf(ctx.getSource()))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(3))
+                                                .executes(ctx -> civTitleResetAdmin(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ"))))))
+                        .then(Commands.literal("governance")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civGovernanceShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civGovernanceShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("model", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                        List.of("autocratic", "council", "democratic"),
+                                                        builder))
+                                                .executes(ctx -> civGovernanceSetSelf(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "model"))))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(3))
+                                                .then(Commands.argument("model", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                List.of("autocratic", "council", "democratic"),
+                                                                builder))
+                                                        .executes(ctx -> civGovernanceSetAdmin(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "civ"),
+                                                                StringArgumentType.getString(ctx, "model")))))))
+                        .then(Commands.literal("role")
+                                .then(Commands.literal("list")
+                                        .executes(ctx -> civRoleList(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civRoleList(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("create")
+                                        .then(Commands.argument("role", StringArgumentType.word())
+                                                .executes(ctx -> civRoleCreate(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "role"),
+                                                        StringArgumentType.getString(ctx, "role")))
+                                                .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                        .executes(ctx -> civRoleCreate(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "role"),
+                                                                StringArgumentType.getString(ctx, "name"))))))
+                                .then(Commands.literal("rename")
+                                        .then(Commands.argument("role", StringArgumentType.word())
+                                                .then(Commands.argument("name", StringArgumentType.greedyString())
+                                                        .executes(ctx -> civRoleRename(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "role"),
+                                                                StringArgumentType.getString(ctx, "name"))))))
+                                .then(Commands.literal("delete")
+                                        .then(Commands.argument("role", StringArgumentType.word())
+                                                .executes(ctx -> civRoleDelete(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "role")))))
+                                .then(Commands.literal("permission")
+                                        .then(Commands.literal("list")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .executes(ctx -> civRolePermissionList(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "role")))))
+                                        .then(Commands.literal("add")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .then(Commands.argument("permission", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                        CivSavedData.knownRolePermissions(),
+                                                                        builder))
+                                                                .executes(ctx -> civRolePermissionSet(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "role"),
+                                                                        StringArgumentType.getString(ctx, "permission"),
+                                                                        true)))))
+                                        .then(Commands.literal("remove")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .then(Commands.argument("permission", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                        CivSavedData.knownRolePermissions(),
+                                                                        builder))
+                                                                .executes(ctx -> civRolePermissionSet(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "role"),
+                                                                        StringArgumentType.getString(ctx, "permission"),
+                                                                        false))))))
+                                .then(Commands.literal("member")
+                                        .then(Commands.literal("list")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .executes(ctx -> civRoleMemberList(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "role")))))
+                                        .then(Commands.literal("add")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .then(Commands.argument("player", EntityArgument.player())
+                                                                .executes(ctx -> civRoleMemberSet(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "role"),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        true)))))
+                                        .then(Commands.literal("remove")
+                                                .then(Commands.argument("role", StringArgumentType.word())
+                                                        .then(Commands.argument("player", EntityArgument.player())
+                                                                .executes(ctx -> civRoleMemberSet(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "role"),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        false)))))))
                         .then(Commands.literal("found")
                                 .then(Commands.argument("name", StringArgumentType.greedyString())
                                         .executes(ctx -> civFound(
@@ -526,7 +660,11 @@ public final class RealCivCommands {
                                         .executes(ctx -> censusMayorClear(ctx.getSource())))))
                 .then(Commands.literal("tax")
                         .then(Commands.literal("status")
-                                .executes(ctx -> taxStatus(ctx.getSource())))
+                                .executes(ctx -> taxStatus(ctx.getSource()))
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .executes(ctx -> taxStatusFor(
+                                                ctx.getSource(),
+                                                EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("pay")
                                 .executes(ctx -> taxPay(ctx.getSource(), 1))
                                 .then(Commands.argument("cycles", IntegerArgumentType.integer(1, 365))
@@ -693,7 +831,7 @@ public final class RealCivCommands {
         if (actor != null
                 && !actor.getUUID().equals(target.getUUID())
                 && !canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only mayor/admin can view another player's profession focus."));
+            source.sendFailure(Component.literal("Only leadership/admin can view another player's profession focus."));
             return 0;
         }
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
@@ -746,7 +884,7 @@ public final class RealCivCommands {
     private static int professionFocusAssign(CommandSourceStack source, ServerPlayer target, String professionRaw) {
         CivSavedData data = CivSavedData.get(source.getServer());
         if (!canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only mayor/admin can assign another player's profession focus."));
+            source.sendFailure(Component.literal("Only leadership/admin can assign another player's profession focus."));
             return 0;
         }
         Profession profession = parseFocusableProfession(professionRaw);
@@ -768,7 +906,7 @@ public final class RealCivCommands {
     private static int professionFocusRemove(CommandSourceStack source, ServerPlayer target) {
         CivSavedData data = CivSavedData.get(source.getServer());
         if (!canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only mayor/admin can clear another player's profession focus."));
+            source.sendFailure(Component.literal("Only leadership/admin can clear another player's profession focus."));
             return 0;
         }
         if (!data.setPlayerFocusProfession(target.getUUID(), null, actorName(source))) {
@@ -791,7 +929,8 @@ public final class RealCivCommands {
         }
         String actorCiv = data.getOrAssignCivilization(actor.getUUID());
         String targetCiv = data.getOrAssignCivilization(target.getUUID());
-        return actorCiv.equals(targetCiv) && isMayorOrAdmin(source, data, actorCiv);
+        return actorCiv.equals(targetCiv)
+                && hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_PROFESSION_FOCUS);
     }
 
     @Nullable
@@ -817,15 +956,17 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         boolean mayor = data.isMayor(civId, target.getUUID());
+        String leaderTitle = data.leaderTitle(civId);
+        String leaderSuffix = mayor ? " (" + leaderTitle + ")" : "";
         if (source.hasPermission(3)) {
             source.sendSuccess(() -> Component.literal(
                     target.getGameProfile().getName() + " belongs to " + civDisplay(data, civId) + " [" + civId + "]"
-                            + (mayor ? " (Mayor)" : "")),
+                            + leaderSuffix),
                     false);
         } else {
             source.sendSuccess(() -> Component.literal(
                     target.getGameProfile().getName() + " belongs to " + civDisplay(data, civId)
-                            + (mayor ? " (Mayor)" : "")),
+                            + leaderSuffix),
                     false);
         }
         return 1;
@@ -850,6 +991,322 @@ public final class RealCivCommands {
                 source.sendSuccess(() -> Component.literal("- " + name + " | plots " + plots), false);
             }
         }
+        return 1;
+    }
+
+    private static int civTitleShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civRef == null ? civOfSource(source, data) : resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Leadership title for " + civDisplay(data, civId) + ": " + data.leaderTitle(civId)),
+                false);
+        return 1;
+    }
+
+    private static int civTitleSetSelf(CommandSourceStack source, String titleRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can set civilization title."));
+            return 0;
+        }
+        if (!data.setLeaderTitle(civId, titleRaw, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Title may already match."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Leadership title for " + civDisplay(data, civId) + " set to " + data.leaderTitle(civId) + "."),
+                true);
+        return 1;
+    }
+
+    private static int civTitleSetAdmin(CommandSourceStack source, String civRef, String titleRaw) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        if (!data.setLeaderTitle(civId, titleRaw, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Title may already match."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Leadership title for " + civDisplay(data, civId) + " set to " + data.leaderTitle(civId) + "."),
+                true);
+        return 1;
+    }
+
+    private static int civTitleResetSelf(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        return civTitleSetSelf(source, "Mayor");
+    }
+
+    private static int civTitleResetAdmin(CommandSourceStack source, String civRef) {
+        return civTitleSetAdmin(source, civRef, "Mayor");
+    }
+
+    private static int civGovernanceShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civRef == null ? civOfSource(source, data) : resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        CivSavedData.GovernanceModel model = data.governanceModel(civId);
+        source.sendSuccess(() -> Component.literal(
+                "Governance model for " + civDisplay(data, civId) + ": " + model.serializedName()),
+                false);
+        return 1;
+    }
+
+    private static int civGovernanceSetSelf(CommandSourceStack source, String modelRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can set governance model."));
+            return 0;
+        }
+        @Nullable CivSavedData.GovernanceModel model = CivSavedData.GovernanceModel.fromSerializedName(modelRaw);
+        if (model == null) {
+            source.sendFailure(Component.literal("Unknown governance model. Use autocratic, council, or democratic."));
+            return 0;
+        }
+        if (!data.setGovernanceModel(civId, model, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Governance model already matches."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Governance model for " + civDisplay(data, civId) + " set to " + model.serializedName() + "."),
+                true);
+        return 1;
+    }
+
+    private static int civGovernanceSetAdmin(CommandSourceStack source, String civRef, String modelRaw) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        @Nullable CivSavedData.GovernanceModel model = CivSavedData.GovernanceModel.fromSerializedName(modelRaw);
+        if (model == null) {
+            source.sendFailure(Component.literal("Unknown governance model. Use autocratic, council, or democratic."));
+            return 0;
+        }
+        if (!data.setGovernanceModel(civId, model, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Governance model already matches."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Governance model for " + civDisplay(data, civId) + " set to " + model.serializedName() + "."),
+                true);
+        return 1;
+    }
+
+    private static int civRoleList(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civRef == null ? civOfSource(source, data) : resolveCivilizationId(data, civRef);
+        if (civId == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + civRef));
+            return 0;
+        }
+        List<CivSavedData.CivRoleView> roles = data.customRolesSorted(civId);
+        if (roles.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "No custom roles configured for " + civDisplay(data, civId) + "."), false);
+            return 1;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Custom roles for " + civDisplay(data, civId) + ":"), false);
+        for (CivSavedData.CivRoleView role : roles) {
+            String permissions = role.permissions().isEmpty()
+                    ? "-"
+                    : String.join(", ", role.permissions().stream().sorted().toList());
+            String members = role.members().isEmpty()
+                    ? "-"
+                    : String.join(", ", role.members().stream()
+                            .map(memberId -> playerNameOrShortId(source, memberId))
+                            .toList());
+            source.sendSuccess(() -> Component.literal(
+                    "- " + role.displayName() + " [" + role.roleId() + "] | perms: " + permissions + " | members: " + members), false);
+        }
+        return 1;
+    }
+
+    private static int civRoleCreate(CommandSourceStack source, String roleRaw, String nameRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can create custom roles."));
+            return 0;
+        }
+        @Nullable String roleId = CivSavedData.canonicalRoleId(roleRaw);
+        if (roleId == null) {
+            source.sendFailure(Component.literal("Invalid role id. Use letters, numbers, spaces, - or _."));
+            return 0;
+        }
+        if (!data.createCustomRole(civId, roleId, nameRaw, actorName(source))) {
+            source.sendFailure(Component.literal("Unable to create role. It may already exist."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Created custom role '" + nameRaw + "' [" + roleId + "] for " + civDisplay(data, civId) + "."),
+                true);
+        return 1;
+    }
+
+    private static int civRoleRename(CommandSourceStack source, String roleRaw, String nameRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can rename custom roles."));
+            return 0;
+        }
+        if (!data.renameCustomRole(civId, roleRaw, nameRaw, actorName(source))) {
+            source.sendFailure(Component.literal("Role rename failed. Check role id and new name."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Renamed role [" + roleRaw + "] to '" + nameRaw + "'."), true);
+        return 1;
+    }
+
+    private static int civRoleDelete(CommandSourceStack source, String roleRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can delete custom roles."));
+            return 0;
+        }
+        if (!data.deleteCustomRole(civId, roleRaw, actorName(source))) {
+            source.sendFailure(Component.literal("Role delete failed. Check role id."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Deleted role [" + roleRaw + "]."), true);
+        return 1;
+    }
+
+    private static int civRolePermissionList(CommandSourceStack source, String roleRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        List<CivSavedData.CivRoleView> roles = data.customRolesSorted(civId);
+        CivSavedData.CivRoleView match = null;
+        for (CivSavedData.CivRoleView role : roles) {
+            if (role.roleId().equals(CivSavedData.canonicalRoleId(roleRaw))) {
+                match = role;
+                break;
+            }
+        }
+        if (match == null) {
+            source.sendFailure(Component.literal("Role not found: " + roleRaw));
+            return 0;
+        }
+        String permissions = match.permissions().isEmpty() ? "-" : String.join(", ", match.permissions());
+        CivSavedData.CivRoleView resolved = match;
+        String permissionText = permissions;
+        source.sendSuccess(() -> Component.literal(
+                "Permissions for role '" + resolved.displayName() + "' [" + resolved.roleId() + "]: " + permissionText),
+                false);
+        return 1;
+    }
+
+    private static int civRolePermissionSet(CommandSourceStack source, String roleRaw, String permissionRaw, boolean allowed)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage role permissions."));
+            return 0;
+        }
+        @Nullable String permission = CivSavedData.canonicalRolePermission(permissionRaw);
+        if (permission == null) {
+            source.sendFailure(Component.literal("Invalid permission key."));
+            return 0;
+        }
+        if (!data.setCustomRolePermission(civId, roleRaw, permission, allowed, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Check role id and permission key."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                (allowed ? "Granted " : "Revoked ")
+                        + "permission '" + permission + "' for role [" + roleRaw + "]."),
+                true);
+        return 1;
+    }
+
+    private static int civRoleMemberList(CommandSourceStack source, String roleRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        List<CivSavedData.CivRoleView> roles = data.customRolesSorted(civId);
+        CivSavedData.CivRoleView match = null;
+        for (CivSavedData.CivRoleView role : roles) {
+            if (role.roleId().equals(CivSavedData.canonicalRoleId(roleRaw))) {
+                match = role;
+                break;
+            }
+        }
+        if (match == null) {
+            source.sendFailure(Component.literal("Role not found: " + roleRaw));
+            return 0;
+        }
+        String members = match.members().isEmpty()
+                ? "-"
+                : String.join(", ", match.members().stream()
+                        .map(memberId -> playerNameOrShortId(source, memberId))
+                        .toList());
+        CivSavedData.CivRoleView resolved = match;
+        String memberText = members;
+        source.sendSuccess(() -> Component.literal(
+                "Members of role '" + resolved.displayName() + "' [" + resolved.roleId() + "]: " + memberText),
+                false);
+        return 1;
+    }
+
+    private static int civRoleMemberSet(CommandSourceStack source, String roleRaw, ServerPlayer player, boolean allowed)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage role members."));
+            return 0;
+        }
+        if (allowed) {
+            String targetCiv = data.getOrAssignCivilization(player.getUUID());
+            if (!targetCiv.equals(civId)) {
+                source.sendFailure(Component.literal("Player must be a member of your civilization."));
+                return 0;
+            }
+        }
+        if (!data.setCustomRoleMember(civId, roleRaw, player.getUUID(), allowed, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Check role id and member status."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                (allowed ? "Added " : "Removed ")
+                        + player.getGameProfile().getName() + (allowed ? " to " : " from ")
+                        + "role [" + roleRaw + "]."),
+                true);
         return 1;
     }
 
@@ -910,7 +1367,7 @@ public final class RealCivCommands {
         }
         grantMayorStarterHub(founder);
         source.sendSuccess(() -> Component.literal(
-                "You founded '" + displayName + "' and are now its mayor."), true);
+                "You founded '" + displayName + "' and are now its " + data.leaderTitle(id).toLowerCase(Locale.ROOT) + "."), true);
         return 1;
     }
 
@@ -1079,8 +1536,8 @@ public final class RealCivCommands {
     private static int civDiplomacySet(CommandSourceStack source, String otherCivRef, String stateRaw) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String actorCiv = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, actorCiv)) {
-            source.sendFailure(Component.literal("Only mayor/admin can change diplomacy for your civilization."));
+        if (!hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
+            source.sendFailure(Component.literal("Only leadership/admin can change diplomacy for your civilization."));
             return 0;
         }
 
@@ -1168,8 +1625,8 @@ public final class RealCivCommands {
     private static int civFriendlyFireSet(CommandSourceStack source, boolean allowed) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can change friendly-fire settings."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE)) {
+            source.sendFailure(Component.literal("Only leadership/admin can change friendly-fire settings."));
             return 0;
         }
         if (!data.setAllowIntraCivPvp(civId, allowed, actorName(source))) {
@@ -1218,8 +1675,8 @@ public final class RealCivCommands {
     private static int civExplosivesSet(CommandSourceStack source, ServerPlayer target, boolean allowed) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can manage explosives experts."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_EXPLOSIVES)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage explosives experts."));
             return 0;
         }
 
@@ -1296,8 +1753,8 @@ public final class RealCivCommands {
     private static int civRedstonerSet(CommandSourceStack source, ServerPlayer target, boolean allowed) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can manage redstoners."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_REDSTONERS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage redstoners."));
             return 0;
         }
 
@@ -1404,8 +1861,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can expand town claims."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can expand town claims."));
             return 0;
         }
 
@@ -1469,8 +1926,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can unclaim town chunks."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can unclaim town chunks."));
             return 0;
         }
 
@@ -1508,8 +1965,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can allot private town plots."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can allot private town plots."));
             return 0;
         }
 
@@ -1652,9 +2109,9 @@ public final class RealCivCommands {
         }
         if (existing.plot().ownerId() != null
                 && !existing.plot().ownerId().equals(player.getUUID())
-                && !isMayorOrAdmin(source, data, civId)
+                && !hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)
                 && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("Only owner/mayor/admin can unclaim this private plot."));
+            source.sendFailure(Component.literal("Only owner/leadership/admin can unclaim this private plot."));
             return 0;
         }
 
@@ -1809,8 +2266,8 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         ServerPlayer actor = source.getPlayerOrException();
         String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, actorCiv)) {
-            source.sendFailure(Component.literal("Only mayor/admin can zone plots for this civilization."));
+        if (!hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
+            source.sendFailure(Component.literal("Only leadership/admin can zone plots for this civilization."));
             return 0;
         }
 
@@ -1864,8 +2321,8 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         ServerPlayer actor = source.getPlayerOrException();
         String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, actorCiv)) {
-            source.sendFailure(Component.literal("Only mayor/admin can clear plot zoning."));
+        if (!hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
+            source.sendFailure(Component.literal("Only leadership/admin can clear plot zoning."));
             return 0;
         }
 
@@ -1900,8 +2357,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can manage civic managers."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_MANAGERS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage civic managers."));
             return 0;
         }
 
@@ -1980,14 +2437,14 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId);
+        boolean mayorOrAdmin = hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         String storedMode = RealCivFTBChunksBridge.normalizeClaimModeOrAuto(record.ftbClaimModeOverride());
         String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(mayorOrAdmin, record.ftbClaimModeOverride());
 
         if (!mayorOrAdmin) {
             source.sendSuccess(() -> Component.literal(
-                    "FTB map claim mode: PRIVATE (non-mayors always claim PRIVATE plots)."), false);
+                    "FTB map claim mode: PRIVATE (non-leadership players always claim PRIVATE plots)."), false);
             return 1;
         }
 
@@ -2007,10 +2464,10 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId);
+        boolean mayorOrAdmin = hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
         if (!mayorOrAdmin) {
             source.sendFailure(Component.literal(
-                    "Only mayor/admin can change FTB map claim mode. Non-mayors always claim PRIVATE plots."));
+                    "Only leadership/admin can change FTB map claim mode. Non-leaders always claim PRIVATE plots."));
             return 0;
         }
 
@@ -2062,7 +2519,9 @@ public final class RealCivCommands {
             RealCivFTBChunksMirror.syncAll(player.getServer(), data);
         }
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
+        boolean mayorOrAdmin = player.hasPermissions(3)
+                || data.isMayor(civId, player.getUUID())
+                || data.hasCustomRolePermission(civId, player.getUUID(), CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
         String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(
                 mayorOrAdmin,
                 data.getOrCreatePlayer(player.getUUID()).ftbClaimModeOverride());
@@ -2070,7 +2529,7 @@ public final class RealCivCommands {
         if (RealCivFTBChunksBridge.tryOpenClaimMap(player)) {
             player.sendSystemMessage(Component.literal(
                     "FTB chunk map opened. RealCiv mode: " + effectiveMode.toUpperCase(Locale.ROOT)
-                            + ". Use /realciv land ftb-mode <auto|civic|private> if you're mayor/admin."));
+                            + ". Use /realciv land ftb-mode <auto|civic|private> if you have leadership permissions."));
             return;
         }
 
@@ -2089,8 +2548,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, actorCiv)) {
-            source.sendFailure(Component.literal("Only mayor/admin can zone selected areas for this civilization."));
+        if (!hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
+            source.sendFailure(Component.literal("Only leadership/admin can zone selected areas for this civilization."));
             return 0;
         }
 
@@ -2172,8 +2631,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, actorCiv)) {
-            source.sendFailure(Component.literal("Only mayor/admin can clear selected land zoning."));
+        if (!hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
+            source.sendFailure(Component.literal("Only leadership/admin can clear selected land zoning."));
             return 0;
         }
 
@@ -2269,8 +2728,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can view join requests."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can view join requests."));
             return 0;
         }
 
@@ -2303,8 +2762,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can view invitations."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can view invitations."));
             return 0;
         }
 
@@ -2337,8 +2796,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can invite players."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can invite players."));
             return 0;
         }
 
@@ -2364,8 +2823,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can revoke invites."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can revoke invites."));
             return 0;
         }
         if (!data.removeInvite(civId, target.getUUID(), actorName(source))) {
@@ -2382,8 +2841,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can approve join requests."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can approve join requests."));
             return 0;
         }
         if (!data.hasJoinRequest(civId, target.getUUID()) && !data.hasInvite(civId, target.getUUID())) {
@@ -2406,8 +2865,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can deny join requests."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can deny join requests."));
             return 0;
         }
         boolean removedRequest = data.removeJoinRequest(civId, target.getUUID(), actorName(source));
@@ -2428,8 +2887,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can remove members."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_POLICE_MEMBERS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can remove members."));
             return 0;
         }
         if (actor.getUUID().equals(target.getUUID()) && !source.hasPermission(3)) {
@@ -2452,8 +2911,8 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can manage census roles."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS_ROLES)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage census roles."));
             return 0;
         }
 
@@ -2470,15 +2929,17 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can set mayor through census controls."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP)) {
+            source.sendFailure(Component.literal("Only leadership/admin can set mayor through census controls."));
             return 0;
         }
 
         data.setMayor(civId, target.getUUID(), actorName(source));
         grantMayorStarterHub(target);
+        String title = data.leaderTitle(civId);
         source.sendSuccess(() -> Component.literal(
-                "Set mayor for " + civDisplay(data, civId) + " to " + target.getGameProfile().getName() + "."), true);
+                "Set " + title.toLowerCase(Locale.ROOT) + " for " + civDisplay(data, civId)
+                        + " to " + target.getGameProfile().getName() + "."), true);
         return 1;
     }
 
@@ -2487,30 +2948,52 @@ public final class RealCivCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can clear mayor through census controls."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP)) {
+            source.sendFailure(Component.literal("Only leadership/admin can clear mayor through census controls."));
             return 0;
         }
         data.setMayor(civId, null, actorName(source));
+        String title = data.leaderTitle(civId);
         source.sendSuccess(() -> Component.literal(
-                "Mayor assignment cleared for " + civDisplay(data, civId) + "."), true);
+                title + " assignment cleared for " + civDisplay(data, civId) + "."), true);
         return 1;
     }
 
     private static int taxStatus(CommandSourceStack source)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        ServerPlayer actor = source.getPlayerOrException();
+        showTaxStatus(source, actor);
+        return 1;
+    }
 
-        int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
-        int delinquentPlots = data.delinquentPrivatePlotCountForOwner(civId, player.getUUID());
-        long nextUpkeepTick = data.earliestPrivatePlotUpkeepTick(civId, player.getUUID());
+    private static int taxStatusFor(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
+        String targetCiv = data.getOrAssignCivilization(target.getUUID());
+        if (!actor.getUUID().equals(target.getUUID())
+                && (!actorCiv.equals(targetCiv)
+                || !hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_UPKEEP))) {
+            source.sendFailure(Component.literal("Only leadership/admin can inspect another member's tax status."));
+            return 0;
+        }
+        showTaxStatus(source, target);
+        return 1;
+    }
+
+    private static void showTaxStatus(CommandSourceStack source, ServerPlayer target) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(target.getUUID());
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+
+        int ownedPlots = data.privatePlotCountForOwner(civId, target.getUUID());
+        int delinquentPlots = data.delinquentPrivatePlotCountForOwner(civId, target.getUUID());
+        long nextUpkeepTick = data.earliestPrivatePlotUpkeepTick(civId, target.getUUID());
         long cycleCost = RealCivConfig.upkeepCostCents() * ownedPlots;
 
         source.sendSuccess(() -> Component.literal(
-                "Tax status for " + player.getGameProfile().getName() + " in " + civDisplay(data, civId) + ":"), false);
+                "Tax status for " + target.getGameProfile().getName() + " in " + civDisplay(data, civId) + ":"), false);
         source.sendSuccess(() -> Component.literal(
                 "Private plots: " + ownedPlots + " | Delinquent: " + delinquentPlots + " | Next upkeep tick: " + nextUpkeepTick), false);
         source.sendSuccess(() -> Component.literal(
@@ -2518,7 +3001,6 @@ public final class RealCivCommands {
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
                         + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
                 false);
-        return 1;
     }
 
     private static int taxPay(CommandSourceStack source, int cycles)
@@ -2596,7 +3078,7 @@ public final class RealCivCommands {
                 ? data.getOrAssignCivilization(player.getUUID())
                 : RealCivConfig.defaultCivilizationId();
         ServerPlayer requester = source.getEntity() instanceof ServerPlayer player ? player : null;
-        boolean canTargetOthers = isMayorOrAdmin(source, data, civId);
+        boolean canTargetOthers = hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS);
         boolean canBypassQuota = source.hasPermission(3) || (requester != null && RealCivUtil.isBypass(requester));
 
         Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(Items.AIR);
@@ -2621,7 +3103,7 @@ public final class RealCivCommands {
                 return 0;
             }
             if (!canTargetOthers && !requester.getUUID().equals(target.getUUID())) {
-                source.sendFailure(Component.literal("You can only withdraw to yourself unless you are mayor/admin."));
+                source.sendFailure(Component.literal("You can only withdraw to yourself unless you are leadership/admin."));
                 return 0;
             }
 
@@ -2750,8 +3232,9 @@ public final class RealCivCommands {
         if (!(source.getEntity() instanceof ServerPlayer requester) || !requester.getUUID().equals(target.getUUID())) {
             CivSavedData data = CivSavedData.get(source.getServer());
             String targetCiv = data.getOrAssignCivilization(target.getUUID());
-            if (!isMayorOrAdmin(source, data, targetCiv) && !source.hasPermission(3)) {
-                source.sendFailure(Component.literal("You can only inspect your own quota unless you are mayor/admin."));
+            if (!hasCivPermission(source, data, targetCiv, CivSavedData.ROLE_PERMISSION_VIEW_HUB_QUOTAS)
+                    && !source.hasPermission(3)) {
+                source.sendFailure(Component.literal("You can only inspect your own quota unless you are leadership/admin."));
                 return 0;
             }
         }
@@ -2967,8 +3450,8 @@ public final class RealCivCommands {
     private static int showHubLogs(CommandSourceStack source, int count) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only the mayor or admins can inspect hub logs."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_VIEW_HUB_LOGS)) {
+            source.sendFailure(Component.literal("Only leadership/admin can inspect hub logs."));
             return 0;
         }
 
@@ -3036,8 +3519,9 @@ public final class RealCivCommands {
         String civId = resolveMayorCivId(source, data, civRaw);
         data.setMayor(civId, player.getUUID(), actorName(source));
         grantMayorStarterHub(player);
+        String title = data.leaderTitle(civId);
         source.sendSuccess(
-                () -> Component.literal("Mayor for " + civDisplay(data, civId)
+                () -> Component.literal(title + " for " + civDisplay(data, civId)
                         + " set to " + player.getGameProfile().getName() + "."),
                 true);
         return 1;
@@ -3047,33 +3531,35 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = resolveMayorCivId(source, data, civRaw);
         data.setMayor(civId, null, actorName(source));
+        String title = data.leaderTitle(civId);
         source.sendSuccess(() -> Component.literal(
-                "Mayor assignment cleared for " + civDisplay(data, civId) + "."), true);
+                title + " assignment cleared for " + civDisplay(data, civId) + "."), true);
         return 1;
     }
 
     private static int mayorShow(CommandSourceStack source, @Nullable String civRaw) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = resolveMayorCivId(source, data, civRaw);
+        String title = data.leaderTitle(civId);
         UUID mayor = data.getMayorId(civId);
         if (mayor == null) {
             source.sendSuccess(() -> Component.literal(
-                    "No mayor is assigned for " + civDisplay(data, civId) + "."), false);
+                    "No " + title.toLowerCase(Locale.ROOT) + " is assigned for " + civDisplay(data, civId) + "."), false);
             return 1;
         }
 
         ServerPlayer online = source.getServer().getPlayerList().getPlayer(mayor);
         String name = online == null ? mayor.toString() : online.getGameProfile().getName();
         source.sendSuccess(() -> Component.literal(
-                "Current mayor for " + civDisplay(data, civId) + ": " + name), false);
+                "Current " + title.toLowerCase(Locale.ROOT) + " for " + civDisplay(data, civId) + ": " + name), false);
         return 1;
     }
 
     private static int mayorWithdrawRateShow(CommandSourceStack source, ServerPlayer player) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can view per-player withdraw rates."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
+            source.sendFailure(Component.literal("Only leadership/admin can view per-player withdraw rates."));
             return 0;
         }
 
@@ -3090,8 +3576,8 @@ public final class RealCivCommands {
     private static int mayorWithdrawRateSet(CommandSourceStack source, ServerPlayer player, double percent) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can set per-player withdraw rates."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
+            source.sendFailure(Component.literal("Only leadership/admin can set per-player withdraw rates."));
             return 0;
         }
 
@@ -3115,8 +3601,8 @@ public final class RealCivCommands {
     private static int mayorWithdrawRateClear(CommandSourceStack source, ServerPlayer player) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = civOfSource(source, data);
-        if (!isMayorOrAdmin(source, data, civId)) {
-            source.sendFailure(Component.literal("Only mayor/admin can clear per-player withdraw rates."));
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
+            source.sendFailure(Component.literal("Only leadership/admin can clear per-player withdraw rates."));
             return 0;
         }
 
@@ -3292,6 +3778,21 @@ public final class RealCivCommands {
         }
         String raw = playerId.toString();
         return raw.length() > 8 ? raw.substring(0, 8) : raw;
+    }
+
+    private static boolean hasCivPermission(
+            CommandSourceStack source,
+            CivSavedData data,
+            String civId,
+            String permissionKey) {
+        // Preserve existing behavior (mayor/admin) while allowing delegated civ roles.
+        if (isMayorOrAdmin(source, data, civId)) {
+            return true;
+        }
+        if (source.getEntity() instanceof ServerPlayer player) {
+            return data.hasCustomRolePermission(civId, player.getUUID(), permissionKey);
+        }
+        return false;
     }
 
     private static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId) {

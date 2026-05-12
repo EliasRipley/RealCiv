@@ -68,6 +68,21 @@ Civilization setup and membership:
 
 - `/realciv civ list`: Shows all civilizations currently registered on the server.
 - `/realciv civ info [player]`: Shows which civilization a player belongs to, and core civ details.
+- `/realciv civ title show [civ]`: Shows the leadership title for your civ (or target civ with permission).
+- `/realciv civ title set <title>`: Sets your civilization's leadership title (for example `King`, `Consul`, `Chief`).
+- `/realciv civ title reset`: Resets your civilization title back to `Mayor`.
+- `/realciv civ governance show [civ]`: Shows governance model (`autocratic`, `council`, `democratic`).
+- `/realciv civ governance set <autocratic|council|democratic>`: Sets your civ governance model metadata.
+- `/realciv civ role list [civ]`: Lists custom roles, permissions, and members.
+- `/realciv civ role create <roleId> [displayName]`: Creates a custom management role.
+- `/realciv civ role rename <roleId> <displayName>`: Renames a custom role.
+- `/realciv civ role delete <roleId>`: Deletes a custom role.
+- `/realciv civ role permission list <roleId>`: Shows permission keys currently assigned to a role.
+- `/realciv civ role permission add <roleId> <permission>`: Grants a permission key to a role.
+- `/realciv civ role permission remove <roleId> <permission>`: Revokes a permission key from a role.
+- `/realciv civ role member list <roleId>`: Lists members assigned to that role.
+- `/realciv civ role member add <roleId> <player>`: Assigns a civ member to a role.
+- `/realciv civ role member remove <roleId> <player>`: Removes a civ member from a role.
 - `/realciv civ found <name>`: Player-led civ creation. Creates the civilization, assigns founder as mayor, and grants mayor starter kit (Hub/Census/Tax/Land Wand). Requires founder approval if enabled.
 - `/realciv civ join <civ>`: Joins directly if invited; otherwise creates a join request for mayor/manager approval.
 - `/realciv civ leave`: Leaves your current civilization and moves you to default unaligned civ.
@@ -76,32 +91,32 @@ Civilization setup and membership:
 - `/realciv civ delete <civ>`: Admin deletion of a civilization record.
 - `/realciv civ assign <player> <civ>`: Admin force-assigns a player to a civilization.
 - `/realciv civ diplomacy show [civ]`: Shows diplomacy state and same-civ friendly-fire status for a civilization.
-- `/realciv civ diplomacy set <other-civ> <ally|neutral|war>`: Mayor/admin sets your civilization's diplomacy toward another civ (shared relation).
+- `/realciv civ diplomacy set <other-civ> <ally|neutral|war>`: Leadership/admin sets your civilization's diplomacy toward another civ (shared relation).
 - `/realciv civ diplomacy set <civA> <civB> <ally|neutral|war>`: Admin override variant to set diplomacy between any two civilizations.
 - `/realciv civ pvp show [civ]`: Shows whether intra-civ PvP (friendly fire) is enabled.
-- `/realciv civ pvp friendlyfire <on|off>`: Mayor/admin toggles same-civilization PvP for sparring/friendly fights.
+- `/realciv civ pvp friendlyfire <on|off>`: Leadership/admin toggles same-civilization PvP for sparring/friendly fights.
 - `/realciv civ explosives show [civ]`: Shows designated explosives experts and civ cap usage.
-- `/realciv civ explosives add <player>`: Mayor/admin designates a same-civ player as an explosives expert (subject to server cap).
-- `/realciv civ explosives remove <player>`: Mayor/admin removes explosives expert designation.
+- `/realciv civ explosives add <player>`: Leadership/admin designates a same-civ player as an explosives expert (subject to server cap).
+- `/realciv civ explosives remove <player>`: Leadership/admin removes explosives expert designation.
 - `/realciv civ redstoner show [civ]`: Shows designated redstoners and civ cap usage.
-- `/realciv civ redstoner add <player>`: Mayor/admin designates a same-civ player as a redstoner (subject to server cap).
-- `/realciv civ redstoner remove <player>`: Mayor/admin removes redstoner designation.
+- `/realciv civ redstoner add <player>`: Leadership/admin designates a same-civ player as a redstoner (subject to server cap).
+- `/realciv civ redstoner remove <player>`: Leadership/admin removes redstoner designation.
 
 Progress and economy visibility:
 
 - `/realciv profile [player]`: Shows level, profession XP state, action counters, and contribution karma for a player.
-- `/realciv profession focus show [player]`: Shows the active specialization focus for yourself or (mayor/admin) another player.
+- `/realciv profession focus show [player]`: Shows the active specialization focus for yourself or (leadership/admin) another player.
 - `/realciv profession focus set <profession>`: Sets your own specialization focus.
 - `/realciv profession focus clear`: Clears your own specialization focus.
-- `/realciv profession focus assign <player> <profession>`: Mayor/admin assigns specialization focus for a member in their civilization.
-- `/realciv profession focus remove <player>`: Mayor/admin clears specialization focus for a member in their civilization.
+- `/realciv profession focus assign <player> <profession>`: Leadership/admin assigns specialization focus for a member in their civilization.
+- `/realciv profession focus remove <player>`: Leadership/admin clears specialization focus for a member in their civilization.
 - `/realciv hub open`: Opens the Community Hub stock/withdraw UI for your civilization.
 - `/realciv hub stock [page]`: Chat listing of hub inventory for your civilization.
 - `/realciv hub quota [page]`: Shows your personal withdrawal limits and remaining quota by item.
-- `/realciv hub quota player <player> [page]`: Mayor/admin view of another player's quota.
+- `/realciv hub quota player <player> [page]`: Leadership/admin view of another player's quota.
 - `/realciv hub withdraw <item> <count>`: Withdraws from hub against your personal quota.
-- `/realciv hub withdraw <item> <count> <target>`: Mayor/admin withdraw to a target player (still quota-bound unless admin bypass).
-- `/realciv hub logs [count]`: Mayor/admin audit log view for deposit/withdraw/governance actions.
+- `/realciv hub withdraw <item> <count> <target>`: Leadership/admin withdraw to a target player (still quota-bound unless admin bypass).
+- `/realciv hub logs [count]`: Leadership/admin audit log view for deposit/withdraw/governance actions.
 - `/realciv hub coverage [page]`: Admin diagnostics for reward coverage and contribution mapping.
 - `/realciv hub export-items <namespace>`: Admin export of all registered non-air item IDs for a mod namespace to `config/realciv/exports/<namespace>_items.txt` (one item id per line).
 
@@ -109,9 +124,9 @@ Town and private land claiming (chunk model):
 
 - `/realciv town info`: Shows town claim counts, collective contribution karma, and current expansion costs.
 - `/realciv town map [radius]`: FTB-style chunk map in chat for nearby area.
-- `/realciv town claim`: Mayor/admin claims current chunk as CIVIC town land. First claim can be anywhere. Later claims must be adjacent to existing town CIVIC chunks.
-- `/realciv town unclaim`: Mayor/admin unclaims current town chunk.
-- `/realciv town allot <player> [days]`: Mayor/admin converts a town-owned chunk into a private plot for a citizen.
+- `/realciv town claim`: Leadership/admin claims current chunk as CIVIC town land. First claim can be anywhere. Later claims must be adjacent to existing town CIVIC chunks.
+- `/realciv town unclaim`: Leadership/admin unclaims current town chunk.
+- `/realciv town allot <player> [days]`: Leadership/admin converts a town-owned chunk into a private plot for a citizen.
 - `/realciv plot claim [days]`: Citizen claims current chunk as private land when it is within/adjacent to town CIVIC land and otherwise valid.
 - `/realciv plot unclaim`: Owner, mayor, or admin removes private ownership from current chunk.
 - `/realciv land info`: Shows zoning and permissions for current chunk, including whether you can build/break.
@@ -119,18 +134,18 @@ Town and private land claiming (chunk model):
 
 Land governance and staff controls:
 
-- `/realciv land zone <community|civic|private> [owner] [days]`: Mayor/admin direct zoning override for current chunk (`public` still works as an alias).
-- `/realciv land grant <player> [days]`: Mayor/admin shortcut to grant current chunk as private to a player.
-- `/realciv land revoke`: Mayor/admin clears zoning on current chunk.
-- `/realciv land manager add <player>`: Mayor/admin grants civic manager role.
-- `/realciv land manager remove <player>`: Mayor/admin revokes civic manager role.
+- `/realciv land zone <community|civic|private> [owner] [days]`: Leadership/admin direct zoning override for current chunk (`public` still works as an alias).
+- `/realciv land grant <player> [days]`: Leadership/admin shortcut to grant current chunk as private to a player.
+- `/realciv land revoke`: Leadership/admin clears zoning on current chunk.
+- `/realciv land manager add <player>`: Leadership/admin grants civic manager role.
+- `/realciv land manager remove <player>`: Leadership/admin revokes civic manager role.
 - `/realciv land wand [player]`: Gives land wand (or gives to target if admin).
 - `/realciv land selection info`: Shows current wand selection bounds.
 - `/realciv land selection clear`: Clears wand selection.
-- `/realciv land zone-selection <community|civic|private> [owner] [days]`: Mayor/admin bulk zone selected chunk area (`public` still works as an alias).
-- `/realciv land clear-selection`: Mayor/admin bulk clear selected zoning.
+- `/realciv land zone-selection <community|civic|private> [owner] [days]`: Leadership/admin bulk zone selected chunk area (`public` still works as an alias).
+- `/realciv land clear-selection`: Leadership/admin bulk clear selected zoning.
 - `/realciv land visualize [radius]`: Visual boundary debug for nearby claimed chunks.
-- `/realciv land ftb-mode [auto|civic|private]`: Mayor/admin sets personal FTB map claim mode. Non-mayors always claim PRIVATE plots.
+- `/realciv land ftb-mode [auto|civic|private]`: Leadership/admin sets personal FTB map claim mode. Non-leadership players always claim PRIVATE plots.
 - `/realciv land gui`: Opens FTB Chunks claim map with RealCiv rules (fallback to legacy RealCiv map if FTB map cannot open).
 
 Mayor and census governance:
@@ -143,19 +158,41 @@ Mayor and census governance:
 - `/realciv census approve <player>`: Approves a request/invite and admits player.
 - `/realciv census deny <player>`: Denies/clears request or invite.
 - `/realciv census remove <player>`: Removes a member from the civilization.
-- `/realciv census manager add <player>`: Mayor/admin promotes manager via census controls.
-- `/realciv census manager remove <player>`: Mayor/admin removes manager.
-- `/realciv census mayor <player>`: Mayor/admin sets current civ mayor.
-- `/realciv census mayor clear`: Mayor/admin clears mayor assignment.
+- `/realciv census manager add <player>`: Leadership/admin promotes manager via census controls.
+- `/realciv census manager remove <player>`: Leadership/admin removes manager.
+- `/realciv census mayor <player>`: Leadership/admin sets current civ mayor.
+- `/realciv census mayor clear`: Leadership/admin clears mayor assignment.
 - `/realciv mayor show [civ]`: Shows current mayor for civ.
 - `/realciv mayor set <player> [civ]`: Admin mayor assignment command.
 - `/realciv mayor clear [civ]`: Admin mayor removal command.
 - `/realciv mayor withdrawrate <player>`: Shows per-player withdrawal percent override.
-- `/realciv mayor withdrawrate set <player> <percent>`: Mayor/admin sets player-specific withdrawal allowance.
-- `/realciv mayor withdrawrate clear <player>`: Mayor/admin removes override and returns player to default withdraw percent.
+- `/realciv mayor withdrawrate set <player> <percent>`: Leadership/admin sets player-specific withdrawal allowance.
+- `/realciv mayor withdrawrate clear <player>`: Leadership/admin removes override and returns player to default withdraw percent.
 - `/realciv mayor approval add <player>`: Admin approves player for `/realciv civ found`.
 - `/realciv mayor approval remove <player>`: Admin revokes founder approval.
 - `/realciv mayor approval list`: Admin list of approved founders.
+
+Custom governance permission keys (assign with `/realciv civ role permission add`):
+
+- `manage_governance`
+- `manage_diplomacy`
+- `manage_friendly_fire`
+- `manage_profession_focus`
+- `manage_explosives`
+- `manage_redstoners`
+- `manage_town_claims`
+- `manage_land_zoning`
+- `manage_land_managers`
+- `manage_ftb_mode`
+- `manage_census`
+- `police_members`
+- `manage_census_roles`
+- `manage_leadership`
+- `manage_withdraw_rates`
+- `manage_hub_withdrawals`
+- `view_hub_quotas`
+- `view_hub_logs`
+- `manage_upkeep`
 
 Tax and upkeep:
 
@@ -385,7 +422,7 @@ FTB Chunks Integration Notes
 ----------------------------
 
 - RealCiv now hooks into FTB Chunks claim/unclaim events and enforces RealCiv zoning, adjacency, collective contribution karma costs, and role permissions.
-- Non-mayors always claim PRIVATE via FTB map; mayor/admin can use `auto`, `civic`, or `private` via `/realciv land ftb-mode`.
+- Non-leadership players always claim PRIVATE via FTB map; leadership/admin can use `auto`, `civic`, or `private` via `/realciv land ftb-mode`.
 - `auto` uses `land.ftbMayorDefaultClaimMode` from `config/realciv-common.toml`.
 - RealCiv land rules are authoritative: `CIVIC` and `PRIVATE` permissions are always checked from RealCiv data, not accepted blindly from FTB defaults.
 - RealCiv mirrors civilization membership and claimed chunks into FTB Teams/Chunks, so the FTB map is used as a RealCiv view/control surface rather than a separate source of truth.
