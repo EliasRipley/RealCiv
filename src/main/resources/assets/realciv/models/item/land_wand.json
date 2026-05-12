@@ -1,6 +1,6 @@
 {
   "parent": "minecraft:item/handheld",
   "textures": {
-    "layer0": "realciv:item/land_wand_missing"
+    "layer0": "realciv:item/land_wand"
   }
 }
