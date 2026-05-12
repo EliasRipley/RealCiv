@@ -177,8 +177,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
         if (treasury < claimCost) {
             RealCivMessages.deny(
                     viewer,
-                    "Not enough town treasury. Need " + RealCivUtil.formatCredits(claimCost)
-                            + ", treasury has " + RealCivUtil.formatCredits(treasury) + ".");
+                    "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
+                            + ", civ has " + RealCivUtil.formatCredits(treasury) + ".");
             return;
         }
 
@@ -195,7 +195,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         viewer.sendSystemMessage(Component.literal(
-                "Town chunk claimed [" + chunkX + ", " + chunkZ + "]. Treasury now: "
+                "Town chunk claimed [" + chunkX + ", " + chunkZ + "]. Collective contribution karma now: "
                         + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
     }
 
@@ -375,7 +375,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
                         "Land GUI | " + civName
                                 + " | center [" + centerChunkX + "," + centerChunkZ + "]"
                                 + " | credits " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                                + " | treasury " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
+                                + " | collective contribution karma " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
         display.setItem(INFO_SLOT, info);
 
         ItemStack help = new ItemStack(Items.PAPER);

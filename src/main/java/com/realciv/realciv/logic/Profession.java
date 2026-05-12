@@ -8,6 +8,7 @@ public enum Profession {
     MINER,
     TERRAFORMER,
     LUMBERJACK,
+    FISHER,
     HUNTER,
     WARRIOR,
     EXPLOSIVES_EXPERT,
@@ -24,6 +25,7 @@ public enum Profession {
             case "MINER" -> MINER;
             case "TERRAFORMER", "TERRAFORMING", "DIGGER" -> TERRAFORMER;
             case "LUMBERJACK", "WOODCUTTER" -> LUMBERJACK;
+            case "FISHER", "FISHERMAN", "ANGLER", "FISHING" -> FISHER;
             case "HUNTER" -> HUNTER;
             case "WARRIOR", "SOLDIER", "PVP" -> WARRIOR;
             case "EXPLOSIVES_EXPERT", "EXPLOSIVESEXPERT", "EXPLOSIVES", "DEMOLITIONIST", "BOMBER" -> EXPLOSIVES_EXPERT;

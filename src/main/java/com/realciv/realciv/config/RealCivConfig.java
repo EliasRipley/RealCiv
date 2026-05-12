@@ -2,15 +2,18 @@ package com.realciv.realciv.config;
 
 import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.logic.ItemResetRule;
+import com.realciv.realciv.logic.ProfessionEventHook;
+import com.realciv.realciv.logic.ProfessionEventHookRule;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
 import com.realciv.realciv.logic.TagResetRule;
 import com.realciv.realciv.logic.TagRewardRule;
 import java.util.ArrayList;
-import java.util.HashSet;
 import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import net.minecraft.resources.ResourceLocation;
@@ -23,6 +26,8 @@ public final class RealCivConfig {
     private static final List<Integer> CURRENT_LUMBERJACK_LIMITS = List.of(8, 16, 32, 64, 96, 128);
     private static final String LEGACY_DEFAULT_CIV_ID = "commonwealth";
     private static final String LEGACY_DEFAULT_CIV_NAME = "Commonwealth";
+    @Nullable
+    private static List<ProfessionEventHookRule> cachedProfessionEventHookRules;
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> FARMER_LIMITS = BUILDER
             .comment("Farmer action limits by farmer level index (level 0 = first value).")
@@ -53,6 +58,14 @@ public final class RealCivConfig {
             .defineListAllowEmpty(
                     "profession.lumberjackLimits",
                     List.of(8, 16, 32, 64, 96, 128),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> FISHER_LIMITS = BUILDER
+            .comment("Fisher catch limits by fisher level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.fisherLimits",
+                    List.of(8, 16, 24, 40, 64, 96),
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
@@ -88,6 +101,26 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_EVENT_HOOK_RULES = BUILDER
+            .comment("Optional event-driven profession action hooks.")
+            .comment("Legacy format: hook|profession|actions_per_trigger|optional custom deny message")
+            .comment("Extended format: hook|profession|actions_per_trigger|key=value|key=value|...")
+            .comment("Hooks: ANIMAL_BREED, ANIMAL_TAME, SHEAR_ENTITY, SHEAR_BLOCK, PLACE_SCAFFOLDING, BONEMEAL_USE")
+            .comment("Additional hooks: TOOL_STRIP_LOG, TOOL_TILL_SOIL, TOOL_FLATTEN_PATH, TOOL_DOUSE_CAMPFIRE")
+            .comment("Additional hooks: TOOL_SCRAPE_COPPER, TOOL_WAX_OFF, FARMLAND_TRAMPLE, VILLAGER_INTERACT")
+            .comment("Additional hooks: VILLAGER_TRADE, ANVIL_USE, ANVIL_REPAIR, ITEM_SMELT, ITEM_ENCHANT, POTION_BREW, ITEM_TOSS, STAT_AWARD")
+            .comment("Option keys: min_profession_level, min_general_level, min_membership_hours,")
+            .comment("window_seconds/window_minutes/window_hours, max_triggers, profession_xp, general_xp, stat_prefix, deny_message")
+            .comment("Deny placeholders: %hook%, %profession%, %current%, %limit%, %cost%")
+            .comment("Examples: ANIMAL_BREED|FARMER|1, TOOL_TILL_SOIL|FARMER|1, VILLAGER_INTERACT|CRAFTER|1")
+            .comment("Example (quota): ANVIL_USE|CRAFTER|0|window_hours=24|max_triggers=1|profession_xp=25")
+            .comment("Example (age gate): PLACE_SCAFFOLDING|TERRAFORMER|1|min_membership_hours=48")
+            .defineListAllowEmpty(
+                    "profession.eventHookRules",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> PROFESSION_XP_THRESHOLDS = BUILDER
             .comment("XP thresholds for profession levels. Index = level.")
             .defineListAllowEmpty(
@@ -115,6 +148,19 @@ public final class RealCivConfig {
     public static final ModConfigSpec.IntValue STALE_ACTION_RESET_MINUTES = BUILDER
             .comment("Real-time minutes after last profession action update before that profession counter is auto-reset to 0.")
             .defineInRange("progression.staleActionResetMinutes", 120, 1, 60 * 24 * 30);
+
+    public static final ModConfigSpec.BooleanValue SPECIALIZATION_SINGLE_PROFESSION_LOCK_ENABLED = BUILDER
+            .comment("When true, players must choose a profession focus and can only progress that focused profession.")
+            .define("specialization.singleProfessionLockEnabled", false);
+
+    public static final ModConfigSpec.BooleanValue SPECIALIZATION_XP_DECAY_ENABLED = BUILDER
+            .comment("When true, gaining XP in one profession decays XP in all other professions.")
+            .define("specialization.xpDecayEnabled", false);
+
+    public static final ModConfigSpec.DoubleValue SPECIALIZATION_XP_DECAY_RATE = BUILDER
+            .comment("XP decay multiplier applied to each non-active profession per profession XP gained.")
+            .comment("Example: 1.0 means +10 XP in one profession removes 10 XP from each other profession.")
+            .defineInRange("specialization.xpDecayRate", 1.0D, 0.0D, 100.0D);
 
     public static final ModConfigSpec.IntValue WARRIOR_XP_PER_PLAYER_KILL = BUILDER
             .comment("Warrior profession XP awarded instantly per enemy player kill.")
@@ -211,6 +257,12 @@ public final class RealCivConfig {
                             "minecraft:oak_planks|LUMBERJACK|0.3|1|1",
                             "minecraft:bamboo_block|LUMBERJACK|1.0|2|1",
                             "minecraft:stripped_bamboo_block|LUMBERJACK|1.0|2|1",
+                            "minecraft:cod|FISHER|1.0|2|1",
+                            "minecraft:salmon|FISHER|1.2|2|1",
+                            "minecraft:tropical_fish|FISHER|1.6|3|2",
+                            "minecraft:pufferfish|FISHER|1.8|3|2",
+                            "minecraft:ink_sac|FISHER|1.4|2|1",
+                            "minecraft:nautilus_shell|FISHER|6.0|6|3",
                             "minecraft:rotten_flesh|HUNTER|0.8|2|1",
                             "minecraft:bone|HUNTER|1.5|2|1",
                             "minecraft:string|HUNTER|1.5|2|1",
@@ -252,6 +304,7 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:miner_contributions|MINER|2.00|3|2",
                             "ITEM_TAG|realciv:terraformer_contributions|TERRAFORMER|0.40|2|1",
                             "ITEM_TAG|realciv:lumberjack_contributions|LUMBERJACK|1.00|2|1",
+                            "ITEM_TAG|realciv:fisher_contributions|FISHER|1.20|2|1",
                             "ITEM_TAG|realciv:hunter_contributions|HUNTER|2.00|3|2",
                             "ITEM_TAG|realciv:crafter_contributions|CRAFTER|1.20|2|1",
                             "BLOCK_TAG|minecraft:mineable/pickaxe|MINER|0.10|1|1",
@@ -271,6 +324,7 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:miner_reset_items|MINER|1.0",
                             "ITEM_TAG|realciv:terraformer_reset_items|TERRAFORMER|1.0",
                             "ITEM_TAG|realciv:lumberjack_reset_items|LUMBERJACK|1.0",
+                            "ITEM_TAG|realciv:fisher_reset_items|FISHER|1.0",
                             "ITEM_TAG|realciv:hunter_reset_items|HUNTER|1.0",
                             "ITEM_TAG|realciv:crafter_reset_items|CRAFTER|1.0"),
                     () -> "",
@@ -332,6 +386,7 @@ public final class RealCivConfig {
                             "MINER|1.0",
                             "TERRAFORMER|1.0",
                             "LUMBERJACK|1.0",
+                            "FISHER|1.0",
                             "HUNTER|1.0",
                             "WARRIOR|1.0",
                             "EXPLOSIVES_EXPERT|1.0",
@@ -434,9 +489,31 @@ public final class RealCivConfig {
             .comment("Maximum number of designated explosives experts per civilization. Set to 0 to disable the role.")
             .defineInRange("civ.maxExplosivesExpertsPerCivilization", 1, 0, 256);
 
+    public static final ModConfigSpec.IntValue MAX_REDSTONERS_PER_CIV = BUILDER
+            .comment("Maximum number of designated redstoners per civilization. Set to 0 to disable regulated redstone placement.")
+            .defineInRange("civ.maxRedstonersPerCivilization", 2, 0, 256);
+
     public static final ModConfigSpec.BooleanValue REQUIRE_FOUNDER_APPROVAL = BUILDER
             .comment("When true, only approved players (or admins) can found new civilizations.")
             .define("civ.requireFounderApproval", true);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> REDSTONER_RESTRICTED_BLOCKS = BUILDER
+            .comment("Blocks treated as regulated redstone components. Players must be designated as Redstoners to place these blocks.")
+            .defineListAllowEmpty(
+                    "redstone.restrictedBlocks",
+                    List.of(
+                            "minecraft:redstone_wire",
+                            "minecraft:redstone_torch",
+                            "minecraft:repeater",
+                            "minecraft:comparator",
+                            "minecraft:observer",
+                            "minecraft:piston",
+                            "minecraft:sticky_piston",
+                            "minecraft:dispenser",
+                            "minecraft:dropper",
+                            "minecraft:hopper"),
+                    () -> "",
+                    RealCivConfig::isString);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> EXPLOSIVES_RESTRICTED_ITEMS = BUILDER
             .comment("Items treated as regulated explosives. Players need Explosives Expert authorization and progression to use them.")
@@ -500,6 +577,10 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 8);
     }
 
+    public static int fisherLimitForLevel(int fisherLevel) {
+        return RealCivUtil.valueForLevel(fisherLevel, FISHER_LIMITS.get(), 8);
+    }
+
     public static int hunterLimitForLevel(int hunterLevel) {
         return RealCivUtil.valueForLevel(hunterLevel, HUNTER_LIMITS.get(), 1);
     }
@@ -514,6 +595,36 @@ public final class RealCivConfig {
 
     public static int crafterLimitForLevel(int crafterLevel) {
         return RealCivUtil.valueForLevel(crafterLevel, CRAFTER_LIMITS.get(), 64);
+    }
+
+    public static int limitForProfession(Profession profession, int level) {
+        if (profession == null) {
+            return 0;
+        }
+        return switch (profession) {
+            case FARMER -> farmerLimitForLevel(level);
+            case MINER -> minerLimitForLevel(level);
+            case TERRAFORMER -> terraformerLimitForLevel(level);
+            case LUMBERJACK -> lumberjackLimitForLevel(level);
+            case FISHER -> fisherLimitForLevel(level);
+            case HUNTER -> hunterLimitForLevel(level);
+            case WARRIOR -> warriorLimitForLevel(level);
+            case EXPLOSIVES_EXPERT -> explosivesExpertLimitForLevel(level);
+            case CRAFTER -> crafterLimitForLevel(level);
+            case NONE -> 0;
+        };
+    }
+
+    public static boolean specializationSingleProfessionLockEnabled() {
+        return SPECIALIZATION_SINGLE_PROFESSION_LOCK_ENABLED.get();
+    }
+
+    public static boolean specializationXpDecayEnabled() {
+        return SPECIALIZATION_XP_DECAY_ENABLED.get();
+    }
+
+    public static double specializationXpDecayRate() {
+        return Math.max(0.0D, SPECIALIZATION_XP_DECAY_RATE.get());
     }
 
     public static int warriorXpPerPlayerKill() {
@@ -636,8 +747,30 @@ public final class RealCivConfig {
         return Math.max(0, MAX_EXPLOSIVES_EXPERTS_PER_CIV.get());
     }
 
+    public static int maxRedstonersPerCivilization() {
+        return Math.max(0, MAX_REDSTONERS_PER_CIV.get());
+    }
+
     public static boolean blockNonPlayerExplosionDamageInClaims() {
         return EXPLOSIVES_BLOCK_NON_PLAYER_DAMAGE_IN_CLAIMS.get();
+    }
+
+    public static Set<ResourceLocation> regulatedRedstoneBlocks() {
+        Set<ResourceLocation> out = new HashSet<>();
+        for (String raw : REDSTONER_RESTRICTED_BLOCKS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            try {
+                out.add(ResourceLocation.parse(line));
+            } catch (Exception ignored) {
+            }
+        }
+        return Set.copyOf(out);
     }
 
     public static Set<ResourceLocation> regulatedExplosiveItems() {
@@ -672,6 +805,7 @@ public final class RealCivConfig {
         multipliers.put(Profession.MINER, 1.0D);
         multipliers.put(Profession.TERRAFORMER, 1.0D);
         multipliers.put(Profession.LUMBERJACK, 1.0D);
+        multipliers.put(Profession.FISHER, 1.0D);
         multipliers.put(Profession.HUNTER, 1.0D);
         multipliers.put(Profession.WARRIOR, 1.0D);
         multipliers.put(Profession.EXPLOSIVES_EXPERT, 1.0D);
@@ -770,6 +904,253 @@ public final class RealCivConfig {
         return overrides;
     }
 
+    public static List<ProfessionEventHookRule> professionEventHookRules() {
+        @Nullable List<ProfessionEventHookRule> cached = cachedProfessionEventHookRules;
+        if (cached != null) {
+            return cached;
+        }
+
+        ArrayList<ProfessionEventHookRule> rules = new ArrayList<>();
+        for (String raw : PROFESSION_EVENT_HOOK_RULES.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+
+            String[] parts = line.split("\\|");
+            if (parts.length < 3) {
+                RealCivMod.LOGGER.warn(
+                        "Skipping profession.eventHookRules entry with invalid field count (expected at least 3): {}",
+                        line);
+                continue;
+            }
+
+            ProfessionEventHook hook = ProfessionEventHook.fromConfigName(parts[0].trim());
+            if (hook == null) {
+                RealCivMod.LOGGER.warn(
+                        "Skipping profession.eventHookRules entry with invalid hook '{}': {}",
+                        parts[0],
+                        line);
+                continue;
+            }
+
+            Profession profession = Profession.fromConfigName(parts[1].trim());
+            if (profession == null || profession == Profession.NONE) {
+                RealCivMod.LOGGER.warn(
+                        "Skipping profession.eventHookRules entry with invalid profession '{}': {}",
+                        parts[1],
+                        line);
+                continue;
+            }
+
+            Integer actionCost = tryParseInt(parts[2].trim());
+            if (actionCost == null || actionCost < 0) {
+                RealCivMod.LOGGER.warn(
+                        "Skipping profession.eventHookRules entry with invalid actions_per_trigger '{}': {}",
+                        parts[2],
+                        line);
+                continue;
+            }
+
+            int minProfessionLevel = 0;
+            int minGeneralLevel = 0;
+            long minMembershipMillis = 0L;
+            int windowSeconds = 0;
+            int maxTriggersPerWindow = 0;
+            int professionXpPerTrigger = 0;
+            int generalXpPerTrigger = 0;
+            @Nullable String statPrefix = null;
+            @Nullable String denyMessage = null;
+
+            for (int index = 3; index < parts.length; index++) {
+                String token = parts[index].trim();
+                if (token.isEmpty()) {
+                    continue;
+                }
+                int equalsIndex = token.indexOf('=');
+                if (equalsIndex <= 0) {
+                    // Backward-compatible free-form deny message segment.
+                    if (denyMessage == null) {
+                        denyMessage = token;
+                    } else {
+                        denyMessage = denyMessage + "|" + token;
+                    }
+                    continue;
+                }
+
+                String key = token.substring(0, equalsIndex).trim().toLowerCase(Locale.ROOT);
+                String value = token.substring(equalsIndex + 1).trim();
+                if (value.isEmpty()) {
+                    RealCivMod.LOGGER.warn(
+                            "Ignoring empty option value '{}' in profession.eventHookRules entry: {}",
+                            key,
+                            line);
+                    continue;
+                }
+
+                if ("deny".equals(key) || "deny_message".equals(key)) {
+                    denyMessage = value;
+                    continue;
+                }
+                if ("stat_prefix".equals(key)) {
+                    statPrefix = value;
+                    continue;
+                }
+
+                if ("min_profession_level".equals(key)
+                        || "min_level".equals(key)
+                        || "required_profession_level".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    minProfessionLevel = parsed;
+                    continue;
+                }
+                if ("min_general_level".equals(key) || "required_general_level".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    minGeneralLevel = parsed;
+                    continue;
+                }
+                if ("min_membership_hours".equals(key) || "required_membership_hours".equals(key)) {
+                    Double parsed = tryParseDouble(value);
+                    if (parsed == null || parsed < 0.0D) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    minMembershipMillis = Math.max(0L, (long) Math.round(parsed * 3_600_000.0D));
+                    continue;
+                }
+                if ("window_seconds".equals(key) || "window_s".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    windowSeconds = parsed;
+                    continue;
+                }
+                if ("window_minutes".equals(key) || "window_m".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    windowSeconds = parsed > (Integer.MAX_VALUE / 60)
+                            ? Integer.MAX_VALUE
+                            : Math.max(0, parsed * 60);
+                    continue;
+                }
+                if ("window_hours".equals(key) || "window_h".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    windowSeconds = parsed > (Integer.MAX_VALUE / 3_600)
+                            ? Integer.MAX_VALUE
+                            : Math.max(0, parsed * 3_600);
+                    continue;
+                }
+                if ("max_triggers".equals(key)
+                        || "window_max_triggers".equals(key)
+                        || "window_budget".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    maxTriggersPerWindow = parsed;
+                    continue;
+                }
+                if ("profession_xp".equals(key) || "profession_xp_per_trigger".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    professionXpPerTrigger = parsed;
+                    continue;
+                }
+                if ("general_xp".equals(key) || "general_xp_per_trigger".equals(key)) {
+                    Integer parsed = tryParseInt(value);
+                    if (parsed == null || parsed < 0) {
+                        RealCivMod.LOGGER.warn(
+                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
+                                key,
+                                value,
+                                line);
+                        continue;
+                    }
+                    generalXpPerTrigger = parsed;
+                    continue;
+                }
+
+                RealCivMod.LOGGER.warn(
+                        "Ignoring unknown profession.eventHookRules option '{}' in entry: {}",
+                        key,
+                        line);
+            }
+
+            rules.add(new ProfessionEventHookRule(
+                    hook,
+                    profession,
+                    actionCost,
+                    minProfessionLevel,
+                    minGeneralLevel,
+                    minMembershipMillis,
+                    windowSeconds,
+                    maxTriggersPerWindow,
+                    professionXpPerTrigger,
+                    generalXpPerTrigger,
+                    statPrefix,
+                    denyMessage));
+        }
+        List<ProfessionEventHookRule> parsed = List.copyOf(rules);
+        cachedProfessionEventHookRules = parsed;
+        return parsed;
+    }
+
     public static boolean migrateLegacyCommonConfigIfNeeded() {
         boolean changed = false;
         List<Integer> current = sanitizeIntegerList(LUMBERJACK_LIMITS.get());
@@ -846,6 +1227,7 @@ public final class RealCivConfig {
 
     public static void invalidateExternalRuleFileCache() {
         ProfessionRuleFileLoader.invalidateCache();
+        cachedProfessionEventHookRules = null;
     }
 
     public static Map<ResourceLocation, RewardRule> rewardRules() {

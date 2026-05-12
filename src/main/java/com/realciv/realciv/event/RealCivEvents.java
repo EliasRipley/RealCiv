@@ -10,13 +10,17 @@ import com.realciv.realciv.logic.CarryCapService;
 import com.realciv.realciv.logic.CraftingLimitService;
 import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
+import com.realciv.realciv.logic.ProfessionEventHook;
+import com.realciv.realciv.logic.ProfessionEventHookRule;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.integration.RealCivFTBChunksMirror;
+import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.core.BlockPos;
@@ -26,9 +30,11 @@ import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.tags.BlockTags;
+import net.minecraft.tags.ItemTags;
 import net.minecraft.tags.TagKey;
 import net.minecraft.world.InteractionHand;
 import net.minecraft.world.InteractionResult;
+import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
@@ -37,6 +43,7 @@ import net.minecraft.world.entity.TraceableEntity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.item.PrimedTnt;
+import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.MinecartTNT;
@@ -48,16 +55,30 @@ import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
 import net.minecraft.world.level.block.state.BlockState;
+import net.neoforged.neoforge.common.ItemAbility;
+import net.neoforged.neoforge.common.ItemAbilities;
+import net.neoforged.neoforge.common.IShearable;
+import net.neoforged.neoforge.common.util.TriState;
+import net.neoforged.neoforge.event.StatAwardEvent;
+import net.neoforged.neoforge.event.brewing.PlayerBrewedPotionEvent;
+import net.neoforged.neoforge.event.entity.item.ItemTossEvent;
+import net.neoforged.neoforge.event.entity.living.AnimalTameEvent;
+import net.neoforged.neoforge.event.entity.living.BabyEntitySpawnEvent;
 import net.neoforged.neoforge.event.entity.living.LivingDeathEvent;
+import net.neoforged.neoforge.event.entity.player.AnvilRepairEvent;
 import net.neoforged.neoforge.event.entity.player.AttackEntityEvent;
+import net.neoforged.neoforge.event.entity.player.BonemealEvent;
+import net.neoforged.neoforge.event.entity.player.ItemFishedEvent;
 import net.neoforged.neoforge.event.entity.player.ItemEntityPickupEvent;
+import net.neoforged.neoforge.event.entity.player.PlayerEnchantItemEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerEvent;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
+import net.neoforged.neoforge.event.entity.player.TradeWithVillagerEvent;
+import net.neoforged.neoforge.event.entity.player.UseItemOnBlockEvent;
 import net.neoforged.neoforge.event.level.BlockDropsEvent;
 import net.neoforged.neoforge.event.level.BlockEvent;
 import net.neoforged.neoforge.event.level.ExplosionEvent;
 import net.neoforged.neoforge.event.tick.ServerTickEvent;
-import net.neoforged.neoforge.common.util.TriState;
 import org.jetbrains.annotations.Nullable;
 
 public final class RealCivEvents {
@@ -75,6 +96,16 @@ public final class RealCivEvents {
     private static final long TERRITORY_CHECK_INTERVAL = 10L;
     private static long lastUpkeepTick = Long.MIN_VALUE;
     private static final Map<UUID, TerritoryState> LAST_TERRITORY = new HashMap<>();
+    private static final List<Profession> ACTION_TRACKED_PROFESSIONS = List.of(
+            Profession.FARMER,
+            Profession.MINER,
+            Profession.TERRAFORMER,
+            Profession.LUMBERJACK,
+            Profession.FISHER,
+            Profession.HUNTER,
+            Profession.WARRIOR,
+            Profession.EXPLOSIVES_EXPERT,
+            Profession.CRAFTER);
 
     private RealCivEvents() {
     }
@@ -90,6 +121,10 @@ public final class RealCivEvents {
 
         String civId = data.getOrAssignCivilization(player.getUUID());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (record.firstSeenAtMillis() <= 0L) {
+            record.ensureFirstSeenAtMillis(System.currentTimeMillis());
+            data.setDirty();
+        }
         applyStaleActionTimeoutReset(player, data, record, System.currentTimeMillis());
 
         player.sendSystemMessage(Component.literal("RealCiv profile loaded."));
@@ -101,10 +136,21 @@ public final class RealCivEvents {
                         + " | Miner: " + record.levelFor(Profession.MINER)
                         + " | Terraformer: " + record.levelFor(Profession.TERRAFORMER)
                         + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
+                        + " | Fisher: " + record.levelFor(Profession.FISHER)
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Warrior: " + record.levelFor(Profession.WARRIOR)
                         + " | Explosives: " + record.levelFor(Profession.EXPLOSIVES_EXPERT)
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
+        if (RealCivConfig.specializationSingleProfessionLockEnabled()) {
+            @Nullable Profession focus = record.focusedProfession();
+            if (focus == null) {
+                player.sendSystemMessage(Component.literal(
+                        "Specialization lock is active. Set your focus with /realciv profession focus set <profession>."));
+            } else {
+                player.sendSystemMessage(Component.literal(
+                        "Specialization focus: " + focus.name().toLowerCase(java.util.Locale.ROOT) + "."));
+            }
+        }
         if (civId.equals(RealCivConfig.defaultCivilizationId())) {
             if (RealCivConfig.requireFounderApproval()) {
                 player.sendSystemMessage(Component.literal(
@@ -144,32 +190,22 @@ public final class RealCivEvents {
 
         CivSavedData data = CivSavedData.get(player.getServer());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        int farmerRefund = refundActions(record.farmerActions(), ratio);
-        int minerRefund = refundActions(record.minerActions(), ratio);
-        int terraformerRefund = refundActions(record.terraformerActions(), ratio);
-        int lumberjackRefund = refundActions(record.lumberjackActions(), ratio);
-        int hunterRefund = refundActions(record.hunterActions(), ratio);
-        int warriorRefund = refundActions(record.warriorActions(), ratio);
-        int explosivesRefund = refundActions(record.explosivesExpertActions(), ratio);
-        int crafterRefund = refundActions(record.crafterActions(), ratio);
+        int totalRefund = 0;
+        for (Profession profession : ACTION_TRACKED_PROFESSIONS) {
+            int current = record.actionsForProfession(profession);
+            int refund = refundActions(current, ratio);
+            if (refund > 0) {
+                record.setActionsForProfession(profession, current - refund);
+                totalRefund += refund;
+            }
+        }
 
-        if (farmerRefund <= 0 && minerRefund <= 0 && terraformerRefund <= 0
-                && lumberjackRefund <= 0 && hunterRefund <= 0 && warriorRefund <= 0
-                && explosivesRefund <= 0 && crafterRefund <= 0) {
+        if (totalRefund <= 0) {
             return;
         }
 
-        record.setFarmerActions(record.farmerActions() - farmerRefund);
-        record.setMinerActions(record.minerActions() - minerRefund);
-        record.setTerraformerActions(record.terraformerActions() - terraformerRefund);
-        record.setLumberjackActions(record.lumberjackActions() - lumberjackRefund);
-        record.setHunterActions(record.hunterActions() - hunterRefund);
-        record.setWarriorActions(record.warriorActions() - warriorRefund);
-        record.setExplosivesExpertActions(record.explosivesExpertActions() - explosivesRefund);
-        record.setCrafterActions(record.crafterActions() - crafterRefund);
         data.setDirty();
 
-        int totalRefund = farmerRefund + minerRefund + terraformerRefund + lumberjackRefund + hunterRefund + warriorRefund + explosivesRefund + crafterRefund;
         player.sendSystemMessage(Component.literal(
                 "Death recovery refunded " + totalRefund + " profession action(s) total. "
                         + "Refund rate: " + RealCivUtil.formatPercentFromRatio(ratio) + "."));
@@ -269,6 +305,16 @@ public final class RealCivEvents {
         }
 
         if (isRegulatedExplosiveItem(held) && !canUseExplosivesExpertAction(player, data, true)) {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+            return;
+        }
+        if (isAnvilBlock(clickedState) && !tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ANVIL_USE,
+                1,
+                "You can't use an anvil right now until you've progressed your configured profession gate.")) {
             event.setCancellationResult(InteractionResult.FAIL);
             event.setCanceled(true);
             return;
@@ -383,6 +429,19 @@ public final class RealCivEvents {
             event.setCanceled(true);
             return;
         }
+        if (isRegulatedRedstoneBlock(placedBlock) && !canUseRedstonerRole(player, data, true)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (placedBlock.is(Blocks.SCAFFOLDING) && !tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.PLACE_SCAFFOLDING,
+                1,
+                "You can't place more scaffolding until you've contributed building materials to the Community Hub.")) {
+            event.setCanceled(true);
+            return;
+        }
 
         boolean firstTownHubPlacement = false;
         if (placingCommunityHub) {
@@ -399,7 +458,7 @@ public final class RealCivEvents {
                 return;
             }
 
-            if (data.countPlotsByClass(civId, LandClass.CIVIC) <= 0) {
+            if (!data.hasStarterTownAreaGranted(civId)) {
                 if (!claimStarterTownAreaFromHub(player, data, civId, level, event.getPos(), now)) {
                     event.setCanceled(true);
                     return;
@@ -441,6 +500,10 @@ public final class RealCivEvents {
         }
 
         if (placedBlock.is(BlockTags.CROPS)) {
+            if (!canProgressProfession(player, data, Profession.FARMER, true)) {
+                event.setCanceled(true);
+                return;
+            }
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             int farmerLevel = record.levelFor(Profession.FARMER);
             int limit = RealCivConfig.farmerLimitForLevel(farmerLevel);
@@ -550,6 +613,11 @@ public final class RealCivEvents {
             if (breakProfession == BreakProfession.NONE) {
                 return;
             }
+            Profession profession = professionForBreakProfession(breakProfession);
+            if (profession != Profession.NONE && !canProgressProfession(player, data, profession, true)) {
+                event.setCanceled(true);
+                return;
+            }
             int actionCost = actionCostForState(state);
 
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
@@ -645,6 +713,10 @@ public final class RealCivEvents {
             if (!shouldCountWarriorProgress(attackerCiv, targetCiv, data)) {
                 return;
             }
+            if (!canProgressProfession(attacker, data, Profession.WARRIOR, true)) {
+                event.setCanceled(true);
+                return;
+            }
 
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
             int warriorLevel = record.levelFor(Profession.WARRIOR);
@@ -657,6 +729,10 @@ public final class RealCivEvents {
         }
 
         if (!(event.getTarget() instanceof Mob)) {
+            return;
+        }
+        if (!canProgressProfession(attacker, data, Profession.HUNTER, true)) {
+            event.setCanceled(true);
             return;
         }
 
@@ -691,6 +767,13 @@ public final class RealCivEvents {
             if (!shouldCountWarriorProgress(killerCiv, victimCiv, data)) {
                 return;
             }
+            if (!canProgressProfession(killer, data, Profession.WARRIOR, true)) {
+                event.setCanceled(true);
+                if (victim.getHealth() <= 0.0F) {
+                    victim.setHealth(1.0F);
+                }
+                return;
+            }
 
             CivSavedData.PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
             int warriorLevel = killerRecord.levelFor(Profession.WARRIOR);
@@ -721,6 +804,13 @@ public final class RealCivEvents {
         }
 
         CivSavedData data = CivSavedData.get(killer.getServer());
+        if (!canProgressProfession(killer, data, Profession.HUNTER, true)) {
+            event.setCanceled(true);
+            if (mob.getHealth() <= 0.0F) {
+                mob.setHealth(1.0F);
+            }
+            return;
+        }
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(killer.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
@@ -737,6 +827,423 @@ public final class RealCivEvents {
         }
 
         record.setHunterActions(record.hunterActions() + 1);
+        data.setDirty();
+    }
+
+    /**
+     * Optional profession hook: animal breeding can consume profession action budget.
+     */
+    public static void onAnimalBreed(BabyEntitySpawnEvent event) {
+        if (!(event.getCausedByPlayer() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ANIMAL_BREED,
+                1,
+                "You can't breed more animals until you've contributed farm resources to the Community Hub.")) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: animal taming can consume profession action budget.
+     */
+    public static void onAnimalTame(AnimalTameEvent event) {
+        if (!(event.getTamer() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ANIMAL_TAME,
+                1,
+                "You can't tame more animals until you've contributed related resources to the Community Hub.")) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: villager interaction can be gated before opening trade flows.
+     */
+    public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        if (!(event.getTarget() instanceof AbstractVillager)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.VILLAGER_INTERACT,
+                1,
+                "You can't interact with villagers right now until you've contributed to the Community Hub.")) {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: entity shearing can be limited before vanilla entity interaction runs.
+     */
+    public static void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        if (!isShearTool(event.getItemStack())) {
+            return;
+        }
+        if (!(event.getTarget() instanceof IShearable shearable)) {
+            return;
+        }
+        if (!shearable.isShearable(player, event.getItemStack(), player.serverLevel(), event.getTarget().blockPosition())) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.SHEAR_ENTITY,
+                1,
+                "You can't shear more entities until you've contributed the related materials to the Community Hub.")) {
+            event.setCancellationResult(InteractionResult.FAIL);
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: tool-based block modifications (strip/till/path/scrape/wax off).
+     */
+    public static void onBlockToolModification(BlockEvent.BlockToolModificationEvent event) {
+        if (event.isSimulated() || event.getLevel().isClientSide()) {
+            return;
+        }
+        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+
+        @Nullable ProfessionEventHook hook = hookForToolAbility(event.getItemAbility());
+        if (hook == null) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                hook,
+                1,
+                "You can't perform more tool modifications right now until you've contributed to the Community Hub.")) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: farmland trampling can be limited or blocked.
+     */
+    public static void onFarmlandTrample(BlockEvent.FarmlandTrampleEvent event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.FARMLAND_TRAMPLE,
+                1,
+                "You can't trample more farmland right now until you've contributed to the Community Hub.")) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: block shearing can be limited.
+     */
+    public static void onUseItemOnBlock(UseItemOnBlockEvent event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        if (event.getUsePhase() != UseItemOnBlockEvent.UsePhase.ITEM_AFTER_BLOCK) {
+            return;
+        }
+        if (!isShearTool(event.getItemStack())) {
+            return;
+        }
+
+        BlockState targetState = event.getLevel().getBlockState(event.getPos());
+        // If this path can be represented as a tool modification, we let BlockToolModificationEvent own it.
+        if (targetState.getToolModifiedState(event.getUseOnContext(), ItemAbilities.SHEARS_HARVEST, true) != null) {
+            return;
+        }
+        if (!(targetState.getBlock() instanceof IShearable shearable)) {
+            return;
+        }
+        if (!shearable.isShearable(player, event.getItemStack(), event.getLevel(), event.getPos())) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.SHEAR_BLOCK,
+                1,
+                "You can't shear more blocks/plants until you've contributed the related materials to the Community Hub.")) {
+            event.cancelWithResult(ItemInteractionResult.FAIL);
+        }
+    }
+
+    /**
+     * Optional profession hook: bone meal usage can consume profession action budget.
+     */
+    public static void onBonemealUse(BonemealEvent event) {
+        if (event.getLevel().isClientSide()) {
+            return;
+        }
+        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player) || !event.isValidBonemealTarget()) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.BONEMEAL_USE,
+                1,
+                "You can't use more bonemeal right now until you've contributed farming resources to the Community Hub.")) {
+            event.setSuccessful(false);
+        }
+    }
+
+    /**
+     * Optional profession hook: completed villager trades can be counted for quotas, XP, and action costs.
+     * This event is not cancellable in NeoForge, so it is best used for accounting policies.
+     */
+    public static void onVillagerTrade(TradeWithVillagerEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        CivSavedData data = CivSavedData.get(player.getServer());
+        tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.VILLAGER_TRADE,
+                1,
+                "You can't complete additional villager trades right now until your configured progression gate is met.");
+    }
+
+    /**
+     * Optional profession hook: anvil result taken.
+     * This event is post-action in vanilla flow and is best used for accounting/XP.
+     */
+    public static void onAnvilRepair(AnvilRepairEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        CivSavedData data = CivSavedData.get(player.getServer());
+        tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ANVIL_REPAIR,
+                1,
+                "You can't take more anvil outputs right now until your configured progression gate is met.");
+    }
+
+    /**
+     * Optional profession hook: smelting output collected by player.
+     */
+    public static void onItemSmelted(PlayerEvent.ItemSmeltedEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        ItemStack smelted = event.getSmelting();
+        int triggerCount = smelted.isEmpty() ? 1 : Math.max(1, smelted.getCount());
+        CivSavedData data = CivSavedData.get(player.getServer());
+        tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ITEM_SMELT,
+                triggerCount,
+                "You can't smelt additional items right now until your configured progression gate is met.");
+    }
+
+    /**
+     * Optional profession hook: enchanting completed by player.
+     */
+    public static void onItemEnchanted(PlayerEnchantItemEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        int triggerCount = Math.max(1, event.getEnchantments().size());
+        CivSavedData data = CivSavedData.get(player.getServer());
+        tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ITEM_ENCHANT,
+                triggerCount,
+                "You can't apply additional enchantments right now until your configured progression gate is met.");
+    }
+
+    /**
+     * Optional profession hook: brewed potion taken from stand by player.
+     */
+    public static void onPotionBrewed(PlayerBrewedPotionEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        ItemStack brewed = event.getStack();
+        int triggerCount = brewed.isEmpty() ? 1 : Math.max(1, brewed.getCount());
+        CivSavedData data = CivSavedData.get(player.getServer());
+        tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.POTION_BREW,
+                triggerCount,
+                "You can't brew additional potions right now until your configured progression gate is met.");
+    }
+
+    /**
+     * Optional profession hook: player tosses items into the world.
+     */
+    public static void onItemToss(ItemTossEvent event) {
+        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        int triggerCount = 1;
+        ItemStack tossed = event.getEntity().getItem();
+        if (!tossed.isEmpty()) {
+            triggerCount = Math.max(1, tossed.getCount());
+        }
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.ITEM_TOSS,
+                triggerCount,
+                "You can't toss additional items right now until your configured progression gate is met.")) {
+            event.setCanceled(true);
+        }
+    }
+
+    /**
+     * Optional profession hook: stat progression/counters from vanilla stat awards.
+     */
+    public static void onStatAward(StatAwardEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+        int triggerCount = Math.max(1, event.getValue());
+        String statId = event.getStat().toString();
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!tryConsumeConfiguredHookActions(
+                player,
+                data,
+                ProfessionEventHook.STAT_AWARD,
+                triggerCount,
+                "You can't progress additional tracked stats right now until your configured progression gate is met.",
+                statId)) {
+            event.setCanceled(true);
+        }
+    }
+
+    public static void onItemFished(ItemFishedEvent event) {
+        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
+            return;
+        }
+        if (RealCivUtil.isBypass(player)) {
+            return;
+        }
+
+        int fishCaught = 0;
+        for (ItemStack drop : event.getDrops()) {
+            if (!drop.isEmpty() && drop.is(ItemTags.FISHES)) {
+                fishCaught += Math.max(0, drop.getCount());
+            }
+        }
+        if (fishCaught <= 0) {
+            return;
+        }
+
+        CivSavedData data = CivSavedData.get(player.getServer());
+        if (!canProgressProfession(player, data, Profession.FISHER, true)) {
+            event.setCanceled(true);
+            return;
+        }
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        int fisherLevel = record.levelFor(Profession.FISHER);
+        int limit = RealCivConfig.fisherLimitForLevel(fisherLevel);
+        if (record.fisherActions() + fishCaught > limit) {
+            RealCivMessages.deny(
+                    player,
+                    "You can't catch more fish until you've contributed fish to the Community Hub. "
+                            + "Fisher limit reached (" + record.fisherActions() + "/" + limit
+                            + ", this catch would add " + fishCaught + ").");
+            event.setCanceled(true);
+            return;
+        }
+
+        record.setFisherActions(record.fisherActions() + fishCaught);
         data.setDirty();
     }
 
@@ -926,6 +1433,7 @@ public final class RealCivEvents {
                         + " | Miner " + record.minerActions() + "/" + RealCivConfig.minerLimitForLevel(record.levelFor(Profession.MINER))
                         + " | Terraformer " + record.terraformerActions() + "/" + RealCivConfig.terraformerLimitForLevel(record.levelFor(Profession.TERRAFORMER))
                         + " | Lumberjack " + record.lumberjackActions() + "/" + RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK))
+                        + " | Fisher " + record.fisherActions() + "/" + RealCivConfig.fisherLimitForLevel(record.levelFor(Profession.FISHER))
                         + " | Hunter " + record.hunterActions() + "/" + RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER))
                         + " | Warrior " + record.warriorActions() + "/" + RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR))
                         + " | Explosives " + record.explosivesExpertActions() + "/" + RealCivConfig.explosivesExpertLimitForLevel(record.levelFor(Profession.EXPLOSIVES_EXPERT))
@@ -1055,7 +1563,8 @@ public final class RealCivEvents {
                         + RealCivUtil.formatCredits(totalCost)
                         + " | New balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
         player.sendSystemMessage(Component.literal(
-                "Civ treasury (" + civId + "): " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
+                "Civ collective contribution karma (" + civId + "): "
+                        + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
     }
 
     private static boolean claimStarterTownAreaFromHub(
@@ -1103,6 +1612,7 @@ public final class RealCivEvents {
                         + dimension + "[" + hubPos.getX() + "," + hubPos.getY() + "," + hubPos.getZ() + "]"
                         + " | side=" + sideBlocks + " blocks | claimed chunks=" + claimed,
                 RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setStarterTownAreaGranted(civId, true);
         player.sendSystemMessage(Component.literal(
                 "Starter town land claimed: " + claimed + " CIVIC chunk(s) around the Community Hub."));
         return true;
@@ -1211,12 +1721,30 @@ public final class RealCivEvents {
         return RealCivConfig.regulatedExplosiveItems().contains(itemId);
     }
 
+    private static boolean isRegulatedRedstoneBlock(BlockState state) {
+        ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+        return RealCivConfig.regulatedRedstoneBlocks().contains(blockId);
+    }
+
+    private static boolean isAnvilBlock(BlockState state) {
+        return state.is(Blocks.ANVIL) || state.is(Blocks.CHIPPED_ANVIL) || state.is(Blocks.DAMAGED_ANVIL);
+    }
+
     private static boolean isRegulatedExplosionSource(@Nullable Entity source) {
         return source instanceof PrimedTnt
                 || source instanceof MinecartTNT
                 || source instanceof EndCrystal
                 || source instanceof WitherSkull
                 || source instanceof WitherBoss;
+    }
+
+    private static Profession professionForBreakProfession(BreakProfession breakProfession) {
+        return switch (breakProfession) {
+            case MINER -> Profession.MINER;
+            case TERRAFORMER -> Profession.TERRAFORMER;
+            case LUMBERJACK -> Profession.LUMBERJACK;
+            case NONE -> Profession.NONE;
+        };
     }
 
     @Nullable
@@ -1242,6 +1770,470 @@ public final class RealCivEvents {
         return null;
     }
 
+    /**
+     * Applies all configured event hook rules for the hook (atomically) against profession action counters.
+     */
+    private static boolean tryConsumeConfiguredHookActions(
+            ServerPlayer player,
+            CivSavedData data,
+            ProfessionEventHook hook,
+            int triggerCount,
+            String defaultDenyMessage) {
+        return tryConsumeConfiguredHookActions(
+                player,
+                data,
+                hook,
+                triggerCount,
+                defaultDenyMessage,
+                null);
+    }
+
+    private static boolean tryConsumeConfiguredHookActions(
+            ServerPlayer player,
+            CivSavedData data,
+            ProfessionEventHook hook,
+            int triggerCount,
+            String defaultDenyMessage,
+            @Nullable String contextToken) {
+        if (triggerCount <= 0) {
+            return true;
+        }
+        int safeTriggerCount = Math.max(1, triggerCount);
+        List<ProfessionEventHookRule> matchingRules = configuredHookRules(hook);
+        if (matchingRules.isEmpty()) {
+            return true;
+        }
+
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        long nowMillis = System.currentTimeMillis();
+        Map<Profession, PendingHookCharge> pendingByProfession = new HashMap<>();
+        Map<Profession, Integer> pendingProfessionXpByProfession = new HashMap<>();
+        Map<String, PendingWindowUsage> pendingWindowUsageByRule = new HashMap<>();
+        int pendingGeneralXp = 0;
+        boolean anyRuleApplied = false;
+        boolean mutated = false;
+
+        for (ProfessionEventHookRule rule : matchingRules) {
+            if (!matchesRuleContext(rule, contextToken)) {
+                continue;
+            }
+            Profession profession = rule.profession();
+            if (profession == Profession.NONE) {
+                continue;
+            }
+            if (!canProgressProfession(player, data, profession, true)) {
+                return false;
+            }
+
+            int professionLevel = record.levelFor(profession);
+            if (professionLevel < rule.minProfessionLevel()) {
+                RealCivMessages.deny(
+                        player,
+                        formatHookDenyMessage(
+                                rule,
+                                hook,
+                                professionLevel,
+                                rule.minProfessionLevel(),
+                                0,
+                                rule.minProfessionLevel(),
+                                0,
+                                0L,
+                                0,
+                                0,
+                                0,
+                                defaultDenyMessage,
+                                readableProfessionName(profession)
+                                        + " level " + rule.minProfessionLevel()
+                                        + " required (you are level " + professionLevel + ")."));
+                return false;
+            }
+            int generalLevel = record.generalLevel();
+            if (generalLevel < rule.minGeneralLevel()) {
+                RealCivMessages.deny(
+                        player,
+                        formatHookDenyMessage(
+                                rule,
+                                hook,
+                                generalLevel,
+                                rule.minGeneralLevel(),
+                                0,
+                                0,
+                                rule.minGeneralLevel(),
+                                0L,
+                                0,
+                                0,
+                                0,
+                                defaultDenyMessage,
+                                "General level " + rule.minGeneralLevel()
+                                        + " required (you are level " + generalLevel + ")."));
+                return false;
+            }
+
+            if (rule.minMembershipMillis() > 0L) {
+                if (record.firstSeenAtMillis() <= 0L) {
+                    record.ensureFirstSeenAtMillis(nowMillis);
+                    mutated = true;
+                    data.setDirty();
+                }
+                long membershipMillis = record.membershipMillis(nowMillis);
+                if (membershipMillis < rule.minMembershipMillis()) {
+                    long requiredHours = Math.max(1L, rule.minMembershipMillis() / 3_600_000L);
+                    long currentHours = Math.max(0L, membershipMillis / 3_600_000L);
+                    RealCivMessages.deny(
+                            player,
+                            formatHookDenyMessage(
+                                    rule,
+                                    hook,
+                                    (int) Math.min(Integer.MAX_VALUE, currentHours),
+                                    (int) Math.min(Integer.MAX_VALUE, requiredHours),
+                                    0,
+                                    0,
+                                    0,
+                                    rule.minMembershipMillis(),
+                                    0,
+                                    0,
+                                    0,
+                                    defaultDenyMessage,
+                                    "Server membership time required: " + requiredHours
+                                            + "h (you currently have " + currentHours + "h)."));
+                    return false;
+                }
+            }
+
+            if (rule.hasWindowQuota()) {
+                long windowStartMillis = resolveWindowStartMillis(nowMillis, rule.windowSeconds());
+                String ruleKey = rule.windowCounterKey();
+                int persistedUsed = record.hookWindowUsed(ruleKey, windowStartMillis);
+                PendingWindowUsage pendingUsage = pendingWindowUsageByRule.get(ruleKey);
+                int pendingAlready = pendingUsage == null ? 0 : pendingUsage.addedTriggers();
+                int usedAfterCurrentEvent = persistedUsed + pendingAlready + safeTriggerCount;
+                if (usedAfterCurrentEvent > rule.maxTriggersPerWindow()) {
+                    RealCivMessages.deny(
+                            player,
+                            formatHookDenyMessage(
+                                    rule,
+                                    hook,
+                                    persistedUsed + pendingAlready,
+                                    rule.maxTriggersPerWindow(),
+                                    0,
+                                    0,
+                                    0,
+                                    0L,
+                                    persistedUsed + pendingAlready,
+                                    rule.maxTriggersPerWindow(),
+                                    rule.windowSeconds(),
+                                    defaultDenyMessage,
+                                    "Hook quota reached for this window ("
+                                            + (persistedUsed + pendingAlready) + "/" + rule.maxTriggersPerWindow() + ")."));
+                    return false;
+                }
+                if (pendingUsage == null) {
+                    pendingWindowUsageByRule.put(
+                            ruleKey,
+                            new PendingWindowUsage(
+                                    rule,
+                                    windowStartMillis,
+                                    safeTriggerCount,
+                                    persistedUsed));
+                } else {
+                    pendingWindowUsageByRule.put(
+                            ruleKey,
+                            new PendingWindowUsage(
+                                    pendingUsage.sourceRule(),
+                                    pendingUsage.windowStartMillis(),
+                                    pendingUsage.addedTriggers() + safeTriggerCount,
+                                    pendingUsage.persistedUsed()));
+                }
+            }
+
+            int addedCost = safeMultiply(rule.actionCost(), safeTriggerCount);
+            if (addedCost > 0) {
+                PendingHookCharge existing = pendingByProfession.get(profession);
+                if (existing == null) {
+                    pendingByProfession.put(profession, new PendingHookCharge(rule, addedCost));
+                } else {
+                    pendingByProfession.put(
+                            profession,
+                            new PendingHookCharge(existing.sourceRule(), existing.actionCost() + addedCost));
+                }
+            }
+
+            int professionXpGain = safeMultiply(rule.professionXpPerTrigger(), safeTriggerCount);
+            if (professionXpGain > 0) {
+                pendingProfessionXpByProfession.merge(profession, professionXpGain, Integer::sum);
+            }
+            int generalXpGain = safeMultiply(rule.generalXpPerTrigger(), safeTriggerCount);
+            if (generalXpGain > 0) {
+                pendingGeneralXp = safeAdd(pendingGeneralXp, generalXpGain);
+            }
+            anyRuleApplied = true;
+        }
+
+        if (!anyRuleApplied) {
+            if (mutated) {
+                data.setDirty();
+            }
+            return true;
+        }
+
+        for (Map.Entry<Profession, PendingHookCharge> entry : pendingByProfession.entrySet()) {
+            Profession profession = entry.getKey();
+            PendingHookCharge pending = entry.getValue();
+            int level = record.levelFor(profession);
+            int limit = RealCivConfig.limitForProfession(profession, level);
+            int current = record.actionsForProfession(profession);
+            if (current + pending.actionCost() > limit) {
+                String message = formatHookDenyMessage(
+                        pending.sourceRule(),
+                        hook,
+                        current,
+                        limit,
+                        pending.actionCost(),
+                        0,
+                        0,
+                        0L,
+                        0,
+                        0,
+                        0,
+                        defaultDenyMessage,
+                        null);
+                RealCivMessages.deny(player, message);
+                return false;
+            }
+        }
+
+        for (Map.Entry<Profession, PendingHookCharge> entry : pendingByProfession.entrySet()) {
+            Profession profession = entry.getKey();
+            int current = record.actionsForProfession(profession);
+            record.setActionsForProfession(profession, current + entry.getValue().actionCost());
+            mutated = true;
+        }
+
+        for (Map.Entry<String, PendingWindowUsage> entry : pendingWindowUsageByRule.entrySet()) {
+            PendingWindowUsage pendingUsage = entry.getValue();
+            int totalUsed = safeAdd(pendingUsage.persistedUsed(), pendingUsage.addedTriggers());
+            record.setHookWindowUsed(entry.getKey(), pendingUsage.windowStartMillis(), totalUsed);
+            mutated = true;
+        }
+
+        for (Map.Entry<Profession, Integer> xpEntry : pendingProfessionXpByProfession.entrySet()) {
+            int xp = Math.max(0, xpEntry.getValue());
+            if (xp <= 0) {
+                continue;
+            }
+            record.addProfessionXp(xpEntry.getKey(), xp);
+            mutated = true;
+        }
+        if (pendingGeneralXp > 0) {
+            record.addGeneralXp(pendingGeneralXp);
+            mutated = true;
+        }
+
+        if (mutated) {
+            data.setDirty();
+        }
+        return true;
+    }
+
+    private static List<ProfessionEventHookRule> configuredHookRules(ProfessionEventHook hook) {
+        ArrayList<ProfessionEventHookRule> matches = new ArrayList<>();
+        for (ProfessionEventHookRule rule : RealCivConfig.professionEventHookRules()) {
+            if (rule.hook() == hook) {
+                matches.add(rule);
+            }
+        }
+        return matches;
+    }
+
+    private record PendingHookCharge(ProfessionEventHookRule sourceRule, int actionCost) {
+    }
+
+    private record PendingWindowUsage(
+            ProfessionEventHookRule sourceRule,
+            long windowStartMillis,
+            int addedTriggers,
+            int persistedUsed) {
+    }
+
+    private static boolean matchesRuleContext(ProfessionEventHookRule rule, @Nullable String contextToken) {
+        @Nullable String statPrefix = rule.statPrefixFilter();
+        if (statPrefix == null || statPrefix.isBlank()) {
+            return true;
+        }
+        if (contextToken == null || contextToken.isBlank()) {
+            return false;
+        }
+        return contextToken.toLowerCase(Locale.ROOT).startsWith(statPrefix.toLowerCase(Locale.ROOT));
+    }
+
+    private static long resolveWindowStartMillis(long nowMillis, int windowSeconds) {
+        if (windowSeconds <= 0) {
+            return 0L;
+        }
+        long windowMillis = Math.max(1L, windowSeconds) * 1_000L;
+        if (windowMillis <= 0L) {
+            return 0L;
+        }
+        return Math.floorDiv(nowMillis, windowMillis) * windowMillis;
+    }
+
+    private static int safeMultiply(int left, int right) {
+        long result = (long) left * (long) right;
+        if (result <= 0L) {
+            return 0;
+        }
+        if (result > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) result;
+    }
+
+    private static int safeAdd(int left, int right) {
+        long result = (long) left + (long) right;
+        if (result <= 0L) {
+            return 0;
+        }
+        if (result > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) result;
+    }
+
+    private static String formatHookDenyMessage(
+            ProfessionEventHookRule rule,
+            ProfessionEventHook hook,
+            int current,
+            int limit,
+            int actionCost,
+            int requiredProfessionLevel,
+            int requiredGeneralLevel,
+            long requiredMembershipMillis,
+            int windowUsed,
+            int windowLimit,
+            int windowSeconds,
+            String fallback,
+            @Nullable String fallbackDetail) {
+        String template = rule.denyMessageOverride();
+        if (template == null || template.isBlank()) {
+            if (fallbackDetail == null || fallbackDetail.isBlank()) {
+                return fallback + " "
+                        + readableProfessionName(rule.profession()) + " limit reached ("
+                        + current + "/" + limit + ", this action costs " + actionCost + ").";
+            }
+            return fallback + " " + fallbackDetail;
+        }
+        return template
+                .replace("%hook%", hook.name().toLowerCase(Locale.ROOT))
+                .replace("%profession%", readableProfessionName(rule.profession()))
+                .replace("%current%", Integer.toString(current))
+                .replace("%limit%", Integer.toString(limit))
+                .replace("%cost%", Integer.toString(actionCost))
+                .replace("%required_profession_level%", Integer.toString(requiredProfessionLevel))
+                .replace("%required_general_level%", Integer.toString(requiredGeneralLevel))
+                .replace("%required_membership_hours%", Long.toString(Math.max(0L, requiredMembershipMillis / 3_600_000L)))
+                .replace("%window_used%", Integer.toString(windowUsed))
+                .replace("%window_limit%", Integer.toString(windowLimit))
+                .replace("%window_seconds%", Integer.toString(windowSeconds))
+                .replace("%detail%", fallbackDetail == null ? "" : fallbackDetail);
+    }
+
+    private static boolean isShearTool(ItemStack stack) {
+        if (stack.isEmpty()) {
+            return false;
+        }
+        return stack.canPerformAction(ItemAbilities.SHEARS_HARVEST)
+                || stack.canPerformAction(ItemAbilities.SHEARS_TRIM)
+                || stack.canPerformAction(ItemAbilities.SHEARS_CARVE)
+                || stack.canPerformAction(ItemAbilities.SHEARS_REMOVE_ARMOR)
+                || stack.canPerformAction(ItemAbilities.SHEARS_DISARM);
+    }
+
+    @Nullable
+    private static ProfessionEventHook hookForToolAbility(ItemAbility ability) {
+        String abilityName = ability.name();
+        return switch (abilityName) {
+            case "axe_strip" -> ProfessionEventHook.TOOL_STRIP_LOG;
+            case "shears_harvest", "shears_carve", "shears_trim" -> ProfessionEventHook.SHEAR_BLOCK;
+            case "till" -> ProfessionEventHook.TOOL_TILL_SOIL;
+            case "shovel_flatten" -> ProfessionEventHook.TOOL_FLATTEN_PATH;
+            case "shovel_douse" -> ProfessionEventHook.TOOL_DOUSE_CAMPFIRE;
+            case "axe_scrape" -> ProfessionEventHook.TOOL_SCRAPE_COPPER;
+            case "axe_wax_off" -> ProfessionEventHook.TOOL_WAX_OFF;
+            default -> null;
+        };
+    }
+
+    private static String readableProfessionName(Profession profession) {
+        String raw = profession.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        if (raw.isEmpty()) {
+            return "Profession";
+        }
+        return Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
+    }
+
+    private static boolean canProgressProfession(
+            ServerPlayer player,
+            CivSavedData data,
+            Profession profession,
+            boolean sendMessage) {
+        if (profession == Profession.NONE || RealCivUtil.isBypass(player)) {
+            return true;
+        }
+        if (!RealCivConfig.specializationSingleProfessionLockEnabled()) {
+            return true;
+        }
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        @Nullable Profession focused = record.focusedProfession();
+        if (focused == null) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "Specialization lock is enabled. Choose your profession focus with "
+                                + "/realciv profession focus set <profession>.");
+            }
+            return false;
+        }
+        if (focused != profession) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "Your profession focus is " + focused.name().toLowerCase(java.util.Locale.ROOT)
+                                + ". You cannot progress "
+                                + profession.name().toLowerCase(java.util.Locale.ROOT)
+                                + " while focused elsewhere.");
+            }
+            return false;
+        }
+        return true;
+    }
+
+    private static boolean canUseRedstonerRole(ServerPlayer player, CivSavedData data, boolean sendMessage) {
+        if (RealCivUtil.isBypass(player)) {
+            return true;
+        }
+
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        int maxRedstoners = RealCivConfig.maxRedstonersPerCivilization();
+        if (maxRedstoners <= 0) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "Regulated redstone placement is disabled by server configuration (max redstoners per civilization is 0).");
+            }
+            return false;
+        }
+        if (!data.isRedstoner(civId, player.getUUID())) {
+            if (sendMessage) {
+                RealCivMessages.deny(
+                        player,
+                        "You are not designated as a Redstoner for your civilization. "
+                                + "Ask your mayor to run /realciv civ redstoner add <player>.");
+            }
+            return false;
+        }
+        return true;
+    }
+
     private static boolean canUseExplosivesExpertAction(ServerPlayer player, CivSavedData data, boolean sendMessage) {
         if (RealCivUtil.isBypass(player)) {
             return true;
@@ -1264,6 +2256,9 @@ public final class RealCivEvents {
                         "You are not designated as an Explosives Expert for your civilization. "
                                 + "Ask your mayor to run /realciv civ explosives add <player>.");
             }
+            return false;
+        }
+        if (!canProgressProfession(player, data, Profession.EXPLOSIVES_EXPERT, sendMessage)) {
             return false;
         }
 
@@ -1363,48 +2358,25 @@ public final class RealCivEvents {
             return;
         }
 
-        int farmerReset = staleResetValue(record.farmerActions(), record.farmerActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int minerReset = staleResetValue(record.minerActions(), record.minerActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int terraformerReset = staleResetValue(record.terraformerActions(), record.terraformerActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int lumberjackReset = staleResetValue(record.lumberjackActions(), record.lumberjackActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int hunterReset = staleResetValue(record.hunterActions(), record.hunterActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int warriorReset = staleResetValue(record.warriorActions(), record.warriorActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int explosivesReset = staleResetValue(record.explosivesExpertActions(), record.explosivesExpertActionsUpdatedAtMillis(), nowMillis, staleMillis);
-        int crafterReset = staleResetValue(record.crafterActions(), record.crafterActionsUpdatedAtMillis(), nowMillis, staleMillis);
+        int totalReset = 0;
+        for (Profession profession : ACTION_TRACKED_PROFESSIONS) {
+            int current = record.actionsForProfession(profession);
+            int reset = staleResetValue(
+                    current,
+                    record.actionsUpdatedAtMillisForProfession(profession),
+                    nowMillis,
+                    staleMillis);
+            if (reset > 0) {
+                record.setActionsForProfession(profession, 0);
+                totalReset += reset;
+            }
+        }
 
-        if (farmerReset <= 0 && minerReset <= 0 && terraformerReset <= 0
-                && lumberjackReset <= 0 && hunterReset <= 0 && warriorReset <= 0
-                && explosivesReset <= 0 && crafterReset <= 0) {
+        if (totalReset <= 0) {
             return;
-        }
-
-        if (farmerReset > 0) {
-            record.setFarmerActions(0);
-        }
-        if (minerReset > 0) {
-            record.setMinerActions(0);
-        }
-        if (terraformerReset > 0) {
-            record.setTerraformerActions(0);
-        }
-        if (lumberjackReset > 0) {
-            record.setLumberjackActions(0);
-        }
-        if (hunterReset > 0) {
-            record.setHunterActions(0);
-        }
-        if (warriorReset > 0) {
-            record.setWarriorActions(0);
-        }
-        if (explosivesReset > 0) {
-            record.setExplosivesExpertActions(0);
-        }
-        if (crafterReset > 0) {
-            record.setCrafterActions(0);
         }
         data.setDirty();
 
-        int totalReset = farmerReset + minerReset + terraformerReset + lumberjackReset + hunterReset + warriorReset + explosivesReset + crafterReset;
         player.sendSystemMessage(Component.literal(
                 "Timed recovery reset " + totalReset + " stale profession action(s) after "
                         + (staleMillis / 60_000L) + " minute(s) without progression reset."));

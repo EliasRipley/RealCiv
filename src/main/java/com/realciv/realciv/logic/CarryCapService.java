@@ -102,6 +102,7 @@ public final class CarryCapService {
             case MINER -> RealCivConfig.minerLimitForLevel(record.levelFor(Profession.MINER));
             case TERRAFORMER -> RealCivConfig.terraformerLimitForLevel(record.levelFor(Profession.TERRAFORMER));
             case LUMBERJACK -> RealCivConfig.lumberjackLimitForLevel(record.levelFor(Profession.LUMBERJACK));
+            case FISHER -> RealCivConfig.fisherLimitForLevel(record.levelFor(Profession.FISHER));
             case HUNTER -> RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER));
             case WARRIOR -> RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR));
             case EXPLOSIVES_EXPERT -> RealCivConfig.explosivesExpertLimitForLevel(record.levelFor(Profession.EXPLOSIVES_EXPERT));

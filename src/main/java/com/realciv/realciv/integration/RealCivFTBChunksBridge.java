@@ -224,8 +224,8 @@ public final class RealCivFTBChunksBridge {
             long treasury = data.civTreasuryCents(civId);
             if (treasury < claimCost) {
                 return ClaimDecision.denied(
-                        "Not enough town treasury. Need " + RealCivUtil.formatCredits(claimCost)
-                                + ", treasury has " + RealCivUtil.formatCredits(treasury) + ".");
+                        "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
+                                + ", civ has " + RealCivUtil.formatCredits(treasury) + ".");
             }
 
             return ClaimDecision.allowed(player, civId, targetClass, dimension, chunkX, chunkZ, now, paidTicks, claimCost);
@@ -342,7 +342,8 @@ public final class RealCivFTBChunksBridge {
 
             player.sendSystemMessage(Component.literal(
                     "CIVIC chunk claimed at [" + decision.chunkX() + ", " + decision.chunkZ() + "]."
-                            + " Treasury now: " + RealCivUtil.formatCredits(data.civTreasuryCents(decision.civId())) + "."));
+                            + " Collective contribution karma now: "
+                            + RealCivUtil.formatCredits(data.civTreasuryCents(decision.civId())) + "."));
             return;
         }
 

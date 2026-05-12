@@ -19,6 +19,10 @@ public final class CraftingLimitService {
             return false;
         }
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (RealCivConfig.specializationSingleProfessionLockEnabled()
+                && !record.canProgressProfession(Profession.CRAFTER)) {
+            return false;
+        }
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
         int resultCount = Math.max(1, resultStack.getCount());
@@ -38,6 +42,22 @@ public final class CraftingLimitService {
         }
 
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        if (RealCivConfig.specializationSingleProfessionLockEnabled()
+                && !record.canProgressProfession(Profession.CRAFTER)) {
+            Profession focus = record.focusedProfession();
+            if (focus == null) {
+                RealCivMessages.deny(
+                        player,
+                        "Specialization lock is enabled. Choose your profession focus with "
+                                + "/realciv profession focus set <profession>.");
+            } else {
+                RealCivMessages.deny(
+                        player,
+                        "Your profession focus is " + focus.name().toLowerCase(java.util.Locale.ROOT)
+                                + ". You cannot progress crafter while focused elsewhere.");
+            }
+            return;
+        }
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
         RealCivMessages.deny(

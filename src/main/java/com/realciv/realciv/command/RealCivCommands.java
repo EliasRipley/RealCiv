@@ -16,6 +16,13 @@ import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.logic.RewardRule;
 import com.realciv.realciv.logic.TagRewardRule;
+import java.io.IOException;
+import java.nio.charset.StandardCharsets;
+import java.nio.file.Files;
+import java.nio.file.Path;
+import java.nio.file.StandardOpenOption;
+import java.time.Instant;
+import java.util.ArrayList;
 import java.util.Comparator;
 import java.util.HashMap;
 import java.util.List;
@@ -40,6 +47,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
 
 public final class RealCivCommands {
@@ -65,6 +73,41 @@ public final class RealCivCommands {
                                 .executes(ctx -> showProfile(
                                         ctx.getSource(),
                                         EntityArgument.getPlayer(ctx, "player")))))
+                .then(Commands.literal("profession")
+                        .then(Commands.literal("focus")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> professionFocusShow(
+                                                ctx.getSource(),
+                                                ctx.getSource().getPlayerOrException()))
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> professionFocusShow(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player")))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("profession", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                        focusableProfessionNames(),
+                                                        builder))
+                                                .executes(ctx -> professionFocusSetSelf(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "profession")))))
+                                .then(Commands.literal("clear")
+                                        .executes(ctx -> professionFocusClearSelf(ctx.getSource())))
+                                .then(Commands.literal("assign")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                focusableProfessionNames(),
+                                                                builder))
+                                                        .executes(ctx -> professionFocusAssign(
+                                                                ctx.getSource(),
+                                                                EntityArgument.getPlayer(ctx, "player"),
+                                                                StringArgumentType.getString(ctx, "profession"))))))
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> professionFocusRemove(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player")))))))
                 .then(Commands.literal("civ")
                         .then(Commands.literal("info")
                                 .executes(ctx -> civInfo(ctx.getSource(), ctx.getSource().getPlayerOrException()))
@@ -175,6 +218,26 @@ public final class RealCivCommands {
                                 .then(Commands.literal("remove")
                                         .then(Commands.argument("player", EntityArgument.player())
                                                 .executes(ctx -> civExplosivesSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        false)))))
+                        .then(Commands.literal("redstoner")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> civRedstonerShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> civRedstonerShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> civRedstonerSet(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        true))))
+                                .then(Commands.literal("remove")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .executes(ctx -> civRedstonerSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         false)))))
@@ -390,7 +453,13 @@ public final class RealCivCommands {
                                 .then(Commands.argument("count", IntegerArgumentType.integer(1, 200))
                                         .executes(ctx -> showHubLogs(
                                                 ctx.getSource(),
-                                                IntegerArgumentType.getInteger(ctx, "count"))))))
+                                                IntegerArgumentType.getInteger(ctx, "count")))))
+                        .then(Commands.literal("export-items")
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.argument("namespace", StringArgumentType.word())
+                                        .executes(ctx -> exportHubItemIds(
+                                                ctx.getSource(),
+                                                StringArgumentType.getString(ctx, "namespace"))))))
                 .then(Commands.literal("census")
                         .then(Commands.literal("members")
                                 .executes(ctx -> censusMembers(ctx.getSource(), 1))
@@ -550,6 +619,7 @@ public final class RealCivCommands {
         int minerLevel = record.levelFor(Profession.MINER);
         int terraformerLevel = record.levelFor(Profession.TERRAFORMER);
         int lumberjackLevel = record.levelFor(Profession.LUMBERJACK);
+        int fisherLevel = record.levelFor(Profession.FISHER);
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int warriorLevel = record.levelFor(Profession.WARRIOR);
         int explosivesLevel = record.levelFor(Profession.EXPLOSIVES_EXPERT);
@@ -565,6 +635,13 @@ public final class RealCivCommands {
         source.sendSuccess(() -> Component.literal(
                 "Credits: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
                         + " | General Level: " + generalLevel + " (" + record.generalXp() + " XP)"), false);
+        @Nullable Profession focus = record.focusedProfession();
+        source.sendSuccess(() -> Component.literal(
+                "Focus: " + (focus == null ? "none" : focus.name())
+                        + " | specialization lock: " + (RealCivConfig.specializationSingleProfessionLockEnabled() ? "ON" : "OFF")
+                        + " | XP decay: " + (RealCivConfig.specializationXpDecayEnabled() ? "ON" : "OFF")
+                        + " (" + String.format(Locale.ROOT, "%.2f", RealCivConfig.specializationXpDecayRate()) + "x)"),
+                false);
         source.sendSuccess(() -> Component.literal(
                 "Farmer L" + farmerLevel + " | actions " + record.farmerActions() + "/"
                         + RealCivConfig.farmerLimitForLevel(farmerLevel)
@@ -581,6 +658,10 @@ public final class RealCivCommands {
                 "Lumberjack L" + lumberjackLevel + " | actions " + record.lumberjackActions() + "/"
                         + RealCivConfig.lumberjackLimitForLevel(lumberjackLevel)
                         + " | XP " + record.lumberjackXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Fisher L" + fisherLevel + " | catches " + record.fisherActions() + "/"
+                        + RealCivConfig.fisherLimitForLevel(fisherLevel)
+                        + " | XP " + record.fisherXp()), false);
         source.sendSuccess(() -> Component.literal(
                 "Hunter L" + hunterLevel + " | kills " + record.hunterActions() + "/"
                         + RealCivConfig.hunterLimitForLevel(hunterLevel)
@@ -603,6 +684,133 @@ public final class RealCivCommands {
                         + (record.personalWithdrawRatioOverride(civId) == null ? " (default)" : " (mayor override)")),
                 false);
         return 1;
+    }
+
+    private static int professionFocusShow(CommandSourceStack source, ServerPlayer target)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        ServerPlayer actor = source.getPlayer();
+        if (actor != null
+                && !actor.getUUID().equals(target.getUUID())
+                && !canManageProfessionFocus(source, data, target)) {
+            source.sendFailure(Component.literal("Only mayor/admin can view another player's profession focus."));
+            return 0;
+        }
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        @Nullable Profession focus = record.focusedProfession();
+        source.sendSuccess(() -> Component.literal(
+                "Profession focus for " + target.getGameProfile().getName() + ": "
+                        + (focus == null ? "none" : focus.name())),
+                false);
+        source.sendSuccess(() -> Component.literal(
+                "specialization.singleProfessionLockEnabled="
+                        + RealCivConfig.specializationSingleProfessionLockEnabled()
+                        + " | specialization.xpDecayEnabled=" + RealCivConfig.specializationXpDecayEnabled()
+                        + " | specialization.xpDecayRate="
+                        + String.format(Locale.ROOT, "%.2f", RealCivConfig.specializationXpDecayRate())),
+                false);
+        return 1;
+    }
+
+    private static int professionFocusSetSelf(CommandSourceStack source, String professionRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        CivSavedData data = CivSavedData.get(source.getServer());
+        if (!data.setPlayerFocusProfession(player.getUUID(), profession, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Focus is already " + profession.name() + "."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Set profession focus to " + profession.name() + "."), true);
+        return 1;
+    }
+
+    private static int professionFocusClearSelf(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer player = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        if (!data.setPlayerFocusProfession(player.getUUID(), null, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Focus is already cleared."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal("Cleared profession focus."), true);
+        return 1;
+    }
+
+    private static int professionFocusAssign(CommandSourceStack source, ServerPlayer target, String professionRaw) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        if (!canManageProfessionFocus(source, data, target)) {
+            source.sendFailure(Component.literal("Only mayor/admin can assign another player's profession focus."));
+            return 0;
+        }
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        if (!data.setPlayerFocusProfession(target.getUUID(), profession, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Focus is already " + profession.name() + "."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Set profession focus for " + target.getGameProfile().getName() + " to " + profession.name() + "."),
+                true);
+        return 1;
+    }
+
+    private static int professionFocusRemove(CommandSourceStack source, ServerPlayer target) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        if (!canManageProfessionFocus(source, data, target)) {
+            source.sendFailure(Component.literal("Only mayor/admin can clear another player's profession focus."));
+            return 0;
+        }
+        if (!data.setPlayerFocusProfession(target.getUUID(), null, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Focus is already cleared."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Cleared profession focus for " + target.getGameProfile().getName() + "."),
+                true);
+        return 1;
+    }
+
+    private static boolean canManageProfessionFocus(CommandSourceStack source, CivSavedData data, ServerPlayer target) {
+        if (source.hasPermission(3)) {
+            return true;
+        }
+        ServerPlayer actor = source.getPlayer();
+        if (actor == null) {
+            return false;
+        }
+        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
+        String targetCiv = data.getOrAssignCivilization(target.getUUID());
+        return actorCiv.equals(targetCiv) && isMayorOrAdmin(source, data, actorCiv);
+    }
+
+    @Nullable
+    private static Profession parseFocusableProfession(@Nullable String raw) {
+        Profession parsed = Profession.fromConfigName(raw);
+        if (parsed == null || parsed == Profession.NONE) {
+            return null;
+        }
+        return parsed;
+    }
+
+    private static List<String> focusableProfessionNames() {
+        ArrayList<String> names = new ArrayList<>();
+        for (Profession profession : Profession.values()) {
+            if (profession != Profession.NONE) {
+                names.add(profession.name().toLowerCase(Locale.ROOT));
+            }
+        }
+        return names;
     }
 
     private static int civInfo(CommandSourceStack source, ServerPlayer target) {
@@ -1052,6 +1260,84 @@ public final class RealCivCommands {
         return 1;
     }
 
+    private static int civRedstonerShow(CommandSourceStack source, @Nullable String civRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId;
+        if (civRef == null || civRef.isBlank()) {
+            civId = civOfSource(source, data);
+        } else {
+            civId = resolveCivilizationId(data, civRef);
+            if (civId == null) {
+                source.sendFailure(Component.literal("Civilization not found: " + civRef));
+                return 0;
+            }
+        }
+
+        int cap = RealCivConfig.maxRedstonersPerCivilization();
+        List<UUID> redstoners = data.redstonersSorted(civId);
+        source.sendSuccess(() -> Component.literal(
+                "Redstoners for " + civDisplay(data, civId) + " [" + civId + "]: "
+                        + redstoners.size() + "/" + cap),
+                false);
+        if (cap <= 0) {
+            source.sendSuccess(() -> Component.literal(
+                    "Role is disabled by server config (civ.maxRedstonersPerCivilization=0)."), false);
+        }
+        if (redstoners.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("No members are designated as redstoners."), false);
+            return 1;
+        }
+        for (UUID redstoner : redstoners) {
+            source.sendSuccess(() -> Component.literal("- " + playerNameOrShortId(source, redstoner) + " | " + redstoner), false);
+        }
+        return 1;
+    }
+
+    private static int civRedstonerSet(CommandSourceStack source, ServerPlayer target, boolean allowed) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        if (!isMayorOrAdmin(source, data, civId)) {
+            source.sendFailure(Component.literal("Only mayor/admin can manage redstoners."));
+            return 0;
+        }
+
+        String targetCiv = data.getOrAssignCivilization(target.getUUID());
+        if (!civId.equals(targetCiv)) {
+            source.sendFailure(Component.literal(
+                    "Target player is not in your civilization. Current civ: " + civDisplay(data, targetCiv) + "."));
+            return 0;
+        }
+
+        int cap = RealCivConfig.maxRedstonersPerCivilization();
+        if (allowed) {
+            if (cap <= 0) {
+                source.sendFailure(Component.literal(
+                        "Redstoner role is disabled by server config for all civilizations."));
+                return 0;
+            }
+            if (!data.isRedstoner(civId, target.getUUID())
+                    && data.redstonerCount(civId) >= cap) {
+                source.sendFailure(Component.literal(
+                        "Cannot add more redstoners. Cap reached (" + cap + ")."));
+                return 0;
+            }
+        }
+
+        if (!data.setRedstoner(civId, target.getUUID(), allowed, actorName(source))) {
+            source.sendFailure(Component.literal(
+                    "No change made. Player is already " + (allowed ? "" : "not ") + "a redstoner."));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                (allowed ? "Designated " : "Removed ")
+                        + target.getGameProfile().getName()
+                        + (allowed ? " as a" : " from")
+                        + " redstoner for " + civDisplay(data, civId) + "."),
+                true);
+        return 1;
+    }
+
     private static int townInfo(CommandSourceStack source)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer player = source.getPlayerOrException();
@@ -1066,7 +1352,7 @@ public final class RealCivCommands {
                 "Town info for " + civDisplay(data, civId)
                         + " | civic chunks: " + civicChunks
                         + " | private chunks: " + privateChunks
-                        + " | treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))
+                        + " | collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))
                         + " | next town claim cost: " + RealCivUtil.formatCredits(nextTownCost)
                         + " | your next private claim cost: " + RealCivUtil.formatCredits(nextPrivateCost)),
                 false);
@@ -1153,8 +1439,8 @@ public final class RealCivCommands {
         long treasury = data.civTreasuryCents(civId);
         if (treasury < claimCost) {
             source.sendFailure(Component.literal(
-                    "Not enough town treasury. Need " + RealCivUtil.formatCredits(claimCost)
-                            + ", treasury has " + RealCivUtil.formatCredits(treasury) + "."));
+                    "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
+                            + ", civ has " + RealCivUtil.formatCredits(treasury) + "."));
             return 0;
         }
 
@@ -1173,7 +1459,7 @@ public final class RealCivCommands {
 
         source.sendSuccess(() -> Component.literal(
                 "Town chunk claimed at [" + chunkX + ", " + chunkZ + "] in " + civDisplay(data, civId)
-                        + ". Treasury now: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                        + ". Collective contribution karma now: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
                 true);
         return 1;
     }
@@ -2230,7 +2516,7 @@ public final class RealCivCommands {
         source.sendSuccess(() -> Component.literal(
                 "Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                        + " | Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                        + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
                 false);
         return 1;
     }
@@ -2278,7 +2564,7 @@ public final class RealCivCommands {
                 "Paid " + RealCivUtil.formatCredits(totalCost)
                         + " upkeep tax for " + affected + " private plot(s). New balance: "
                         + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                        + " | Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                        + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
                 true);
         return 1;
     }
@@ -2616,6 +2902,65 @@ public final class RealCivCommands {
             String entry = unmatched.get(i);
             source.sendSuccess(() -> Component.literal("- " + entry), false);
         }
+        return 1;
+    }
+
+    private static int exportHubItemIds(CommandSourceStack source, String namespaceRaw) {
+        @Nullable String namespace = sanitizeNamespace(namespaceRaw);
+        if (namespace == null) {
+            source.sendFailure(Component.literal(
+                    "Invalid namespace. Use lowercase namespace characters only: a-z, 0-9, _, -, ."));
+            return 0;
+        }
+
+        List<String> itemIds = new ArrayList<>();
+        for (Item item : BuiltInRegistries.ITEM) {
+            if (item == Items.AIR) {
+                continue;
+            }
+            ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+            if (namespace.equals(id.getNamespace())) {
+                itemIds.add(id.toString());
+            }
+        }
+        itemIds.sort(String::compareTo);
+
+        if (itemIds.isEmpty()) {
+            source.sendFailure(Component.literal(
+                    "No registered non-air items found for namespace '" + namespace + "'."));
+            return 0;
+        }
+
+        Path exportDir = FMLPaths.CONFIGDIR.get().resolve("realciv").resolve("exports");
+        Path exportFile = exportDir.resolve(namespace + "_items.txt");
+
+        List<String> lines = new ArrayList<>();
+        lines.add("# RealCiv Item Export");
+        lines.add("# namespace: " + namespace);
+        lines.add("# generated_utc: " + Instant.now());
+        lines.add("# total_items: " + itemIds.size());
+        lines.add("# format: one item id per line");
+        lines.add("");
+        lines.addAll(itemIds);
+
+        try {
+            Files.createDirectories(exportDir);
+            Files.write(
+                    exportFile,
+                    lines,
+                    StandardCharsets.UTF_8,
+                    StandardOpenOption.CREATE,
+                    StandardOpenOption.TRUNCATE_EXISTING,
+                    StandardOpenOption.WRITE);
+        } catch (IOException ex) {
+            source.sendFailure(Component.literal(
+                    "Failed to write export file '" + exportFile + "': " + ex.getMessage()));
+            return 0;
+        }
+
+        source.sendSuccess(() -> Component.literal(
+                "Exported " + itemIds.size() + " item id(s) for namespace '" + namespace + "' to "
+                        + exportFile.toAbsolutePath()), true);
         return 1;
     }
 
@@ -2988,5 +3333,28 @@ public final class RealCivCommands {
             return player.getGameProfile().getName();
         }
         return "Console";
+    }
+
+    @Nullable
+    private static String sanitizeNamespace(@Nullable String raw) {
+        if (raw == null) {
+            return null;
+        }
+        String value = raw.trim().toLowerCase(Locale.ROOT);
+        if (value.isEmpty()) {
+            return null;
+        }
+        for (int i = 0; i < value.length(); i++) {
+            char ch = value.charAt(i);
+            boolean allowed = (ch >= 'a' && ch <= 'z')
+                    || (ch >= '0' && ch <= '9')
+                    || ch == '_'
+                    || ch == '-'
+                    || ch == '.';
+            if (!allowed) {
+                return null;
+            }
+        }
+        return value;
     }
 }

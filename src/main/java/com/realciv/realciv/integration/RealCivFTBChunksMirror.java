@@ -97,7 +97,10 @@ public final class RealCivFTBChunksMirror {
         if (civTeam == null) {
             return;
         }
-        ensureClaimOwnedByTeam(server, civTeam, dimension, chunkX, chunkZ);
+        ClaimedChunkManager manager = FTBChunksAPI.api().getManager();
+        ChunkTeamData teamData = manager.getOrCreateData(civTeam);
+        ensureTeamClaimCapacity(teamData, civ.plots().size());
+        ensureClaimOwnedByTeam(server, teamData, civTeam, dimension, chunkX, chunkZ);
     }
 
     public static void clearClaimAt(MinecraftServer server, String dimension, long chunkX, long chunkZ) {
@@ -221,15 +224,12 @@ public final class RealCivFTBChunksMirror {
         ClaimedChunkManager manager = FTBChunksAPI.api().getManager();
         ChunkTeamData teamData = manager.getOrCreateData(civTeam);
         int desiredCount = civ.plots().size();
-        if (teamData.getMaxClaimChunks() < desiredCount + 16) {
-            int delta = (desiredCount + 16) - teamData.getMaxClaimChunks();
-            teamData.setExtraClaimChunks(teamData.getExtraClaimChunks() + Math.max(16, delta));
-        }
+        ensureTeamClaimCapacity(teamData, desiredCount);
 
         Set<String> desiredKeys = new HashSet<>();
         for (CivSavedData.PlotRecord plot : civ.plots().values()) {
             desiredKeys.add(plot.plotKey());
-            ensureClaimOwnedByTeam(server, civTeam, plot.dimension(), plot.chunkX(), plot.chunkZ());
+            ensureClaimOwnedByTeam(server, teamData, civTeam, plot.dimension(), plot.chunkX(), plot.chunkZ());
         }
 
         CommandSourceStack source = syncSource(server);
@@ -244,6 +244,7 @@ public final class RealCivFTBChunksMirror {
 
     private static void ensureClaimOwnedByTeam(
             MinecraftServer server,
+            ChunkTeamData teamData,
             Team team,
             String dimension,
             long chunkX,
@@ -264,7 +265,11 @@ public final class RealCivFTBChunksMirror {
             if (existing != null) {
                 existing.unclaim(source, true);
             }
-            ClaimResult claimResult = manager.getOrCreateData(team).claim(source, pos, true);
+            ClaimResult claimResult = teamData.claim(source, pos, true);
+            if (!claimResult.isSuccess()) {
+                ensureTeamClaimCapacity(teamData, teamData.getClaimedChunks().size() + 1);
+                claimResult = teamData.claim(source, pos, true);
+            }
             if (!claimResult.isSuccess()) {
                 RealCivMod.LOGGER.warn(
                         "FTB mirror claim failed at {} for team {}: {}",
@@ -273,6 +278,16 @@ public final class RealCivFTBChunksMirror {
                         claimResult.getResultId());
             }
         });
+    }
+
+    private static void ensureTeamClaimCapacity(ChunkTeamData teamData, int targetClaimCount) {
+        int minClaims = Math.max(16, targetClaimCount + 16);
+        int currentMax = teamData.getMaxClaimChunks();
+        if (currentMax >= minClaims) {
+            return;
+        }
+        int delta = minClaims - currentMax;
+        teamData.setExtraClaimChunks(teamData.getExtraClaimChunks() + delta);
     }
 
     @Nullable

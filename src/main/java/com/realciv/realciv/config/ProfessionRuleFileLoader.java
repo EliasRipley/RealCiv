@@ -27,6 +27,7 @@ final class ProfessionRuleFileLoader {
             Profession.MINER,
             Profession.TERRAFORMER,
             Profession.LUMBERJACK,
+            Profession.FISHER,
             Profession.HUNTER,
             Profession.CRAFTER);
 
@@ -506,4 +507,3 @@ final class ProfessionRuleFileLoader {
             List<TagResetRule> tagResetRules) {
     }
 }
-

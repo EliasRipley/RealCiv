@@ -530,6 +530,7 @@ public class CivSavedData extends SavedData {
             each.invitedPlayers().remove(playerId);
             each.civicManagers().remove(playerId);
             each.explosivesExperts().remove(playerId);
+            each.redstoners().remove(playerId);
             if (each.mayorId() != null && each.mayorId().equals(playerId) && !each.id().equals(civ.id())) {
                 each.setMayorId(null);
                 addAuditLog(each.id(), actorName + " cleared mayor assignment for migrating player " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
@@ -550,6 +551,28 @@ public class CivSavedData extends SavedData {
 
     public PlayerRecord getOrCreatePlayer(UUID playerId) {
         return players.computeIfAbsent(playerId, ignored -> new PlayerRecord());
+    }
+
+    @Nullable
+    public Profession playerFocusProfession(UUID playerId) {
+        return getOrCreatePlayer(playerId).focusedProfession();
+    }
+
+    public boolean setPlayerFocusProfession(UUID playerId, @Nullable Profession profession, String actorName) {
+        PlayerRecord record = getOrCreatePlayer(playerId);
+        Profession normalized = profession == Profession.NONE ? null : profession;
+        if (record.focusedProfession() == normalized) {
+            return false;
+        }
+        record.setFocusedProfession(normalized);
+        String civId = getOrAssignCivilization(playerId);
+        if (normalized == null) {
+            addAuditLog(civId, actorName + " cleared profession focus for " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+        } else {
+            addAuditLog(civId, actorName + " set profession focus to " + normalized.name() + " for " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+        }
+        setDirty();
+        return true;
     }
 
     public long getHubStock(String civIdRaw, ResourceLocation itemId) {
@@ -612,40 +635,36 @@ public class CivSavedData extends SavedData {
         int safeRestoredActions = Math.max(0, restoredActions);
         switch (rewardRule.profession()) {
             case FARMER -> {
-                record.farmerXp += professionGain;
                 record.setFarmerActions(record.farmerActions() - safeRestoredActions);
             }
             case MINER -> {
-                record.minerXp += professionGain;
                 record.setMinerActions(record.minerActions() - safeRestoredActions);
             }
             case TERRAFORMER -> {
-                record.terraformerXp += professionGain;
                 record.setTerraformerActions(record.terraformerActions() - safeRestoredActions);
             }
             case LUMBERJACK -> {
-                record.lumberjackXp += professionGain;
                 record.setLumberjackActions(record.lumberjackActions() - safeRestoredActions);
             }
+            case FISHER -> {
+                record.setFisherActions(record.fisherActions() - safeRestoredActions);
+            }
             case HUNTER -> {
-                record.hunterXp += professionGain;
                 record.setHunterActions(record.hunterActions() - safeRestoredActions);
             }
             case WARRIOR -> {
-                record.warriorXp += professionGain;
                 record.setWarriorActions(record.warriorActions() - safeRestoredActions);
             }
             case EXPLOSIVES_EXPERT -> {
-                record.addExplosivesExpertXp(professionGain);
                 record.setExplosivesExpertActions(record.explosivesExpertActions() - safeRestoredActions);
             }
             case CRAFTER -> {
-                record.crafterXp += professionGain;
                 record.setCrafterActions(record.crafterActions() - safeRestoredActions);
             }
             case NONE -> {
             }
         }
+        record.addProfessionXp(rewardRule.profession(), professionGain);
 
         record.generalXp += rewardRule.generalXpPerItem() * itemCount;
         addAuditLog(
@@ -743,6 +762,19 @@ public class CivSavedData extends SavedData {
         setDirty();
     }
 
+    public boolean hasStarterTownAreaGranted(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).starterTownAreaGranted();
+    }
+
+    public void setStarterTownAreaGranted(String civIdRaw, boolean granted) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        if (civ.starterTownAreaGranted() == granted) {
+            return;
+        }
+        civ.setStarterTownAreaGranted(granted);
+        setDirty();
+    }
+
     public boolean clearHubLocation(String civIdRaw) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         if (civ.hubDimension() == null) {
@@ -810,6 +842,44 @@ public class CivSavedData extends SavedData {
             changed = civ.explosivesExperts().remove(playerId);
             if (changed) {
                 addAuditLog(civ.id(), actorName + " removed explosives expert " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+            }
+        }
+        if (!changed) {
+            return false;
+        }
+        setDirty();
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, civ.id());
+        }
+        return true;
+    }
+
+    public boolean isRedstoner(String civIdRaw, UUID playerId) {
+        return getOrCreateCivilization(civIdRaw).redstoners().contains(playerId);
+    }
+
+    public int redstonerCount(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).redstoners().size();
+    }
+
+    public List<UUID> redstonersSorted(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).redstoners().stream()
+                .sorted(Comparator.comparing(UUID::toString))
+                .toList();
+    }
+
+    public boolean setRedstoner(String civIdRaw, UUID playerId, boolean allowed, String actorName) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        boolean changed;
+        if (allowed) {
+            changed = civ.redstoners().add(playerId);
+            if (changed) {
+                addAuditLog(civ.id(), actorName + " designated redstoner " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
+            }
+        } else {
+            changed = civ.redstoners().remove(playerId);
+            if (changed) {
+                addAuditLog(civ.id(), actorName + " removed redstoner " + playerId, RealCivConfig.MAX_AUDIT_LOGS.get());
             }
         }
         if (!changed) {
@@ -1020,6 +1090,7 @@ public class CivSavedData extends SavedData {
         CivilizationRecord civ = getOrCreateCivilization(civId);
         civ.civicManagers().remove(playerId);
         civ.explosivesExperts().remove(playerId);
+        civ.redstoners().remove(playerId);
         civ.joinRequests().remove(playerId);
         civ.invitedPlayers().remove(playerId);
         if (civ.mayorId() != null && civ.mayorId().equals(playerId)) {
@@ -1391,6 +1462,7 @@ public class CivSavedData extends SavedData {
         private final List<String> auditLogs = new ArrayList<>();
         private final Set<UUID> civicManagers = new HashSet<>();
         private final Set<UUID> explosivesExperts = new HashSet<>();
+        private final Set<UUID> redstoners = new HashSet<>();
         private final Set<UUID> joinRequests = new HashSet<>();
         private final Set<UUID> invitedPlayers = new HashSet<>();
         @Nullable
@@ -1401,6 +1473,7 @@ public class CivSavedData extends SavedData {
         private int hubY;
         private int hubZ;
         private boolean allowIntraCivPvp;
+        private boolean starterTownAreaGranted;
 
         public CivilizationRecord(String id, String displayName) {
             this.id = id;
@@ -1455,6 +1528,10 @@ public class CivSavedData extends SavedData {
             return explosivesExperts;
         }
 
+        public Set<UUID> redstoners() {
+            return redstoners;
+        }
+
         public Set<UUID> joinRequests() {
             return joinRequests;
         }
@@ -1503,6 +1580,14 @@ public class CivSavedData extends SavedData {
             this.hubZ = 0;
         }
 
+        public boolean starterTownAreaGranted() {
+            return starterTownAreaGranted;
+        }
+
+        public void setStarterTownAreaGranted(boolean granted) {
+            this.starterTownAreaGranted = granted;
+        }
+
         public CompoundTag save() {
             CompoundTag tag = new CompoundTag();
             tag.putString("id", id);
@@ -1539,6 +1624,12 @@ public class CivSavedData extends SavedData {
             }
             tag.put("explosivesExperts", experts);
 
+            ListTag redstonersTag = new ListTag();
+            for (UUID redstoner : redstoners) {
+                redstonersTag.add(StringTag.valueOf(redstoner.toString()));
+            }
+            tag.put("redstoners", redstonersTag);
+
             ListTag requests = new ListTag();
             for (UUID request : joinRequests) {
                 requests.add(StringTag.valueOf(request.toString()));
@@ -1561,6 +1652,7 @@ public class CivSavedData extends SavedData {
                 tag.putInt("hubZ", hubZ);
             }
             tag.putBoolean("allowIntraCivPvp", allowIntraCivPvp);
+            tag.putBoolean("starterTownAreaGranted", starterTownAreaGranted);
             return tag;
         }
 
@@ -1614,6 +1706,14 @@ public class CivSavedData extends SavedData {
                 }
             }
 
+            ListTag redstonersTag = tag.getList("redstoners", Tag.TAG_STRING);
+            for (Tag entry : redstonersTag) {
+                try {
+                    record.redstoners.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+
             ListTag requests = tag.getList("joinRequests", Tag.TAG_STRING);
             for (Tag entry : requests) {
                 try {
@@ -1643,6 +1743,16 @@ public class CivSavedData extends SavedData {
                 record.hubZ = tag.getInt("hubZ");
             }
             record.allowIntraCivPvp = tag.getBoolean("allowIntraCivPvp");
+            if (tag.contains("starterTownAreaGranted")) {
+                record.starterTownAreaGranted = tag.getBoolean("starterTownAreaGranted");
+            } else if (record.hubDimension != null) {
+                for (PlotRecord plot : record.plots.values()) {
+                    if (plot.landClass() == LandClass.CIVIC) {
+                        record.starterTownAreaGranted = true;
+                        break;
+                    }
+                }
+            }
             return record;
         }
     }
@@ -1792,6 +1902,9 @@ public class CivSavedData extends SavedData {
         private int lumberjackActions;
         private long lumberjackActionsUpdatedAtMillis;
         private int lumberjackXp;
+        private int fisherActions;
+        private long fisherActionsUpdatedAtMillis;
+        private int fisherXp;
         private int hunterActions;
         private long hunterActionsUpdatedAtMillis;
         private int hunterXp;
@@ -1805,6 +1918,10 @@ public class CivSavedData extends SavedData {
         private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
         private int generalXp;
+        private long firstSeenAtMillis;
+        private final Map<String, HookWindowUsage> hookWindowUsage = new HashMap<>();
+        @Nullable
+        private Profession focusedProfession;
         private final Map<String, CivAccount> civAccounts = new HashMap<>();
 
         // Legacy fields retained for migration.
@@ -1962,6 +2079,26 @@ public class CivSavedData extends SavedData {
             return lumberjackXp;
         }
 
+        public int fisherActions() {
+            return fisherActions;
+        }
+
+        public void setFisherActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.fisherActions != updated) {
+                this.fisherActions = updated;
+                this.fisherActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long fisherActionsUpdatedAtMillis() {
+            return fisherActionsUpdatedAtMillis;
+        }
+
+        public int fisherXp() {
+            return fisherXp;
+        }
+
         public int hunterActions() {
             return hunterActions;
         }
@@ -2003,10 +2140,7 @@ public class CivSavedData extends SavedData {
         }
 
         public void addWarriorXp(int delta) {
-            if (delta <= 0) {
-                return;
-            }
-            warriorXp = Math.max(0, warriorXp + delta);
+            addProfessionXp(Profession.WARRIOR, delta);
         }
 
         public int explosivesExpertActions() {
@@ -2030,10 +2164,7 @@ public class CivSavedData extends SavedData {
         }
 
         public void addExplosivesExpertXp(int delta) {
-            if (delta <= 0) {
-                return;
-            }
-            explosivesExpertXp = Math.max(0, explosivesExpertXp + delta);
+            addProfessionXp(Profession.EXPLOSIVES_EXPERT, delta);
         }
 
         public int crafterActions() {
@@ -2056,8 +2187,140 @@ public class CivSavedData extends SavedData {
             return crafterXp;
         }
 
+        public int actionsForProfession(Profession profession) {
+            if (profession == null) {
+                return 0;
+            }
+            return switch (profession) {
+                case FARMER -> farmerActions;
+                case MINER -> minerActions;
+                case TERRAFORMER -> terraformerActions;
+                case LUMBERJACK -> lumberjackActions;
+                case FISHER -> fisherActions;
+                case HUNTER -> hunterActions;
+                case WARRIOR -> warriorActions;
+                case EXPLOSIVES_EXPERT -> explosivesExpertActions;
+                case CRAFTER -> crafterActions;
+                case NONE -> 0;
+            };
+        }
+
+        public void setActionsForProfession(Profession profession, int value) {
+            if (profession == null) {
+                return;
+            }
+            switch (profession) {
+                case FARMER -> setFarmerActions(value);
+                case MINER -> setMinerActions(value);
+                case TERRAFORMER -> setTerraformerActions(value);
+                case LUMBERJACK -> setLumberjackActions(value);
+                case FISHER -> setFisherActions(value);
+                case HUNTER -> setHunterActions(value);
+                case WARRIOR -> setWarriorActions(value);
+                case EXPLOSIVES_EXPERT -> setExplosivesExpertActions(value);
+                case CRAFTER -> setCrafterActions(value);
+                case NONE -> {
+                }
+            }
+        }
+
+        public long actionsUpdatedAtMillisForProfession(Profession profession) {
+            if (profession == null) {
+                return 0L;
+            }
+            return switch (profession) {
+                case FARMER -> farmerActionsUpdatedAtMillis;
+                case MINER -> minerActionsUpdatedAtMillis;
+                case TERRAFORMER -> terraformerActionsUpdatedAtMillis;
+                case LUMBERJACK -> lumberjackActionsUpdatedAtMillis;
+                case FISHER -> fisherActionsUpdatedAtMillis;
+                case HUNTER -> hunterActionsUpdatedAtMillis;
+                case WARRIOR -> warriorActionsUpdatedAtMillis;
+                case EXPLOSIVES_EXPERT -> explosivesExpertActionsUpdatedAtMillis;
+                case CRAFTER -> crafterActionsUpdatedAtMillis;
+                case NONE -> 0L;
+            };
+        }
+
         public int generalXp() {
             return generalXp;
+        }
+
+        public void ensureFirstSeenAtMillis(long nowMillis) {
+            if (firstSeenAtMillis > 0L) {
+                return;
+            }
+            if (nowMillis <= 0L) {
+                return;
+            }
+            firstSeenAtMillis = nowMillis;
+        }
+
+        public long firstSeenAtMillis() {
+            return firstSeenAtMillis;
+        }
+
+        public long membershipMillis(long nowMillis) {
+            if (nowMillis <= 0L || firstSeenAtMillis <= 0L || nowMillis < firstSeenAtMillis) {
+                return 0L;
+            }
+            return nowMillis - firstSeenAtMillis;
+        }
+
+        public int hookWindowUsed(String key, long windowStartMillis) {
+            if (key == null || key.isBlank()) {
+                return 0;
+            }
+            HookWindowUsage usage = hookWindowUsage.get(key);
+            if (usage == null || usage.windowStartMillis != windowStartMillis) {
+                return 0;
+            }
+            return Math.max(0, usage.usedTriggers);
+        }
+
+        public void setHookWindowUsed(String key, long windowStartMillis, int usedTriggers) {
+            if (key == null || key.isBlank()) {
+                return;
+            }
+            int safeUsed = Math.max(0, usedTriggers);
+            if (safeUsed <= 0) {
+                hookWindowUsage.remove(key);
+                return;
+            }
+            HookWindowUsage usage = hookWindowUsage.computeIfAbsent(key, ignored -> new HookWindowUsage());
+            usage.windowStartMillis = Math.max(0L, windowStartMillis);
+            usage.usedTriggers = safeUsed;
+        }
+
+        @Nullable
+        public Profession focusedProfession() {
+            return focusedProfession;
+        }
+
+        public void setFocusedProfession(@Nullable Profession profession) {
+            if (profession == Profession.NONE) {
+                profession = null;
+            }
+            this.focusedProfession = profession;
+        }
+
+        public boolean canProgressProfession(Profession profession) {
+            if (profession == Profession.NONE || !RealCivConfig.specializationSingleProfessionLockEnabled()) {
+                return true;
+            }
+            return focusedProfession != null && focusedProfession == profession;
+        }
+
+        public void addProfessionXp(Profession profession, int delta) {
+            if (profession == null || profession == Profession.NONE || delta <= 0) {
+                return;
+            }
+            if (RealCivConfig.specializationSingleProfessionLockEnabled()
+                    && (focusedProfession == null || focusedProfession != profession)) {
+                return;
+            }
+            setProfessionXpValue(profession, professionXpValue(profession) + delta);
+            applyProfessionXpDecay(profession, delta);
         }
 
         public void addGeneralXp(int delta) {
@@ -2065,6 +2328,58 @@ public class CivSavedData extends SavedData {
                 return;
             }
             generalXp = Math.max(0, generalXp + delta);
+        }
+
+        private int professionXpValue(Profession profession) {
+            return switch (profession) {
+                case FARMER -> farmerXp;
+                case MINER -> minerXp;
+                case TERRAFORMER -> terraformerXp;
+                case LUMBERJACK -> lumberjackXp;
+                case FISHER -> fisherXp;
+                case HUNTER -> hunterXp;
+                case WARRIOR -> warriorXp;
+                case EXPLOSIVES_EXPERT -> explosivesExpertXp;
+                case CRAFTER -> crafterXp;
+                case NONE -> 0;
+            };
+        }
+
+        private void setProfessionXpValue(Profession profession, int value) {
+            int clamped = Math.max(0, value);
+            switch (profession) {
+                case FARMER -> farmerXp = clamped;
+                case MINER -> minerXp = clamped;
+                case TERRAFORMER -> terraformerXp = clamped;
+                case LUMBERJACK -> lumberjackXp = clamped;
+                case FISHER -> fisherXp = clamped;
+                case HUNTER -> hunterXp = clamped;
+                case WARRIOR -> warriorXp = clamped;
+                case EXPLOSIVES_EXPERT -> explosivesExpertXp = clamped;
+                case CRAFTER -> crafterXp = clamped;
+                case NONE -> {
+                }
+            }
+        }
+
+        private void applyProfessionXpDecay(Profession gainedProfession, int gainedXp) {
+            if (!RealCivConfig.specializationXpDecayEnabled() || gainedXp <= 0) {
+                return;
+            }
+            double rate = RealCivConfig.specializationXpDecayRate();
+            if (rate <= 0.0D) {
+                return;
+            }
+            int decayAmount = Math.max(0, (int) Math.round(gainedXp * rate));
+            if (decayAmount <= 0) {
+                return;
+            }
+            for (Profession profession : Profession.values()) {
+                if (profession == Profession.NONE || profession == gainedProfession) {
+                    continue;
+                }
+                setProfessionXpValue(profession, professionXpValue(profession) - decayAmount);
+            }
         }
 
         public Map<String, Long> contributions(String civId) {
@@ -2180,6 +2495,9 @@ public class CivSavedData extends SavedData {
             tag.putInt("lumberjackActions", lumberjackActions);
             tag.putLong("lumberjackActionsUpdatedAtMillis", lumberjackActionsUpdatedAtMillis);
             tag.putInt("lumberjackXp", lumberjackXp);
+            tag.putInt("fisherActions", fisherActions);
+            tag.putLong("fisherActionsUpdatedAtMillis", fisherActionsUpdatedAtMillis);
+            tag.putInt("fisherXp", fisherXp);
             tag.putInt("hunterActions", hunterActions);
             tag.putLong("hunterActionsUpdatedAtMillis", hunterActionsUpdatedAtMillis);
             tag.putInt("hunterXp", hunterXp);
@@ -2193,6 +2511,27 @@ public class CivSavedData extends SavedData {
             tag.putLong("crafterActionsUpdatedAtMillis", crafterActionsUpdatedAtMillis);
             tag.putInt("crafterXp", crafterXp);
             tag.putInt("generalXp", generalXp);
+            if (firstSeenAtMillis > 0L) {
+                tag.putLong("firstSeenAtMillis", firstSeenAtMillis);
+            }
+            if (focusedProfession != null && focusedProfession != Profession.NONE) {
+                tag.putString("focusedProfession", focusedProfession.name());
+            }
+
+            ListTag hookUsageTag = new ListTag();
+            for (Map.Entry<String, HookWindowUsage> entry : hookWindowUsage.entrySet()) {
+                String key = entry.getKey();
+                HookWindowUsage usage = entry.getValue();
+                if (key == null || key.isBlank() || usage == null || usage.usedTriggers <= 0) {
+                    continue;
+                }
+                CompoundTag usageTag = new CompoundTag();
+                usageTag.putString("key", key);
+                usageTag.putLong("windowStartMillis", Math.max(0L, usage.windowStartMillis));
+                usageTag.putInt("used", Math.max(0, usage.usedTriggers));
+                hookUsageTag.add(usageTag);
+            }
+            tag.put("hookWindowUsage", hookUsageTag);
 
             CompoundTag accountsTag = new CompoundTag();
             for (Map.Entry<String, CivAccount> entry : civAccounts.entrySet()) {
@@ -2232,6 +2571,8 @@ public class CivSavedData extends SavedData {
             record.terraformerXp = Math.max(0, tag.getInt("terraformerXp"));
             record.lumberjackActions = Math.max(0, tag.getInt("lumberjackActions"));
             record.lumberjackXp = Math.max(0, tag.getInt("lumberjackXp"));
+            record.fisherActions = Math.max(0, tag.getInt("fisherActions"));
+            record.fisherXp = Math.max(0, tag.getInt("fisherXp"));
             record.hunterActions = Math.max(0, tag.getInt("hunterActions"));
             record.hunterXp = Math.max(0, tag.getInt("hunterXp"));
             record.warriorActions = Math.max(0, tag.getInt("warriorActions"));
@@ -2241,8 +2582,20 @@ public class CivSavedData extends SavedData {
             record.crafterActions = Math.max(0, tag.getInt("crafterActions"));
             record.crafterXp = Math.max(0, tag.getInt("crafterXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
+            if (tag.contains("focusedProfession")) {
+                Profession parsed = Profession.fromConfigName(tag.getString("focusedProfession"));
+                if (parsed != null && parsed != Profession.NONE) {
+                    record.focusedProfession = parsed;
+                }
+            }
 
             long loadedAt = System.currentTimeMillis();
+            record.firstSeenAtMillis = tag.contains("firstSeenAtMillis")
+                    ? Math.max(0L, tag.getLong("firstSeenAtMillis"))
+                    : loadedAt;
+            if (record.firstSeenAtMillis <= 0L) {
+                record.firstSeenAtMillis = loadedAt;
+            }
             record.farmerActionsUpdatedAtMillis = tag.contains("farmerActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("farmerActionsUpdatedAtMillis"))
                     : (record.farmerActions > 0 ? loadedAt : 0L);
@@ -2255,6 +2608,9 @@ public class CivSavedData extends SavedData {
             record.lumberjackActionsUpdatedAtMillis = tag.contains("lumberjackActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("lumberjackActionsUpdatedAtMillis"))
                     : (record.lumberjackActions > 0 ? loadedAt : 0L);
+            record.fisherActionsUpdatedAtMillis = tag.contains("fisherActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("fisherActionsUpdatedAtMillis"))
+                    : (record.fisherActions > 0 ? loadedAt : 0L);
             record.hunterActionsUpdatedAtMillis = tag.contains("hunterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("hunterActionsUpdatedAtMillis"))
                     : (record.hunterActions > 0 ? loadedAt : 0L);
@@ -2267,6 +2623,26 @@ public class CivSavedData extends SavedData {
             record.crafterActionsUpdatedAtMillis = tag.contains("crafterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("crafterActionsUpdatedAtMillis"))
                     : (record.crafterActions > 0 ? loadedAt : 0L);
+
+            ListTag hookUsageTag = tag.getList("hookWindowUsage", Tag.TAG_COMPOUND);
+            for (Tag entry : hookUsageTag) {
+                if (!(entry instanceof CompoundTag usageTag)) {
+                    continue;
+                }
+                String key = usageTag.getString("key");
+                if (key == null || key.isBlank()) {
+                    continue;
+                }
+                long windowStartMillis = Math.max(0L, usageTag.getLong("windowStartMillis"));
+                int used = Math.max(0, usageTag.getInt("used"));
+                if (used <= 0) {
+                    continue;
+                }
+                HookWindowUsage usage = new HookWindowUsage();
+                usage.windowStartMillis = windowStartMillis;
+                usage.usedTriggers = used;
+                record.hookWindowUsage.put(key, usage);
+            }
 
             CompoundTag accountsTag = tag.getCompound("civAccounts");
             for (String civId : accountsTag.getAllKeys()) {
@@ -2298,6 +2674,7 @@ public class CivSavedData extends SavedData {
                 case MINER -> RealCivConfig.professionLevelFromXp(minerXp());
                 case TERRAFORMER -> RealCivConfig.professionLevelFromXp(terraformerXp());
                 case LUMBERJACK -> RealCivConfig.professionLevelFromXp(lumberjackXp());
+                case FISHER -> RealCivConfig.professionLevelFromXp(fisherXp());
                 case HUNTER -> RealCivConfig.professionLevelFromXp(hunterXp());
                 case WARRIOR -> RealCivConfig.professionLevelFromXp(warriorXp());
                 case EXPLOSIVES_EXPERT -> RealCivConfig.professionLevelFromXp(explosivesExpertXp());
@@ -2327,6 +2704,11 @@ public class CivSavedData extends SavedData {
                 return mode;
             }
             return null;
+        }
+
+        private static final class HookWindowUsage {
+            private long windowStartMillis;
+            private int usedTriggers;
         }
     }
 
