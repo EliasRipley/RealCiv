@@ -7,6 +7,7 @@ import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CarryCapService;
+import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.CraftingLimitService;
 import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
@@ -300,7 +301,11 @@ public final class RealCivEvents {
         }
 
         if (clickedState.is(ModBlocks.CENSUS_BLOCK.get())) {
-            openCensusPanel(event, player, data);
+            if (player.isShiftKeyDown()) {
+                CivControlPanelEvents.openControlPanel(event, player, data);
+            } else {
+                openCensusPanel(event, player, data);
+            }
             return;
         }
 
@@ -1561,9 +1566,7 @@ public final class RealCivEvents {
 
     private static void openCensusPanel(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean canManage = player.hasPermissions(3)
-                || RealCivUtil.isBypass(player)
-                || data.isMayor(civId, player.getUUID())
+        boolean canManage = CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)
                 || data.isCivicManager(civId, player.getUUID());
         String title = "Census: " + civilizationDisplayName(data, civId);
         player.openMenu(new SimpleMenuProvider(
@@ -1572,6 +1575,8 @@ public final class RealCivEvents {
         player.sendSystemMessage(Component.literal(
                 "Census opened for " + civilizationDisplayName(data, civId)
                         + ". Use left/right click actions inside the menu to manage members, requests, and invites."));
+        player.sendSystemMessage(Component.literal(
+                "Shift + right-click this Census Block to open the new Civilization Control Panel."));
         if (canManage) {
             player.sendSystemMessage(Component.literal(
                     "Tip: /realciv census invite <player> sends invites, and requests can be approved/denied in the menu."));

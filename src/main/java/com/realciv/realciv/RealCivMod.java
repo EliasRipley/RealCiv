@@ -22,6 +22,7 @@ public class RealCivMod {
 
     public RealCivMod(IEventBus modEventBus, ModContainer modContainer) {
         ModBlocks.register(modEventBus);
+        ModMenus.register(modEventBus);
         modEventBus.addListener(this::addCreativeTabContents);
         modEventBus.addListener(this::onConfigLoading);
         modEventBus.addListener(this::onConfigReloading);

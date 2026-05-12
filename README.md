@@ -51,6 +51,10 @@ In-Game Civic Blocks
   - Sneak + right-click: stock/withdraw UI.
 - Census Block (`realciv:census_block`)
   - Opens a census management UI (members, invites, join requests, manager actions).
+  - Sneak + right-click: opens the Civilization Control Panel.
+    - Includes governance/economy policy buttons (with civ permission checks).
+    - Includes optional governance approval workflow for council/democratic models.
+    - Includes starter template actions for profession hooks and hunter selector caps.
 - Tax Block (`realciv:tax_block`)
   - Private plot upkeep information and prepay flow.
 - Land Wand (`realciv:land_wand`)

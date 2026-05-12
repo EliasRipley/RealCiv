@@ -554,6 +554,11 @@ public final class RealCivConfig {
             .comment("When true, only approved players (or admins) can found new civilizations.")
             .define("civ.requireFounderApproval", true);
 
+    public static final ModConfigSpec.BooleanValue GOVERNANCE_APPROVAL_WORKFLOW_ENABLED = BUILDER
+            .comment("When true, council/democratic civ policy changes can require in-game proposal votes.")
+            .comment("Leadership/admin can still apply urgent changes immediately.")
+            .define("civ.governanceApprovalWorkflowEnabled", true);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> REDSTONER_RESTRICTED_BLOCKS = BUILDER
             .comment("Blocks treated as regulated redstone components. Players must be designated as Redstoners to place these blocks.")
             .defineListAllowEmpty(
@@ -735,6 +740,10 @@ public final class RealCivConfig {
 
     public static boolean warriorHomeDefenseNoActionCost() {
         return WARRIOR_HOME_DEFENSE_NO_ACTION_COST.get();
+    }
+
+    public static boolean governanceApprovalWorkflowEnabled() {
+        return GOVERNANCE_APPROVAL_WORKFLOW_ENABLED.get();
     }
 
     public static int explosivesExpertXpPerUse() {

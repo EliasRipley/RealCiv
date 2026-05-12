@@ -10,6 +10,7 @@ import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import com.realciv.realciv.integration.RealCivFTBChunksMirror;
+import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.HubRewardResolver;
 import com.realciv.realciv.logic.LandWandService;
 import com.realciv.realciv.logic.Profession;
@@ -4119,24 +4120,11 @@ public final class RealCivCommands {
             CivSavedData data,
             String civId,
             String permissionKey) {
-        // Preserve existing behavior (mayor/admin) while allowing delegated civ roles.
-        if (isMayorOrAdmin(source, data, civId)) {
-            return true;
-        }
-        if (source.getEntity() instanceof ServerPlayer player) {
-            return data.hasCustomRolePermission(civId, player.getUUID(), permissionKey);
-        }
-        return false;
+        return CivPermissionService.hasCivPermission(source, data, civId, permissionKey);
     }
 
     private static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId) {
-        if (source.hasPermission(3)) {
-            return true;
-        }
-        if (source.getEntity() instanceof ServerPlayer player) {
-            return data.isMayor(civId, player.getUUID());
-        }
-        return false;
+        return CivPermissionService.isMayorOrAdmin(source, data, civId);
     }
 
     private static void grantMayorStarterHub(ServerPlayer player) {
