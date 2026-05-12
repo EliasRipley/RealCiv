@@ -145,13 +145,34 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         }
 
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
+        CivSavedData.HubDistributionMode distributionMode = data.hubDistributionMode(civilizationId);
+        long configuredDailyLimit = 0L;
         if (!privileged) {
-            long allowance = record.remainingPersonalWithdraw(civilizationId, itemId);
+            long allowance;
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                configuredDailyLimit = data.hubDailyAllowanceLimit(civilizationId, itemId);
+                if (configuredDailyLimit <= 0L) {
+                    RealCivMessages.deny(
+                            viewer,
+                            "No daily allowance is configured for " + itemId + " in this civilization.");
+                    refresh();
+                    return;
+                }
+                allowance = record.remainingDailyAllowance(civilizationId, itemId, configuredDailyLimit);
+            } else {
+                allowance = record.remainingPersonalWithdraw(civilizationId, itemId);
+            }
             if (allowance <= 0L) {
-                RealCivMessages.deny(
-                        viewer,
-                        "No personal withdrawal allowance left for " + itemId
-                                + ". Contribute more to increase quota.");
+                if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                    RealCivMessages.deny(
+                            viewer,
+                            "No daily allowance remaining for " + itemId + ".");
+                } else {
+                    RealCivMessages.deny(
+                            viewer,
+                            "No personal withdrawal allowance left for " + itemId
+                                    + ". Contribute more to increase quota.");
+                }
                 refresh();
                 return;
             }
@@ -198,8 +219,15 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
             remainingToGive -= stackSize;
         }
 
+        long remainingPersonal = 0L;
         if (!privileged) {
-            record.recordPersonalWithdrawal(civilizationId, itemId, requested);
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                record.recordDailyAllowanceWithdrawal(civilizationId, itemId, requested);
+                remainingPersonal = record.remainingDailyAllowance(civilizationId, itemId, configuredDailyLimit);
+            } else {
+                record.recordPersonalWithdrawal(civilizationId, itemId, requested);
+                remainingPersonal = record.remainingPersonalWithdraw(civilizationId, itemId);
+            }
         }
         if (penaltyCents > 0L) {
             record.addSocialCreditCents(civilizationId, -penaltyCents);
@@ -211,13 +239,28 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
-        long remainingPersonal = record.remainingPersonalWithdraw(civilizationId, itemId);
-        viewer.sendSystemMessage(Component.literal(
-                "Withdrew " + requested + "x " + itemId
-                        + " | Remaining personal quota: " + remainingPersonal
-                        + (penaltyCents > 0L
-                        ? " | Credit penalty: -" + RealCivUtil.formatCredits(penaltyCents)
-                        : "")));
+        if (privileged) {
+            viewer.sendSystemMessage(Component.literal(
+                    "Withdrew " + requested + "x " + itemId
+                            + (penaltyCents > 0L
+                            ? " | Credit penalty: -" + RealCivUtil.formatCredits(penaltyCents)
+                            : "")));
+        } else if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            long finalConfiguredDailyLimit = configuredDailyLimit;
+            viewer.sendSystemMessage(Component.literal(
+                    "Withdrew " + requested + "x " + itemId
+                            + " | Remaining daily allowance: " + remainingPersonal + "/" + finalConfiguredDailyLimit
+                            + (penaltyCents > 0L
+                            ? " | Credit penalty: -" + RealCivUtil.formatCredits(penaltyCents)
+                            : "")));
+        } else {
+            viewer.sendSystemMessage(Component.literal(
+                    "Withdrew " + requested + "x " + itemId
+                            + " | Remaining personal quota: " + remainingPersonal
+                            + (penaltyCents > 0L
+                            ? " | Credit penalty: -" + RealCivUtil.formatCredits(penaltyCents)
+                            : "")));
+        }
         refresh();
     }
 
@@ -246,6 +289,7 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         int start = pageIndex * pageSize;
         int end = Math.min(stockEntries.size(), start + pageSize);
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
+        CivSavedData.HubDistributionMode distributionMode = data.hubDistributionMode(civilizationId);
 
         int slot = 0;
         for (int i = start; i < end; i++) {
@@ -269,15 +313,26 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
                         itemId + " | stock " + stock
                                 + " | Left click: stack, Right click: 1, Shift click: x4 stacks"));
             } else {
-                long contributed = record.contributedCount(civilizationId, itemId);
-                long limit = record.personalWithdrawLimit(civilizationId, itemId);
-                long withdrawn = record.personalWithdrawnCount(civilizationId, itemId);
-                long remaining = record.remainingPersonalWithdraw(civilizationId, itemId);
-                stack.set(DataComponents.CUSTOM_NAME, Component.literal(
-                        itemId + " | stock " + stock
-                                + " | contributed " + contributed
-                                + " | withdrawn " + withdrawn
-                                + " | remaining " + remaining + "/" + limit));
+                if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                    long limit = data.hubDailyAllowanceLimit(civilizationId, itemId);
+                    long withdrawn = record.dailyAllowanceWithdrawnCount(civilizationId, itemId);
+                    long remaining = record.remainingDailyAllowance(civilizationId, itemId, limit);
+                    stack.set(DataComponents.CUSTOM_NAME, Component.literal(
+                            itemId + " | stock " + stock
+                                    + " | mode daily_allowance"
+                                    + " | withdrawn today " + withdrawn
+                                    + " | remaining today " + remaining + "/" + limit));
+                } else {
+                    long contributed = record.contributedCount(civilizationId, itemId);
+                    long limit = record.personalWithdrawLimit(civilizationId, itemId);
+                    long withdrawn = record.personalWithdrawnCount(civilizationId, itemId);
+                    long remaining = record.remainingPersonalWithdraw(civilizationId, itemId);
+                    stack.set(DataComponents.CUSTOM_NAME, Component.literal(
+                            itemId + " | stock " + stock
+                                    + " | contributed " + contributed
+                                    + " | withdrawn " + withdrawn
+                                    + " | remaining " + remaining + "/" + limit));
+                }
             }
 
             display.setItem(slot, stack);
@@ -302,9 +357,13 @@ public class CommunityHubStockMenu extends AbstractContainerMenu {
         display.setItem(NEXT_SLOT, next);
 
         ItemStack info = new ItemStack(Items.BOOK);
+        String modeLabel = distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE
+                ? "daily_allowance"
+                : "contribution_ratio";
         info.set(DataComponents.CUSTOM_NAME, Component.literal(
                 "Civilization: " + civilizationId
                         + " | page " + (pageIndex + 1) + "/" + totalPages
+                        + " | mode " + modeLabel
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civilizationId))));
         display.setItem(INFO_SLOT, info);
 

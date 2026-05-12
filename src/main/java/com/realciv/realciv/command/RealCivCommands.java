@@ -575,6 +575,38 @@ public final class RealCivCommands {
                                                                 ctx.getSource(),
                                                                 EntityArgument.getPlayer(ctx, "player"),
                                                                 IntegerArgumentType.getInteger(ctx, "page")))))))
+                        .then(Commands.literal("distribution")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> hubDistributionShow(ctx.getSource())))
+                                .then(Commands.literal("mode")
+                                        .then(Commands.argument("mode", StringArgumentType.word())
+                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                        List.of("contribution_ratio", "daily_allowance"),
+                                                        builder))
+                                                .executes(ctx -> hubDistributionSetMode(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "mode")))))
+                                .then(Commands.literal("allowance")
+                                        .then(Commands.literal("list")
+                                                .executes(ctx -> hubDistributionAllowanceList(ctx.getSource(), 1))
+                                                .then(Commands.argument("page", IntegerArgumentType.integer(1))
+                                                        .executes(ctx -> hubDistributionAllowanceList(
+                                                                ctx.getSource(),
+                                                                IntegerArgumentType.getInteger(ctx, "page")))))
+                                        .then(Commands.literal("set")
+                                                .then(Commands.argument("item", ResourceLocationArgument.id())
+                                                        .then(Commands.argument("count", IntegerArgumentType.integer(1))
+                                                                .executes(ctx -> hubDistributionAllowanceSet(
+                                                                        ctx.getSource(),
+                                                                        ResourceLocationArgument.getId(ctx, "item"),
+                                                                        IntegerArgumentType.getInteger(ctx, "count"))))))
+                                        .then(Commands.literal("clear")
+                                                .then(Commands.argument("item", ResourceLocationArgument.id())
+                                                        .executes(ctx -> hubDistributionAllowanceClear(
+                                                                ctx.getSource(),
+                                                                ResourceLocationArgument.getId(ctx, "item")))))
+                                        .then(Commands.literal("clearall")
+                                                .executes(ctx -> hubDistributionAllowanceClearAll(ctx.getSource())))))
                         .then(Commands.literal("coverage")
                                 .requires(source -> source.hasPermission(3))
                                 .executes(ctx -> showHubCoverage(ctx.getSource(), 1))
@@ -3115,6 +3147,8 @@ public final class RealCivCommands {
         }
 
         CivSavedData.PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
+        CivSavedData.HubDistributionMode distributionMode = data.hubDistributionMode(civId);
+        long configuredDailyLimit = 0L;
         if (!canBypassQuota) {
             if (requester == null) {
                 source.sendFailure(Component.literal("Only players can use personal hub withdrawals."));
@@ -3125,18 +3159,42 @@ public final class RealCivCommands {
                 return 0;
             }
 
-            long remainingAllowance = quotaRecord.remainingPersonalWithdraw(civId, itemId);
+            long remainingAllowance;
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                configuredDailyLimit = data.hubDailyAllowanceLimit(civId, itemId);
+                if (configuredDailyLimit <= 0L) {
+                    source.sendFailure(Component.literal(
+                            "No daily allowance is configured for " + itemId + " in "
+                                    + civDisplay(data, civId) + "."));
+                    return 0;
+                }
+                remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, configuredDailyLimit);
+            } else {
+                remainingAllowance = quotaRecord.remainingPersonalWithdraw(civId, itemId);
+            }
             if (remainingAllowance <= 0L) {
-                source.sendFailure(Component.literal(
-                        "No personal withdrawal allowance left for " + itemId + " for "
-                                + target.getGameProfile().getName()
-                                + ". Contribute more to increase quota."));
+                if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                    source.sendFailure(Component.literal(
+                            "No daily allowance remaining for " + itemId + " for "
+                                    + target.getGameProfile().getName() + "."));
+                } else {
+                    source.sendFailure(Component.literal(
+                            "No personal withdrawal allowance left for " + itemId + " for "
+                                    + target.getGameProfile().getName()
+                                    + ". Contribute more to increase quota."));
+                }
                 return 0;
             }
             if (count > remainingAllowance) {
-                source.sendFailure(Component.literal(
-                        "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
-                                + target.getGameProfile().getName() + " right now (personal quota)."));
+                if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                    source.sendFailure(Component.literal(
+                            "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
+                                    + target.getGameProfile().getName() + " right now (daily allowance)."));
+                } else {
+                    source.sendFailure(Component.literal(
+                            "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
+                                    + target.getGameProfile().getName() + " right now (personal quota)."));
+                }
                 return 0;
             }
         }
@@ -3174,8 +3232,15 @@ public final class RealCivCommands {
             remaining -= stackSize;
         }
 
+        long newRemaining = 0L;
         if (!canBypassQuota) {
-            quotaRecord.recordPersonalWithdrawal(civId, itemId, count);
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                quotaRecord.recordDailyAllowanceWithdrawal(civId, itemId, count);
+                newRemaining = quotaRecord.remainingDailyAllowance(civId, itemId, configuredDailyLimit);
+            } else {
+                quotaRecord.recordPersonalWithdrawal(civId, itemId, count);
+                newRemaining = quotaRecord.remainingPersonalWithdraw(civId, itemId);
+            }
         }
         if (penaltyCents > 0L) {
             quotaRecord.addSocialCreditCents(civId, -penaltyCents);
@@ -3189,16 +3254,32 @@ public final class RealCivCommands {
                     actor + " withdrew " + count + "x " + itemId + " for " + target.getGameProfile().getName(),
                     RealCivConfig.MAX_AUDIT_LOGS.get());
         } else {
-            long newRemaining = quotaRecord.remainingPersonalWithdraw(civId, itemId);
-            data.addAuditLog(
-                    civId,
-                    actor + " withdrew " + count + "x " + itemId
-                            + " from " + target.getGameProfile().getName()
-                            + " personal quota (remaining allowance: " + newRemaining + ")",
-                    RealCivConfig.MAX_AUDIT_LOGS.get());
-            source.sendSuccess(() -> Component.literal(
-                    "Personal quota remaining for " + target.getGameProfile().getName()
-                            + " on " + itemId + ": " + newRemaining), false);
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+                long finalNewRemaining = newRemaining;
+                long finalConfiguredDailyLimit = configuredDailyLimit;
+                data.addAuditLog(
+                        civId,
+                        actor + " withdrew " + count + "x " + itemId
+                                + " from " + target.getGameProfile().getName()
+                                + " daily allowance (remaining today: " + finalNewRemaining
+                                + "/" + finalConfiguredDailyLimit + ")",
+                        RealCivConfig.MAX_AUDIT_LOGS.get());
+                source.sendSuccess(() -> Component.literal(
+                        "Daily allowance remaining for " + target.getGameProfile().getName()
+                                + " on " + itemId + ": " + finalNewRemaining + "/" + finalConfiguredDailyLimit),
+                        false);
+            } else {
+                long finalNewRemaining = newRemaining;
+                data.addAuditLog(
+                        civId,
+                        actor + " withdrew " + count + "x " + itemId
+                                + " from " + target.getGameProfile().getName()
+                                + " personal quota (remaining allowance: " + finalNewRemaining + ")",
+                        RealCivConfig.MAX_AUDIT_LOGS.get());
+                source.sendSuccess(() -> Component.literal(
+                        "Personal quota remaining for " + target.getGameProfile().getName()
+                                + " on " + itemId + ": " + finalNewRemaining), false);
+            }
         }
         if (penaltyCents > 0L) {
             long appliedPenalty = penaltyCents;
@@ -3263,6 +3344,52 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        CivSavedData.HubDistributionMode mode = data.hubDistributionMode(civId);
+
+        if (mode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            List<Map.Entry<String, Integer>> entries = data.hubDailyAllowanceEntriesSorted(civId);
+            if (entries.isEmpty()) {
+                source.sendSuccess(() -> Component.literal(
+                        "Hub quota for " + civDisplay(data, civId)
+                                + " is in daily_allowance mode, but no item limits are configured yet."),
+                        false);
+                return 1;
+            }
+
+            int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+            int totalPages = (entries.size() + pageSize - 1) / pageSize;
+            int safePage = Math.max(1, Math.min(page, totalPages));
+            int start = (safePage - 1) * pageSize;
+            int end = Math.min(entries.size(), start + pageSize);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Hub quota for " + target.getGameProfile().getName()
+                            + " in " + civDisplay(data, civId)
+                            + " (mode daily_allowance, page " + safePage + "/" + totalPages + "):"),
+                    false);
+
+            for (int i = start; i < end; i++) {
+                Map.Entry<String, Integer> entry = entries.get(i);
+                String itemKey = entry.getKey();
+                int limit = Math.max(0, entry.getValue());
+                long withdrawn = 0L;
+                long remaining = 0L;
+                try {
+                    ResourceLocation parsed = ResourceLocation.parse(itemKey);
+                    withdrawn = record.dailyAllowanceWithdrawnCount(civId, parsed);
+                    remaining = record.remainingDailyAllowance(civId, parsed, limit);
+                } catch (Exception ignored) {
+                }
+                long safeWithdrawn = Math.max(0L, withdrawn);
+                long safeRemaining = Math.max(0L, remaining);
+                source.sendSuccess(() -> Component.literal(
+                        "- " + itemKey
+                                + " | withdrawn today " + safeWithdrawn
+                                + " | remaining today " + safeRemaining + "/" + limit),
+                        false);
+            }
+            return 1;
+        }
 
         List<Map.Entry<String, Long>> entries = record.contributions(civId).entrySet().stream()
                 .filter(entry -> entry.getValue() != null && entry.getValue() > 0L)
@@ -3316,6 +3443,161 @@ public final class RealCivCommands {
                             + " | limit " + safeLimit
                             + " | remaining " + safeRemaining),
                     false);
+        }
+        return 1;
+    }
+
+    private static int hubDistributionShow(CommandSourceStack source) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        CivSavedData.HubDistributionMode mode = data.hubDistributionMode(civId);
+        source.sendSuccess(() -> Component.literal(
+                "Hub distribution mode for " + civDisplay(data, civId) + ": " + mode.serializedName()),
+                false);
+
+        if (mode == CivSavedData.HubDistributionMode.CONTRIBUTION_RATIO) {
+            source.sendSuccess(() -> Component.literal(
+                    "Contribution-ratio mode uses each player's contribution quota and personal withdraw rate."),
+                    false);
+            return 1;
+        }
+
+        List<Map.Entry<String, Integer>> allowances = data.hubDailyAllowanceEntriesSorted(civId);
+        if (allowances.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "No daily item allowances configured yet. Use /realciv hub distribution allowance set <item> <count>."),
+                    false);
+            return 1;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Configured daily allowance entries: " + allowances.size() + " item(s)."), false);
+        int preview = Math.min(10, allowances.size());
+        for (int i = 0; i < preview; i++) {
+            Map.Entry<String, Integer> entry = allowances.get(i);
+            source.sendSuccess(() -> Component.literal(
+                    "- " + entry.getKey() + ": " + entry.getValue() + "/day"),
+                    false);
+        }
+        if (allowances.size() > preview) {
+            source.sendSuccess(() -> Component.literal(
+                    "Use /realciv hub distribution allowance list for the full list."),
+                    false);
+        }
+        return 1;
+    }
+
+    private static int hubDistributionSetMode(CommandSourceStack source, String modeRaw)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage hub distribution mode."));
+            return 0;
+        }
+        @Nullable CivSavedData.HubDistributionMode mode = CivSavedData.HubDistributionMode.fromSerializedName(modeRaw);
+        if (mode == null) {
+            source.sendFailure(Component.literal("Unknown mode. Use contribution_ratio or daily_allowance."));
+            return 0;
+        }
+        if (!data.setHubDistributionMode(civId, mode, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Hub distribution mode already matches."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Hub distribution mode for " + civDisplay(data, civId)
+                        + " set to " + mode.serializedName() + "."), true);
+        return 1;
+    }
+
+    private static int hubDistributionAllowanceSet(CommandSourceStack source, ResourceLocation itemId, int count)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage daily hub allowances."));
+            return 0;
+        }
+
+        Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(Items.AIR);
+        if (item == Items.AIR) {
+            source.sendFailure(Component.literal("Unknown item: " + itemId));
+            return 0;
+        }
+
+        if (!data.setHubDailyAllowanceLimit(civId, itemId, count, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Daily allowance may already match."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Set daily allowance for " + itemId + " in " + civDisplay(data, civId)
+                        + " to " + count + "/day."), true);
+        return 1;
+    }
+
+    private static int hubDistributionAllowanceClear(CommandSourceStack source, ResourceLocation itemId)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage daily hub allowances."));
+            return 0;
+        }
+
+        if (!data.setHubDailyAllowanceLimit(civId, itemId, 0, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. No daily allowance existed for " + itemId + "."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Cleared daily allowance for " + itemId + " in " + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int hubDistributionAllowanceClearAll(CommandSourceStack source)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage daily hub allowances."));
+            return 0;
+        }
+        int cleared = data.clearAllHubDailyAllowanceLimits(civId, actorName(source));
+        if (cleared <= 0) {
+            source.sendFailure(Component.literal("No daily allowance entries were configured."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Cleared " + cleared + " daily allowance entr" + (cleared == 1 ? "y" : "ies")
+                        + " for " + civDisplay(data, civId) + "."), true);
+        return 1;
+    }
+
+    private static int hubDistributionAllowanceList(CommandSourceStack source, int page) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = civOfSource(source, data);
+        List<Map.Entry<String, Integer>> allowances = data.hubDailyAllowanceEntriesSorted(civId);
+        if (allowances.isEmpty()) {
+            source.sendSuccess(() -> Component.literal(
+                    "No daily allowance entries configured for " + civDisplay(data, civId) + "."), false);
+            return 1;
+        }
+
+        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+        int totalPages = (allowances.size() + pageSize - 1) / pageSize;
+        int safePage = Math.max(1, Math.min(page, totalPages));
+        int start = (safePage - 1) * pageSize;
+        int end = Math.min(allowances.size(), start + pageSize);
+
+        source.sendSuccess(() -> Component.literal(
+                "Hub daily allowance entries for " + civDisplay(data, civId)
+                        + " (page " + safePage + "/" + totalPages + "):"), false);
+        for (int i = start; i < end; i++) {
+            Map.Entry<String, Integer> entry = allowances.get(i);
+            source.sendSuccess(() -> Component.literal(
+                    "- " + entry.getKey() + ": " + entry.getValue() + "/day"), false);
         }
         return 1;
     }
@@ -3594,6 +3876,11 @@ public final class RealCivCommands {
                 "Withdrawal rate for " + player.getGameProfile().getName()
                         + " in " + civDisplay(data, civId) + ": " + rateText + " (" + mode + ")"),
                 false);
+        if (data.hubDistributionMode(civId) == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            source.sendSuccess(() -> Component.literal(
+                    "Note: hub distribution mode is daily_allowance, so withdraw rate does not currently apply."),
+                    false);
+        }
         return 1;
     }
 
@@ -3619,6 +3906,11 @@ public final class RealCivCommands {
                 "Set withdrawal rate for " + player.getGameProfile().getName()
                         + " in " + civDisplay(data, civId)
                         + " to " + RealCivUtil.formatPercentFromRatio(ratio) + "."), true);
+        if (data.hubDistributionMode(civId) == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            source.sendSuccess(() -> Component.literal(
+                    "Current hub mode is daily_allowance; this rate will apply if switched back to contribution_ratio."),
+                    false);
+        }
         return 1;
     }
 
@@ -3642,6 +3934,11 @@ public final class RealCivCommands {
         source.sendSuccess(() -> Component.literal(
                 "Cleared withdrawal rate override for " + player.getGameProfile().getName()
                         + " in " + civDisplay(data, civId) + "."), true);
+        if (data.hubDistributionMode(civId) == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            source.sendSuccess(() -> Component.literal(
+                    "Current hub mode is daily_allowance; withdraw rates are inactive until contribution_ratio mode is used."),
+                    false);
+        }
         return 1;
     }
 

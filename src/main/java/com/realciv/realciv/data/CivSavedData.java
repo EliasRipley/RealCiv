@@ -51,6 +51,7 @@ public class CivSavedData extends SavedData {
     public static final String ROLE_PERMISSION_MANAGE_CENSUS_ROLES = "manage_census_roles";
     public static final String ROLE_PERMISSION_MANAGE_LEADERSHIP = "manage_leadership";
     public static final String ROLE_PERMISSION_MANAGE_WITHDRAW_RATES = "manage_withdraw_rates";
+    public static final String ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION = "manage_hub_distribution";
     public static final String ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS = "manage_hub_withdrawals";
     public static final String ROLE_PERMISSION_VIEW_HUB_LOGS = "view_hub_logs";
     public static final String ROLE_PERMISSION_VIEW_HUB_QUOTAS = "view_hub_quotas";
@@ -72,6 +73,7 @@ public class CivSavedData extends SavedData {
             ROLE_PERMISSION_MANAGE_CENSUS_ROLES,
             ROLE_PERMISSION_MANAGE_LEADERSHIP,
             ROLE_PERMISSION_MANAGE_WITHDRAW_RATES,
+            ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION,
             ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS,
             ROLE_PERMISSION_VIEW_HUB_LOGS,
             ROLE_PERMISSION_VIEW_HUB_QUOTAS,
@@ -1094,6 +1096,93 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    public HubDistributionMode hubDistributionMode(String civIdRaw) {
+        return getOrCreateCivilization(civIdRaw).hubDistributionMode();
+    }
+
+    public boolean setHubDistributionMode(String civIdRaw, @Nullable HubDistributionMode mode, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        HubDistributionMode normalized = mode == null
+                ? HubDistributionMode.CONTRIBUTION_RATIO
+                : mode;
+        if (civ.hubDistributionMode() == normalized) {
+            return false;
+        }
+        civ.setHubDistributionMode(normalized);
+        addAuditLog(
+                civ.id(),
+                actorName + " set hub distribution mode to " + normalized.serializedName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public List<Map.Entry<String, Integer>> hubDailyAllowanceEntriesSorted(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return civ.hubDailyAllowances().entrySet().stream()
+                .filter(entry -> entry.getValue() != null && entry.getValue() > 0)
+                .sorted(Map.Entry.comparingByKey())
+                .toList();
+    }
+
+    public int hubDailyAllowanceLimit(String civIdRaw, ResourceLocation itemId) {
+        return Math.max(0, getOrCreateCivilization(civIdRaw).hubDailyAllowances().getOrDefault(itemId.toString(), 0));
+    }
+
+    public boolean setHubDailyAllowanceLimit(
+            String civIdRaw,
+            ResourceLocation itemId,
+            int dailyCount,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        String key = itemId.toString();
+        int safeCount = Math.max(0, dailyCount);
+        int previous = Math.max(0, civ.hubDailyAllowances().getOrDefault(key, 0));
+        if (safeCount <= 0) {
+            if (previous <= 0) {
+                return false;
+            }
+            civ.hubDailyAllowances().remove(key);
+            addAuditLog(
+                    civ.id(),
+                    actorName + " cleared daily allowance limit for " + key,
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            setDirty();
+            return true;
+        }
+        if (previous == safeCount) {
+            return false;
+        }
+        civ.hubDailyAllowances().put(key, safeCount);
+        addAuditLog(
+                civ.id(),
+                actorName + " set daily allowance limit for " + key + " to " + safeCount + "/day",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public int clearAllHubDailyAllowanceLimits(String civIdRaw, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null || civ.hubDailyAllowances().isEmpty()) {
+            return 0;
+        }
+        int cleared = civ.hubDailyAllowances().size();
+        civ.hubDailyAllowances().clear();
+        addAuditLog(
+                civ.id(),
+                actorName + " cleared all daily allowance limits (" + cleared + " item entries)",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return cleared;
+    }
+
     public List<CivRoleView> customRolesSorted(String civIdRaw) {
         CivilizationRecord civ = getCivilization(civIdRaw);
         if (civ == null) {
@@ -1873,6 +1962,27 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    public enum HubDistributionMode {
+        CONTRIBUTION_RATIO,
+        DAILY_ALLOWANCE;
+
+        @Nullable
+        public static HubDistributionMode fromSerializedName(@Nullable String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+                case "CONTRIBUTION_RATIO", "RATIO", "CONTRIBUTION", "DEFAULT" -> CONTRIBUTION_RATIO;
+                case "DAILY_ALLOWANCE", "ALLOWANCE", "DAILY" -> DAILY_ALLOWANCE;
+                default -> null;
+            };
+        }
+
+        public String serializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
     public record CivRoleView(
             String roleId,
             String displayName,
@@ -1918,6 +2028,8 @@ public class CivSavedData extends SavedData {
         private int hubZ;
         private String leaderTitle = DEFAULT_LEADER_TITLE;
         private GovernanceModel governanceModel = GovernanceModel.AUTOCRATIC;
+        private HubDistributionMode hubDistributionMode = HubDistributionMode.CONTRIBUTION_RATIO;
+        private final Map<String, Integer> hubDailyAllowances = new HashMap<>();
         private boolean allowIntraCivPvp;
         private boolean starterTownAreaGranted;
 
@@ -1952,6 +2064,18 @@ public class CivSavedData extends SavedData {
 
         public void setGovernanceModel(GovernanceModel governanceModel) {
             this.governanceModel = governanceModel == null ? GovernanceModel.AUTOCRATIC : governanceModel;
+        }
+
+        public HubDistributionMode hubDistributionMode() {
+            return hubDistributionMode;
+        }
+
+        public void setHubDistributionMode(HubDistributionMode mode) {
+            this.hubDistributionMode = mode == null ? HubDistributionMode.CONTRIBUTION_RATIO : mode;
+        }
+
+        public Map<String, Integer> hubDailyAllowances() {
+            return hubDailyAllowances;
         }
 
         public boolean allowIntraCivPvp() {
@@ -2119,6 +2243,15 @@ public class CivSavedData extends SavedData {
             }
             tag.putString("leaderTitle", sanitizeLeaderTitle(leaderTitle));
             tag.putString("governanceModel", governanceModel.serializedName());
+            tag.putString("hubDistributionMode", hubDistributionMode.serializedName());
+            CompoundTag dailyAllowanceTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : hubDailyAllowances.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    dailyAllowanceTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("hubDailyAllowances", dailyAllowanceTag);
 
             ListTag roleTags = new ListTag();
             for (RoleRecord role : customRoles.values()) {
@@ -2223,6 +2356,19 @@ public class CivSavedData extends SavedData {
                 @Nullable GovernanceModel parsed = GovernanceModel.fromSerializedName(tag.getString("governanceModel"));
                 if (parsed != null) {
                     record.governanceModel = parsed;
+                }
+            }
+            if (tag.contains("hubDistributionMode")) {
+                @Nullable HubDistributionMode parsed = HubDistributionMode.fromSerializedName(tag.getString("hubDistributionMode"));
+                if (parsed != null) {
+                    record.hubDistributionMode = parsed;
+                }
+            }
+            CompoundTag dailyAllowanceTag = tag.getCompound("hubDailyAllowances");
+            for (String key : dailyAllowanceTag.getAllKeys()) {
+                int value = Math.max(0, dailyAllowanceTag.getInt(key));
+                if (value > 0) {
+                    record.hubDailyAllowances.put(key, value);
                 }
             }
             ListTag roleTags = tag.getList("customRoles", Tag.TAG_COMPOUND);
@@ -2548,6 +2694,23 @@ public class CivSavedData extends SavedData {
             }
             if (target.personalWithdrawRatioOverride == null && fromAccount.personalWithdrawRatioOverride != null) {
                 target.personalWithdrawRatioOverride = clampRatio(fromAccount.personalWithdrawRatioOverride);
+            }
+            if (target.dailyAllowanceDayIndex == fromAccount.dailyAllowanceDayIndex) {
+                for (Map.Entry<String, Long> entry : fromAccount.dailyAllowanceWithdrawals.entrySet()) {
+                    long value = Math.max(0L, entry.getValue());
+                    if (value > 0L) {
+                        target.dailyAllowanceWithdrawals.merge(entry.getKey(), value, Long::sum);
+                    }
+                }
+            } else if (fromAccount.dailyAllowanceDayIndex > target.dailyAllowanceDayIndex) {
+                target.dailyAllowanceDayIndex = fromAccount.dailyAllowanceDayIndex;
+                target.dailyAllowanceWithdrawals.clear();
+                for (Map.Entry<String, Long> entry : fromAccount.dailyAllowanceWithdrawals.entrySet()) {
+                    long value = Math.max(0L, entry.getValue());
+                    if (value > 0L) {
+                        target.dailyAllowanceWithdrawals.put(entry.getKey(), value);
+                    }
+                }
             }
             return true;
         }
@@ -3257,6 +3420,12 @@ public class CivSavedData extends SavedData {
             return account(civId).personalWithdrawals.getOrDefault(itemId.toString(), 0L);
         }
 
+        public long dailyAllowanceWithdrawnCount(String civId, ResourceLocation itemId) {
+            CivAccount account = account(civId);
+            resetDailyAllowanceWindowIfNeeded(account);
+            return account.dailyAllowanceWithdrawals.getOrDefault(itemId.toString(), 0L);
+        }
+
         public double effectivePersonalWithdrawRatio(String civId) {
             CivAccount account = account(civId);
             if (account.personalWithdrawRatioOverride == null) {
@@ -3294,6 +3463,25 @@ public class CivSavedData extends SavedData {
                 return;
             }
             account(civId).personalWithdrawals.merge(itemId.toString(), count, Long::sum);
+        }
+
+        public long remainingDailyAllowance(String civId, ResourceLocation itemId, long dailyLimit) {
+            long safeLimit = Math.max(0L, dailyLimit);
+            if (safeLimit <= 0L) {
+                return 0L;
+            }
+            long used = dailyAllowanceWithdrawnCount(civId, itemId);
+            long remaining = safeLimit - used;
+            return Math.max(0L, remaining);
+        }
+
+        public void recordDailyAllowanceWithdrawal(String civId, ResourceLocation itemId, long count) {
+            if (count <= 0L) {
+                return;
+            }
+            CivAccount account = account(civId);
+            resetDailyAllowanceWindowIfNeeded(account);
+            account.dailyAllowanceWithdrawals.merge(itemId.toString(), count, Long::sum);
         }
 
         @Nullable
@@ -3621,6 +3809,18 @@ public class CivSavedData extends SavedData {
             return Math.max(0.0D, Math.min(1.0D, ratio));
         }
 
+        private static long currentUtcDayIndex() {
+            return System.currentTimeMillis() / DAY_MILLIS;
+        }
+
+        private static void resetDailyAllowanceWindowIfNeeded(CivAccount account) {
+            long dayIndex = currentUtcDayIndex();
+            if (account.dailyAllowanceDayIndex != dayIndex) {
+                account.dailyAllowanceDayIndex = dayIndex;
+                account.dailyAllowanceWithdrawals.clear();
+            }
+        }
+
         @Nullable
         private static String normalizeFtbClaimMode(@Nullable String rawMode) {
             if (rawMode == null) {
@@ -3646,6 +3846,8 @@ public class CivSavedData extends SavedData {
         private long socialCreditCents;
         private final Map<String, Long> contributions = new HashMap<>();
         private final Map<String, Long> personalWithdrawals = new HashMap<>();
+        private long dailyAllowanceDayIndex = -1L;
+        private final Map<String, Long> dailyAllowanceWithdrawals = new HashMap<>();
         @Nullable
         private Double personalWithdrawRatioOverride;
 
@@ -3665,6 +3867,18 @@ public class CivSavedData extends SavedData {
             }
             tag.put("personalWithdrawals", withdrawalTag);
 
+            if (dailyAllowanceDayIndex >= 0L) {
+                tag.putLong("dailyAllowanceDayIndex", dailyAllowanceDayIndex);
+            }
+            CompoundTag dailyAllowanceTag = new CompoundTag();
+            for (Map.Entry<String, Long> entry : dailyAllowanceWithdrawals.entrySet()) {
+                long value = Math.max(0L, entry.getValue());
+                if (value > 0L) {
+                    dailyAllowanceTag.putLong(entry.getKey(), value);
+                }
+            }
+            tag.put("dailyAllowanceWithdrawals", dailyAllowanceTag);
+
             if (personalWithdrawRatioOverride != null) {
                 tag.putDouble("personalWithdrawRatioOverride", Math.max(0.0D, Math.min(1.0D, personalWithdrawRatioOverride)));
             }
@@ -3683,6 +3897,17 @@ public class CivSavedData extends SavedData {
             CompoundTag withdrawalTag = tag.getCompound("personalWithdrawals");
             for (String key : withdrawalTag.getAllKeys()) {
                 account.personalWithdrawals.put(key, Math.max(0L, withdrawalTag.getLong(key)));
+            }
+
+            account.dailyAllowanceDayIndex = tag.contains("dailyAllowanceDayIndex")
+                    ? tag.getLong("dailyAllowanceDayIndex")
+                    : -1L;
+            CompoundTag dailyAllowanceTag = tag.getCompound("dailyAllowanceWithdrawals");
+            for (String key : dailyAllowanceTag.getAllKeys()) {
+                long value = Math.max(0L, dailyAllowanceTag.getLong(key));
+                if (value > 0L) {
+                    account.dailyAllowanceWithdrawals.put(key, value);
+                }
             }
 
             if (tag.contains("personalWithdrawRatioOverride")) {
