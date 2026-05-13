@@ -88,6 +88,16 @@ public final class RealCivConfig {
                     () -> "",
                     RealCivConfig::isString);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> HUNTER_MOB_MIN_LEVELS = BUILDER
+            .comment("Optional per-mob minimum Hunter level requirements.")
+            .comment("Format: entity_id|required_level")
+            .comment("Example: minecraft:warden|40")
+            .defineListAllowEmpty(
+                    "profession.hunterMobMinLevels",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> WARRIOR_LIMITS = BUILDER
             .comment("Warrior player-kill limits by warrior level index (level 0 = first value).")
             .defineListAllowEmpty(
@@ -112,6 +122,149 @@ public final class RealCivConfig {
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> ENCHANTER_LIMITS = BUILDER
+            .comment("Enchanter action limits by enchanter level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.enchanterLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> BREWER_LIMITS = BUILDER
+            .comment("Brewer action limits by brewer level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.brewerLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> TRADER_LIMITS = BUILDER
+            .comment("Trader action limits by trader level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.traderLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.BooleanValue PROFESSION_USE_LINEAR_LIMIT_FORMULAS = BUILDER
+            .comment("When true, profession action caps use base + (perLevel * level) values below.")
+            .comment("When false, legacy profession.*Limits lists are used instead.")
+            .define("profession.useLinearLimitFormulas", true);
+
+    public static final ModConfigSpec.IntValue FARMER_LIMIT_BASE = BUILDER
+            .comment("Farmer level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.farmerLimitBase", 4, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue FARMER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Farmer action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.farmerLimitPerLevel", 4, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue MINER_LIMIT_BASE = BUILDER
+            .comment("Miner level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.minerLimitBase", 40, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue MINER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Miner action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.minerLimitPerLevel", 10, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue TERRAFORMER_LIMIT_BASE = BUILDER
+            .comment("Terraformer level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.terraformerLimitBase", 40, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue TERRAFORMER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Terraformer action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.terraformerLimitPerLevel", 10, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue LUMBERJACK_LIMIT_BASE = BUILDER
+            .comment("Lumberjack level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.lumberjackLimitBase", 8, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue LUMBERJACK_LIMIT_PER_LEVEL = BUILDER
+            .comment("Lumberjack action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.lumberjackLimitPerLevel", 4, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue FISHER_LIMIT_BASE = BUILDER
+            .comment("Fisher level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.fisherLimitBase", 4, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue FISHER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Fisher action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.fisherLimitPerLevel", 4, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue HUNTER_LIMIT_BASE = BUILDER
+            .comment("Hunter level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.hunterLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue HUNTER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Hunter action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.hunterLimitPerLevel", 2, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue WARRIOR_LIMIT_BASE = BUILDER
+            .comment("Warrior level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.warriorLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue WARRIOR_LIMIT_PER_LEVEL = BUILDER
+            .comment("Warrior action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.warriorLimitPerLevel", 2, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_LIMIT_BASE = BUILDER
+            .comment("Explosives Expert level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.explosivesExpertLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_LIMIT_PER_LEVEL = BUILDER
+            .comment("Explosives Expert action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.explosivesExpertLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue CRAFTER_LIMIT_BASE = BUILDER
+            .comment("Crafter level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.crafterLimitBase", 64, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue CRAFTER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Crafter action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.crafterLimitPerLevel", 64, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue ENCHANTER_LIMIT_BASE = BUILDER
+            .comment("Enchanter level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.enchanterLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue ENCHANTER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Enchanter action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.enchanterLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue BREWER_LIMIT_BASE = BUILDER
+            .comment("Brewer level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.brewerLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue BREWER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Brewer action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.brewerLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue TRADER_LIMIT_BASE = BUILDER
+            .comment("Trader level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.traderLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue TRADER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Trader action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.traderLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_DAILY_ACTION_CAPS = BUILDER
+            .comment("Optional daily action caps by profession and level.")
+            .comment("Format: PROFESSION|cap0,cap1,cap2,...  (cap <= 0 disables cap for that level)")
+            .comment("Example: MINER|0,0,128,192")
+            .defineListAllowEmpty(
+                    "profession.dailyActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> MINER_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional miner per-block action-window caps by miner level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:iron_ore|2,4,6")
+            .defineListAllowEmpty(
+                    "profession.minerBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> MINER_DAILY_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional miner per-block daily caps by miner level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:iron_ore|2,4,6")
+            .defineListAllowEmpty(
+                    "profession.minerDailyBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_EVENT_HOOK_RULES = BUILDER
             .comment("Optional event-driven profession action hooks.")
             .comment("Legacy format: hook|profession|actions_per_trigger|optional custom deny message")
@@ -128,7 +281,10 @@ public final class RealCivConfig {
             .comment("Example (age gate): PLACE_SCAFFOLDING|TERRAFORMER|1|min_membership_hours=48")
             .defineListAllowEmpty(
                     "profession.eventHookRules",
-                    List.of(),
+                    List.of(
+                            "ITEM_ENCHANT|ENCHANTER|1",
+                            "POTION_BREW|BREWER|1",
+                            "VILLAGER_TRADE|TRADER|1"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -344,6 +500,9 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:fisher_contributions|FISHER|1.20|2|1",
                             "ITEM_TAG|realciv:hunter_contributions|HUNTER|2.00|3|2",
                             "ITEM_TAG|realciv:crafter_contributions|CRAFTER|1.20|2|1",
+                            "ITEM_TAG|realciv:enchanter_contributions|ENCHANTER|2.00|2|1",
+                            "ITEM_TAG|realciv:brewer_contributions|BREWER|1.60|2|1",
+                            "ITEM_TAG|realciv:trader_contributions|TRADER|1.40|2|1",
                             "BLOCK_TAG|minecraft:mineable/pickaxe|MINER|0.10|1|1",
                             "BLOCK_TAG|minecraft:mineable/shovel|TERRAFORMER|0.15|1|1",
                             "BLOCK_TAG|minecraft:logs|LUMBERJACK|1.00|2|1",
@@ -363,7 +522,10 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:lumberjack_reset_items|LUMBERJACK|1.0",
                             "ITEM_TAG|realciv:fisher_reset_items|FISHER|1.0",
                             "ITEM_TAG|realciv:hunter_reset_items|HUNTER|1.0",
-                            "ITEM_TAG|realciv:crafter_reset_items|CRAFTER|1.0"),
+                            "ITEM_TAG|realciv:crafter_reset_items|CRAFTER|1.0",
+                            "ITEM_TAG|realciv:enchanter_reset_items|ENCHANTER|1.0",
+                            "ITEM_TAG|realciv:brewer_reset_items|BREWER|1.0",
+                            "ITEM_TAG|realciv:trader_reset_items|TRADER|1.0"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -380,6 +542,29 @@ public final class RealCivConfig {
     public static final ModConfigSpec.DoubleValue DEFAULT_PERSONAL_WITHDRAW_PERCENT = BUILDER
             .comment("Default percent of a player's own contributed item count they can withdraw from the hub.")
             .defineInRange("hub.defaultPersonalWithdrawalPercent", 10.0D, 0.0D, 100.0D);
+
+    public static final ModConfigSpec.BooleanValue TOOLS_PROFESSION_LEVEL_GATES_ENABLED = BUILDER
+            .comment("When true, profession-specific tool tier gates are enforced (pickaxe=miner, axe=lumberjack, shovel=terraformer, hoe=farmer, sword=warrior).")
+            .define("tools.professionLevelGatesEnabled", true);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_TOOL_TIER_REQUIREMENTS = BUILDER
+            .comment("Profession-specific tool tier level requirements.")
+            .comment("Format: PROFESSION|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40")
+            .comment("Missing tier keys default to 0 (no profession-level gate for that tier).")
+            .defineListAllowEmpty(
+                    "profession.toolTierRequirements",
+                    List.of(
+                            "MINER|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40",
+                            "LUMBERJACK|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40",
+                            "TERRAFORMER|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40",
+                            "FARMER|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40",
+                            "WARRIOR|WOOD=0|GOLD=2|STONE=2|IRON=8|DIAMOND=25|NETHERITE=40|UNKNOWN=40"),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.BooleanValue TOOLS_GENERAL_LEVEL_GATES_ENABLED = BUILDER
+            .comment("When true, general-level tier gates below are enforced.")
+            .define("tools.generalLevelGatesEnabled", false);
 
     public static final ModConfigSpec.IntValue WOOD_TOOL_LEVEL = BUILDER
             .comment("Minimum general level for wooden and golden tiered tools.")
@@ -427,7 +612,10 @@ public final class RealCivConfig {
                             "HUNTER|1.0",
                             "WARRIOR|1.0",
                             "EXPLOSIVES_EXPERT|1.0",
-                            "CRAFTER|1.0"),
+                            "CRAFTER|1.0",
+                            "ENCHANTER|1.0",
+                            "BREWER|1.0",
+                            "TRADER|1.0"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -558,6 +746,15 @@ public final class RealCivConfig {
             .comment("When true, council/democratic civ policy changes can require in-game proposal votes.")
             .comment("Leadership/admin can still apply urgent changes immediately.")
             .define("civ.governanceApprovalWorkflowEnabled", true);
+    public static final ModConfigSpec.IntValue GOVERNANCE_ELECTION_DURATION_MINUTES = BUILDER
+            .comment("Minutes an active leadership election remains open before automatic resolution.")
+            .defineInRange("civ.governanceElectionDurationMinutes", 15, 1, 24 * 60);
+    public static final ModConfigSpec.IntValue GOVERNANCE_COUP_DURATION_MINUTES = BUILDER
+            .comment("Minutes an active coup vote remains open before automatic resolution.")
+            .defineInRange("civ.governanceCoupDurationMinutes", 15, 1, 24 * 60);
+    public static final ModConfigSpec.IntValue GOVERNANCE_COUP_MIN_MEMBERS = BUILDER
+            .comment("Minimum civilization member count required to start a coup vote.")
+            .defineInRange("civ.governanceCoupMinMembers", 12, 2, 10_000);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> REDSTONER_RESTRICTED_BLOCKS = BUILDER
             .comment("Blocks treated as regulated redstone components. Players must be designated as Redstoners to place these blocks.")
@@ -624,26 +821,44 @@ public final class RealCivConfig {
     }
 
     public static int farmerLimitForLevel(int farmerLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(farmerLevel, FARMER_LIMIT_BASE.get(), FARMER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(farmerLevel, FARMER_LIMITS.get(), 8);
     }
 
     public static int minerLimitForLevel(int minerLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(minerLevel, MINER_LIMIT_BASE.get(), MINER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(minerLevel, MINER_LIMITS.get(), 40);
     }
 
     public static int terraformerLimitForLevel(int terraformerLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(terraformerLevel, TERRAFORMER_LIMIT_BASE.get(), TERRAFORMER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(terraformerLevel, TERRAFORMER_LIMITS.get(), 40);
     }
 
     public static int lumberjackLimitForLevel(int lumberjackLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(lumberjackLevel, LUMBERJACK_LIMIT_BASE.get(), LUMBERJACK_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 8);
     }
 
     public static int fisherLimitForLevel(int fisherLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(fisherLevel, FISHER_LIMIT_BASE.get(), FISHER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(fisherLevel, FISHER_LIMITS.get(), 8);
     }
 
     public static int hunterLimitForLevel(int hunterLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(hunterLevel, HUNTER_LIMIT_BASE.get(), HUNTER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(hunterLevel, HUNTER_LIMITS.get(), 1);
     }
 
@@ -684,16 +899,110 @@ public final class RealCivConfig {
         return caps;
     }
 
+    public static int hunterRequiredLevelForMob(ResourceLocation entityId) {
+        if (entityId == null) {
+            return 0;
+        }
+        for (String raw : HUNTER_MOB_MIN_LEVELS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|");
+            if (parts.length != 2) {
+                continue;
+            }
+            ResourceLocation parsedId;
+            try {
+                parsedId = ResourceLocation.parse(parts[0].trim());
+            } catch (Exception ex) {
+                continue;
+            }
+            if (!parsedId.equals(entityId)) {
+                continue;
+            }
+            Integer required = tryParseInt(parts[1].trim());
+            return required == null ? 0 : Math.max(0, required);
+        }
+        return 0;
+    }
+
+    public static int dailyActionCapForLevel(Profession profession, int level) {
+        if (profession == null || profession == Profession.NONE) {
+            return 0;
+        }
+        for (String raw : PROFESSION_DAILY_ACTION_CAPS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|", 2);
+            if (parts.length != 2) {
+                continue;
+            }
+            Profession parsedProfession = Profession.fromConfigName(parts[0].trim());
+            if (parsedProfession == null || parsedProfession != profession) {
+                continue;
+            }
+            return Math.max(0, parseLevelIndexedValue(parts[1], level));
+        }
+        return 0;
+    }
+
+    public static int minerBlockActionCapForLevel(ResourceLocation blockId, int minerLevel) {
+        return parseBlockLevelCap(MINER_BLOCK_ACTION_CAPS.get(), blockId, minerLevel);
+    }
+
+    public static int minerDailyBlockActionCapForLevel(ResourceLocation blockId, int minerLevel) {
+        return parseBlockLevelCap(MINER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, minerLevel);
+    }
+
     public static int warriorLimitForLevel(int warriorLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(warriorLevel, WARRIOR_LIMIT_BASE.get(), WARRIOR_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(warriorLevel, WARRIOR_LIMITS.get(), 1);
     }
 
     public static int explosivesExpertLimitForLevel(int explosivesLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(explosivesLevel, EXPLOSIVES_EXPERT_LIMIT_BASE.get(), EXPLOSIVES_EXPERT_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(explosivesLevel, EXPLOSIVES_EXPERT_LIMITS.get(), 1);
     }
 
     public static int crafterLimitForLevel(int crafterLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(crafterLevel, CRAFTER_LIMIT_BASE.get(), CRAFTER_LIMIT_PER_LEVEL.get());
+        }
         return RealCivUtil.valueForLevel(crafterLevel, CRAFTER_LIMITS.get(), 64);
+    }
+
+    public static int enchanterLimitForLevel(int enchanterLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(enchanterLevel, ENCHANTER_LIMIT_BASE.get(), ENCHANTER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(enchanterLevel, ENCHANTER_LIMITS.get(), 1);
+    }
+
+    public static int brewerLimitForLevel(int brewerLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(brewerLevel, BREWER_LIMIT_BASE.get(), BREWER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(brewerLevel, BREWER_LIMITS.get(), 1);
+    }
+
+    public static int traderLimitForLevel(int traderLevel) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(traderLevel, TRADER_LIMIT_BASE.get(), TRADER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(traderLevel, TRADER_LIMITS.get(), 1);
     }
 
     public static int limitForProfession(Profession profession, int level) {
@@ -710,8 +1019,30 @@ public final class RealCivConfig {
             case WARRIOR -> warriorLimitForLevel(level);
             case EXPLOSIVES_EXPERT -> explosivesExpertLimitForLevel(level);
             case CRAFTER -> crafterLimitForLevel(level);
+            case ENCHANTER -> enchanterLimitForLevel(level);
+            case BREWER -> brewerLimitForLevel(level);
+            case TRADER -> traderLimitForLevel(level);
             case NONE -> 0;
         };
+    }
+
+    public static boolean professionToolLevelGatesEnabled() {
+        return TOOLS_PROFESSION_LEVEL_GATES_ENABLED.get();
+    }
+
+    public static boolean generalToolLevelGatesEnabled() {
+        return TOOLS_GENERAL_LEVEL_GATES_ENABLED.get();
+    }
+
+    public static int requiredProfessionLevelForToolTier(Profession profession, RealCivUtil.ToolTier tier) {
+        if (profession == null || profession == Profession.NONE || tier == null || tier == RealCivUtil.ToolTier.NONE) {
+            return 0;
+        }
+        Map<RealCivUtil.ToolTier, Integer> configured = professionToolTierRequirements().get(profession);
+        if (configured == null) {
+            return 0;
+        }
+        return Math.max(0, configured.getOrDefault(tier, 0));
     }
 
     public static boolean specializationSingleProfessionLockEnabled() {
@@ -744,6 +1075,18 @@ public final class RealCivConfig {
 
     public static boolean governanceApprovalWorkflowEnabled() {
         return GOVERNANCE_APPROVAL_WORKFLOW_ENABLED.get();
+    }
+
+    public static long governanceElectionDurationMillis() {
+        return 60_000L * Math.max(1, GOVERNANCE_ELECTION_DURATION_MINUTES.get());
+    }
+
+    public static long governanceCoupDurationMillis() {
+        return 60_000L * Math.max(1, GOVERNANCE_COUP_DURATION_MINUTES.get());
+    }
+
+    public static int governanceCoupMinMembers() {
+        return Math.max(2, GOVERNANCE_COUP_MIN_MEMBERS.get());
     }
 
     public static int explosivesExpertXpPerUse() {
@@ -1011,6 +1354,9 @@ public final class RealCivConfig {
         multipliers.put(Profession.WARRIOR, 1.0D);
         multipliers.put(Profession.EXPLOSIVES_EXPERT, 1.0D);
         multipliers.put(Profession.CRAFTER, 1.0D);
+        multipliers.put(Profession.ENCHANTER, 1.0D);
+        multipliers.put(Profession.BREWER, 1.0D);
+        multipliers.put(Profession.TRADER, 1.0D);
 
         for (String raw : CARRY_CAP_PROFESSION_MULTIPLIERS.get()) {
             if (raw == null) {
@@ -1103,6 +1449,48 @@ public final class RealCivConfig {
             overrides.put(blockId, Math.max(1, cost));
         }
         return overrides;
+    }
+
+    public static Map<Profession, Map<RealCivUtil.ToolTier, Integer>> professionToolTierRequirements() {
+        Map<Profession, Map<RealCivUtil.ToolTier, Integer>> out = new HashMap<>();
+        for (String raw : PROFESSION_TOOL_TIER_REQUIREMENTS.get()) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|");
+            if (parts.length < 2) {
+                continue;
+            }
+            Profession profession = Profession.fromConfigName(parts[0].trim());
+            if (profession == null || profession == Profession.NONE) {
+                continue;
+            }
+            Map<RealCivUtil.ToolTier, Integer> tierMap = out.computeIfAbsent(profession, ignored -> new HashMap<>());
+            for (int i = 1; i < parts.length; i++) {
+                String token = parts[i].trim();
+                if (token.isEmpty()) {
+                    continue;
+                }
+                int split = token.indexOf('=');
+                if (split <= 0 || split >= token.length() - 1) {
+                    continue;
+                }
+                @Nullable RealCivUtil.ToolTier tier = parseToolTierKey(token.substring(0, split));
+                if (tier == null || tier == RealCivUtil.ToolTier.NONE) {
+                    continue;
+                }
+                Integer requiredLevel = tryParseInt(token.substring(split + 1).trim());
+                if (requiredLevel == null || requiredLevel < 0) {
+                    continue;
+                }
+                tierMap.put(tier, requiredLevel);
+            }
+        }
+        return out;
     }
 
     public static List<ProfessionEventHookRule> professionEventHookRules() {
@@ -1666,6 +2054,67 @@ public final class RealCivConfig {
             }
         }
         return fallback;
+    }
+
+    private static int linearLimitForLevel(int level, int base, int perLevel) {
+        long safeLevel = Math.max(0L, level);
+        long safeBase = Math.max(0L, base);
+        long safePerLevel = Math.max(0L, perLevel);
+        long value = safeBase + (safePerLevel * safeLevel);
+        if (value <= 0L) {
+            return 0;
+        }
+        if (value > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        return (int) value;
+    }
+
+    private static int parseBlockLevelCap(List<? extends String> lines, @Nullable ResourceLocation blockId, int level) {
+        if (blockId == null) {
+            return 0;
+        }
+        for (String raw : lines) {
+            if (raw == null) {
+                continue;
+            }
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) {
+                continue;
+            }
+            String[] parts = line.split("\\|", 2);
+            if (parts.length != 2) {
+                continue;
+            }
+            ResourceLocation parsedBlockId;
+            try {
+                parsedBlockId = ResourceLocation.parse(parts[0].trim());
+            } catch (Exception ex) {
+                continue;
+            }
+            if (!parsedBlockId.equals(blockId)) {
+                continue;
+            }
+            return Math.max(0, parseLevelIndexedValue(parts[1], level));
+        }
+        return 0;
+    }
+
+    @Nullable
+    private static RealCivUtil.ToolTier parseToolTierKey(String raw) {
+        if (raw == null || raw.isBlank()) {
+            return null;
+        }
+        return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+            case "WOOD", "WOODEN" -> RealCivUtil.ToolTier.WOOD;
+            case "GOLD", "GOLDEN" -> RealCivUtil.ToolTier.GOLD;
+            case "STONE" -> RealCivUtil.ToolTier.STONE;
+            case "IRON" -> RealCivUtil.ToolTier.IRON;
+            case "DIAMOND" -> RealCivUtil.ToolTier.DIAMOND;
+            case "NETHERITE" -> RealCivUtil.ToolTier.NETHERITE;
+            case "UNKNOWN", "ADVANCED" -> RealCivUtil.ToolTier.UNKNOWN;
+            default -> null;
+        };
     }
 
     private static ClaimDimensionPolicy claimDimensionPolicy() {

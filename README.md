@@ -7,7 +7,7 @@ Players do not pick a class for passive bonuses. They progress by contributing u
 Core Player Loop
 ----------------
 
-1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/fisher/hunter/warrior/explosives_expert/crafter).
+1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/fisher/hunter/warrior/explosives_expert/crafter/enchanter/brewer/trader).
 2. Contribute goods to your civilization's Community Hub.
 3. Gain profession XP, general XP, and contribution karma.
 4. Unlock better tools and higher limits.
@@ -29,7 +29,7 @@ Important rule behaviors:
 - Profession action restoration is item- and quantity-based (configured per profession in `config/realciv/hub/*_resets.txt` by default), not a full reset from any single cheap item.
 - On death, action counters can be partially/fully refunded by `progression.deathActionRefundPercent` to prevent hard lockouts after item loss.
 - Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
-- Tool tiers are level-gated (wood/stone/iron/diamond/netherite).
+- Tool tiers can be profession-gated (default) and/or general-level-gated (optional).
 - Player-vs-player combat is diplomacy-gated: WAR allows cross-civ PvP, ALLY/NEUTRAL block it, and same-civ PvP is controlled by the civilization's friendly-fire toggle.
 - Regulated explosives require a designated Explosives Expert role and respect per-level action caps.
 - Regulated redstone placement can require a designated Redstoner role per civilization.
@@ -234,19 +234,31 @@ File: `config/realciv-common.toml`
 
 NeoForge profession-hook research reference: `docs/NEOFORGE_EVENT_PROFESSION_MATRIX.md`
 Server-owner hook audit reference: `docs/NEOFORGE_SERVER_OWNER_HOOK_AUDIT.md`
+Profession baseline preset reference: `docs/PROFESSION_BASELINE.md`
 
 Key areas:
 
 - Profession limits:
+  - `profession.useLinearLimitFormulas`
+  - `profession.*LimitBase`
+  - `profession.*LimitPerLevel`
   - `profession.farmerLimits`
   - `profession.minerLimits`
   - `profession.terraformerLimits`
   - `profession.lumberjackLimits`
   - `profession.fisherLimits`
   - `profession.hunterLimits`
+  - `profession.hunterMobMinLevels`
   - `profession.warriorLimits`
   - `profession.explosivesExpertLimits`
   - `profession.crafterLimits`
+  - `profession.enchanterLimits`
+  - `profession.brewerLimits`
+  - `profession.traderLimits`
+  - `profession.dailyActionCaps`
+  - `profession.minerBlockActionCaps`
+  - `profession.minerDailyBlockActionCaps`
+  - `profession.toolTierRequirements`
   - `profession.eventHookRules`
   - `profession.breakActionCostOverrides`
 - Level thresholds:
@@ -273,6 +285,8 @@ Key areas:
   - `hub.defaultPersonalWithdrawalPercent`
   - `economy.hubWithdrawCreditPenaltyPercent`
 - Tool unlock gates:
+  - `tools.professionLevelGatesEnabled`
+  - `tools.generalLevelGatesEnabled`
   - `tools.requiredLevel.*`
 - Land and upkeep:
   - `land.rentCost`
@@ -310,6 +324,38 @@ Key areas:
   - `ui.denyMessageCooldownTicks`
   - `ui.hubStockListLimit`
 
+Baseline profession defaults (current build):
+
+- Action caps are linear by default (`profession.useLinearLimitFormulas=true`):
+  - Farmer: `4 + (4 * level)`
+  - Miner: `40 + (10 * level)`
+  - Terraformer: `40 + (10 * level)`
+  - Lumberjack: `8 + (4 * level)`
+  - Fisher: `4 + (4 * level)`
+  - Hunter: `1 + (2 * level)`
+  - Warrior: `1 + (2 * level)`
+  - Explosives Expert: `1 + (1 * level)`
+  - Crafter: `64 + (64 * level)`
+  - Enchanter: `1 + (1 * level)`
+  - Brewer: `1 + (1 * level)`
+  - Trader: `1 + (1 * level)`
+- Profession daily caps are opt-in via `profession.dailyActionCaps`.
+- Miner-specific block caps are opt-in via:
+  - `profession.minerBlockActionCaps` (per action-window)
+  - `profession.minerDailyBlockActionCaps` (per real-world day)
+- Hunter supports optional mob-level gates (`profession.hunterMobMinLevels`) and per-mob action caps (`profession.hunterMobActionCaps`).
+- Default event hooks include:
+  - `ITEM_ENCHANT|ENCHANTER|1`
+  - `POTION_BREW|BREWER|1`
+  - `VILLAGER_TRADE|TRADER|1`
+- Profession tool tier gates are enabled by default (`tools.professionLevelGatesEnabled=true`) with baseline requirements for Miner/Lumberjack/Terraformer/Farmer/Warrior:
+  - wood=0, stone/gold=2, iron=8, diamond=25, netherite=40
+- Warrior home-defense no-cost behavior is enabled by default (`combat.warriorHomeDefenseNoActionCost=true`).
+
+Template-ready professions (not first-class enum professions yet):
+
+- Shepherd, Explorer, Treasure Hunter, Breeder, Smithy, and Smelter can be modeled using `profession.eventHookRules` (for example `SHEAR_ENTITY`, `ITEM_TOSS`, `ANIMAL_BREED`, `ANVIL_USE`, `ITEM_SMELT`) while core profession data-model expansion is staged.
+
 Per-profession hub files (default path):
 
 - `config/realciv/hub/farmer_rewards.txt`
@@ -319,6 +365,9 @@ Per-profession hub files (default path):
 - `config/realciv/hub/fisher_rewards.txt`
 - `config/realciv/hub/hunter_rewards.txt`
 - `config/realciv/hub/crafter_rewards.txt`
+- `config/realciv/hub/enchanter_rewards.txt`
+- `config/realciv/hub/brewer_rewards.txt`
+- `config/realciv/hub/trader_rewards.txt`
 - `config/realciv/hub/farmer_resets.txt` (and equivalent for each profession)
 
 If a file is missing, RealCiv generates a starter file from current legacy defaults.
@@ -436,5 +485,6 @@ FTB Chunks Integration Notes
 - `auto` uses `land.ftbMayorDefaultClaimMode` from `config/realciv-common.toml`.
 - RealCiv land rules are authoritative: `CIVIC` and `PRIVATE` permissions are always checked from RealCiv data, not accepted blindly from FTB defaults.
 - RealCiv mirrors civilization membership and claimed chunks into FTB Teams/Chunks, so the FTB map is used as a RealCiv view/control surface rather than a separate source of truth.
+- Claim mirroring now performs real FTB claims (not check-only validation), so mirrored claims appear correctly on map/minimap/chunk-map views.
 - `/realciv land gui` (and Land Wand right-click in air) tries the FTB map first, then opens the RealCiv fallback map if FTB team context is unavailable.
 

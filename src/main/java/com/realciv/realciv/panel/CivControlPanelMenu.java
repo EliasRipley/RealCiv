@@ -1,13 +1,13 @@
 package com.realciv.realciv.panel;
 
 import com.realciv.realciv.ModMenus;
-import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.logic.CivPermissionService;
+import java.util.ArrayList;
 import java.util.List;
+import java.util.UUID;
 import net.minecraft.network.RegistryFriendlyByteBuf;
 import net.minecraft.network.chat.Component;
-import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.entity.player.Inventory;
 import net.minecraft.world.entity.player.Player;
@@ -16,10 +16,6 @@ import net.minecraft.world.item.ItemStack;
 import org.jetbrains.annotations.Nullable;
 
 public class CivControlPanelMenu extends AbstractContainerMenu {
-    private static final int DAILY_ALLOWANCE_STEP = 1;
-    private static final ResourceLocation BREAD_ID = ResourceLocation.parse("minecraft:bread");
-    private static final ResourceLocation GOLD_NUGGET_ID = ResourceLocation.parse("minecraft:gold_nugget");
-
     private final Snapshot snapshot;
     @Nullable
     private final ServerPlayer serverViewer;
@@ -27,6 +23,9 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
     private final CivSavedData serverData;
     @Nullable
     private final String serverCivId;
+    private int roleCursor;
+    private int memberCursor;
+    private int permissionCursor;
 
     public CivControlPanelMenu(int containerId, Inventory playerInventory, Snapshot snapshot) {
         this(containerId, playerInventory, snapshot, null, null, null);
@@ -72,6 +71,70 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
                 applyProposalVote(serverPlayer, false);
                 return true;
             }
+            case CivControlPanelActionIds.LEADERSHIP_START_ELECTION -> {
+                applyLeadershipStartElection(serverPlayer);
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_JOIN_ELECTION -> {
+                if (isElectionActive()) {
+                    applyLeadershipJoinElection(serverPlayer);
+                } else {
+                    applyRoleToggleMember(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_START_COUP_SELF -> {
+                applyLeadershipStartCoupSelf(serverPlayer);
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_APPROVE_COUP -> {
+                if (isCoupActive()) {
+                    applyLeadershipApproveCoup(serverPlayer);
+                } else {
+                    applyRoleTogglePermission(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_1 -> {
+                if (isElectionActive()) {
+                    applyLeadershipVoteCandidate(serverPlayer, 0);
+                } else {
+                    applyRoleCreate(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_2 -> {
+                if (isElectionActive()) {
+                    applyLeadershipVoteCandidate(serverPlayer, 1);
+                } else {
+                    applyRoleSelectNext(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_3 -> {
+                if (isElectionActive()) {
+                    applyLeadershipVoteCandidate(serverPlayer, 2);
+                } else {
+                    applyRoleSelectMemberNext(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_4 -> {
+                if (isElectionActive()) {
+                    applyLeadershipVoteCandidate(serverPlayer, 3);
+                } else {
+                    applyRoleSelectPermissionNext(serverPlayer);
+                }
+                return true;
+            }
+            case CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_5 -> {
+                if (isElectionActive()) {
+                    applyLeadershipVoteCandidate(serverPlayer, 4);
+                } else {
+                    applyRoleToggleMember(serverPlayer);
+                }
+                return true;
+            }
             default -> {
             }
         }
@@ -96,6 +159,296 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
             applyPanelAction(serverPlayer, decision.actionToApply());
         }
         serverPlayer.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private void applyLeadershipStartElection(ServerPlayer actor) {
+        CivSavedData.LeadershipContestDecision decision = serverData.startLeadershipElection(
+                serverCivId,
+                actor.getUUID(),
+                actor.getGameProfile().getName());
+        actor.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private void applyLeadershipJoinElection(ServerPlayer actor) {
+        CivSavedData.LeadershipContestDecision decision = serverData.joinLeadershipElectionCandidate(
+                serverCivId,
+                actor.getUUID(),
+                actor.getGameProfile().getName());
+        actor.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private void applyLeadershipStartCoupSelf(ServerPlayer actor) {
+        CivSavedData.LeadershipContestDecision decision = serverData.startLeadershipCoup(
+                serverCivId,
+                actor.getUUID(),
+                actor.getUUID(),
+                actor.getGameProfile().getName());
+        actor.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private void applyLeadershipApproveCoup(ServerPlayer actor) {
+        CivSavedData.LeadershipContestDecision decision = serverData.approveLeadershipCoup(
+                serverCivId,
+                actor.getUUID(),
+                actor.getGameProfile().getName());
+        actor.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private void applyLeadershipVoteCandidate(ServerPlayer actor, int candidateIndex) {
+        @Nullable UUID candidateId = candidateIdForSnapshotIndex(candidateIndex);
+        if (candidateId == null) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No candidate is assigned to that vote slot."));
+            return;
+        }
+        CivSavedData.LeadershipContestDecision decision = serverData.voteLeadershipElectionCandidate(
+                serverCivId,
+                actor.getUUID(),
+                candidateId,
+                actor.getGameProfile().getName());
+        actor.sendSystemMessage(Component.literal("[RealCiv] " + decision.message()));
+    }
+
+    private boolean isElectionActive() {
+        if (serverData == null || serverCivId == null) {
+            return false;
+        }
+        @Nullable CivSavedData.LeadershipContestRecord contest = serverData.leadershipContest(serverCivId);
+        return contest != null && contest.contestType() == CivSavedData.LeadershipContestType.ELECTION;
+    }
+
+    private boolean isCoupActive() {
+        if (serverData == null || serverCivId == null) {
+            return false;
+        }
+        @Nullable CivSavedData.LeadershipContestRecord contest = serverData.leadershipContest(serverCivId);
+        return contest != null && contest.contestType() == CivSavedData.LeadershipContestType.COUP;
+    }
+
+    private boolean ensureRoleManagementPermission(ServerPlayer actor) {
+        if (serverData == null || serverCivId == null) {
+            return false;
+        }
+        if (!CivPermissionService.hasCivPermission(
+                actor,
+                serverData,
+                serverCivId,
+                CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS_ROLES)) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage civ roles."));
+            return false;
+        }
+        return true;
+    }
+
+    private List<CivSavedData.CivRoleView> customRoles() {
+        if (serverData == null || serverCivId == null) {
+            return List.of();
+        }
+        return serverData.customRolesSorted(serverCivId);
+    }
+
+    @Nullable
+    private CivSavedData.CivRoleView selectedRole() {
+        List<CivSavedData.CivRoleView> roles = customRoles();
+        if (roles.isEmpty()) {
+            return null;
+        }
+        roleCursor = Math.floorMod(roleCursor, roles.size());
+        return roles.get(roleCursor);
+    }
+
+    private List<UUID> civilizationMembers() {
+        if (serverData == null || serverCivId == null) {
+            return List.of();
+        }
+        return serverData.civilizationMembersSorted(serverCivId);
+    }
+
+    @Nullable
+    private UUID selectedMemberId() {
+        List<UUID> members = civilizationMembers();
+        if (members.isEmpty()) {
+            return null;
+        }
+        memberCursor = Math.floorMod(memberCursor, members.size());
+        return members.get(memberCursor);
+    }
+
+    private String selectedPermissionKey() {
+        List<String> permissions = CivSavedData.knownRolePermissions();
+        if (permissions.isEmpty()) {
+            return "";
+        }
+        permissionCursor = Math.floorMod(permissionCursor, permissions.size());
+        return permissions.get(permissionCursor);
+    }
+
+    private String playerLabel(UUID playerId) {
+        if (serverViewer.getServer() != null) {
+            @Nullable ServerPlayer online = serverViewer.getServer().getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                return online.getGameProfile().getName();
+            }
+        }
+        String raw = playerId.toString();
+        return raw.length() > 8 ? raw.substring(0, 8) : raw;
+    }
+
+    private void applyRoleCreate(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor) || serverData == null || serverCivId == null) {
+            return;
+        }
+        String createdRoleId = null;
+        String createdRoleName = null;
+        for (int i = 1; i <= 99; i++) {
+            String roleId = String.format(java.util.Locale.ROOT, "role_%02d", i);
+            if (serverData.customRoleExists(serverCivId, roleId)) {
+                continue;
+            }
+            String roleName = "Role " + String.format(java.util.Locale.ROOT, "%02d", i);
+            if (serverData.createCustomRole(serverCivId, roleId, roleName, actor.getGameProfile().getName())) {
+                createdRoleId = roleId;
+                createdRoleName = roleName;
+                break;
+            }
+        }
+        if (createdRoleId == null) {
+            actor.sendSystemMessage(Component.literal(
+                    "[RealCiv] Could not create a new role (all default role slots are already used)."));
+            return;
+        }
+        List<CivSavedData.CivRoleView> roles = customRoles();
+        for (int i = 0; i < roles.size(); i++) {
+            if (roles.get(i).roleId().equals(createdRoleId)) {
+                roleCursor = i;
+                break;
+            }
+        }
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] Created role '" + createdRoleName + "' [" + createdRoleId + "]."));
+    }
+
+    private void applyRoleSelectNext(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor)) {
+            return;
+        }
+        List<CivSavedData.CivRoleView> roles = customRoles();
+        if (roles.isEmpty()) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No custom roles exist yet. Use role-create action first."));
+            return;
+        }
+        roleCursor = Math.floorMod(roleCursor + 1, roles.size());
+        CivSavedData.CivRoleView selected = roles.get(roleCursor);
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] Selected role: '" + selected.displayName() + "' [" + selected.roleId() + "]"
+                        + " | members " + selected.members().size()
+                        + " | permissions " + selected.permissions().size()));
+    }
+
+    private void applyRoleSelectMemberNext(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor)) {
+            return;
+        }
+        List<UUID> members = civilizationMembers();
+        if (members.isEmpty()) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No civilization members are available."));
+            return;
+        }
+        memberCursor = Math.floorMod(memberCursor + 1, members.size());
+        UUID memberId = members.get(memberCursor);
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] Selected member: " + playerLabel(memberId)));
+    }
+
+    private void applyRoleSelectPermissionNext(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor)) {
+            return;
+        }
+        List<String> permissions = CivSavedData.knownRolePermissions();
+        if (permissions.isEmpty()) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No known role permissions are registered."));
+            return;
+        }
+        permissionCursor = Math.floorMod(permissionCursor + 1, permissions.size());
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] Selected permission: " + selectedPermissionKey()));
+    }
+
+    private void applyRoleToggleMember(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor) || serverData == null || serverCivId == null) {
+            return;
+        }
+        @Nullable CivSavedData.CivRoleView role = selectedRole();
+        if (role == null) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No role selected. Create/select a role first."));
+            return;
+        }
+        @Nullable UUID memberId = selectedMemberId();
+        if (memberId == null) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No member selected."));
+            return;
+        }
+        boolean currentlyAssigned = role.members().contains(memberId);
+        if (!serverData.setCustomRoleMember(
+                serverCivId,
+                role.roleId(),
+                memberId,
+                !currentlyAssigned,
+                actor.getGameProfile().getName())) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] Role membership did not change."));
+            return;
+        }
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] " + (currentlyAssigned ? "Removed " : "Assigned ")
+                        + playerLabel(memberId)
+                        + (currentlyAssigned ? " from " : " to ")
+                        + "role '" + role.displayName() + "'."));
+    }
+
+    private void applyRoleTogglePermission(ServerPlayer actor) {
+        if (!ensureRoleManagementPermission(actor) || serverData == null || serverCivId == null) {
+            return;
+        }
+        @Nullable CivSavedData.CivRoleView role = selectedRole();
+        if (role == null) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No role selected. Create/select a role first."));
+            return;
+        }
+        String permission = selectedPermissionKey();
+        if (permission.isBlank()) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] No permission selected."));
+            return;
+        }
+        boolean currentlyAllowed = role.permissions().contains(permission);
+        if (!serverData.setCustomRolePermission(
+                serverCivId,
+                role.roleId(),
+                permission,
+                !currentlyAllowed,
+                actor.getGameProfile().getName())) {
+            actor.sendSystemMessage(Component.literal("[RealCiv] Role permission did not change."));
+            return;
+        }
+        actor.sendSystemMessage(Component.literal(
+                "[RealCiv] " + (currentlyAllowed ? "Revoked " : "Granted ")
+                        + "permission '" + permission
+                        + "' " + (currentlyAllowed ? "from " : "to ")
+                        + "role '" + role.displayName() + "'."));
+    }
+
+    @Nullable
+    private UUID candidateIdForSnapshotIndex(int candidateIndex) {
+        List<String> entries = snapshot.leadershipCandidateEntries();
+        if (candidateIndex < 0 || candidateIndex >= entries.size()) {
+            return null;
+        }
+        String entry = entries.get(candidateIndex);
+        int split = entry.indexOf('|');
+        String rawId = split < 0 ? entry : entry.substring(0, split);
+        try {
+            return UUID.fromString(rawId);
+        } catch (Exception ignored) {
+            return null;
+        }
     }
 
     private void applyPanelAction(ServerPlayer actor, CivGovernanceWorkflowService.PanelAction action) {
@@ -126,73 +479,6 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
                 boolean changed = serverData.setAllowIntraCivPvp(serverCivId, enabled, actorName);
                 actor.sendSystemMessage(Component.literal("[RealCiv] Intra-civ PvP "
                         + (changed ? (enabled ? "enabled." : "disabled.") : "already in that state.")));
-            }
-            case "allowance_delta" -> {
-                String[] parts = action.payload().split("\\|", 2);
-                if (parts.length != 2) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] Invalid allowance payload: " + action.payload()));
-                    return;
-                }
-                ResourceLocation itemId;
-                try {
-                    itemId = ResourceLocation.parse(parts[0]);
-                } catch (Exception ex) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] Invalid item id: " + parts[0]));
-                    return;
-                }
-                int delta;
-                try {
-                    delta = Integer.parseInt(parts[1]);
-                } catch (Exception ex) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] Invalid allowance delta: " + parts[1]));
-                    return;
-                }
-                int current = serverData.hubDailyAllowanceLimit(serverCivId, itemId);
-                int next = Math.max(0, current + delta);
-                boolean changed = serverData.setHubDailyAllowanceLimit(serverCivId, itemId, next, actorName);
-                actor.sendSystemMessage(Component.literal("[RealCiv] Daily allowance for " + itemId
-                        + " is now " + next + "/day" + (changed ? "." : " (unchanged).")));
-            }
-            case "allowance_clear_all" -> {
-                int cleared = serverData.clearAllHubDailyAllowanceLimits(serverCivId, actorName);
-                actor.sendSystemMessage(Component.literal(
-                        "[RealCiv] Cleared " + cleared + " daily allowance entr" + (cleared == 1 ? "y." : "ies.")));
-            }
-            case "hook_rules_template" -> {
-                RealCivConfig.PROFESSION_EVENT_HOOK_RULES.set(
-                        PolicyRuleListUtil.addUnique(RealCivConfig.PROFESSION_EVENT_HOOK_RULES.get(), action.payload()));
-                RealCivConfig.invalidateExternalRuleFileCache();
-                RealCivConfig.SPEC.save();
-                actor.sendSystemMessage(Component.literal("[RealCiv] Added hook rule template: " + action.payload()));
-            }
-            case "hook_rules_remove_last" -> {
-                if (RealCivConfig.PROFESSION_EVENT_HOOK_RULES.get().isEmpty()) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] No hook rules to remove."));
-                    return;
-                }
-                List<String> existing = PolicyRuleListUtil.removeLast(RealCivConfig.PROFESSION_EVENT_HOOK_RULES.get());
-                RealCivConfig.PROFESSION_EVENT_HOOK_RULES.set(existing);
-                RealCivConfig.invalidateExternalRuleFileCache();
-                RealCivConfig.SPEC.save();
-                actor.sendSystemMessage(Component.literal("[RealCiv] Removed last hook rule entry."));
-            }
-            case "hunter_caps_template" -> {
-                RealCivConfig.HUNTER_MOB_ACTION_CAPS.set(
-                        PolicyRuleListUtil.addUnique(RealCivConfig.HUNTER_MOB_ACTION_CAPS.get(), action.payload()));
-                RealCivConfig.invalidateExternalRuleFileCache();
-                RealCivConfig.SPEC.save();
-                actor.sendSystemMessage(Component.literal("[RealCiv] Added hunter mob cap template: " + action.payload()));
-            }
-            case "hunter_caps_remove_last" -> {
-                if (RealCivConfig.HUNTER_MOB_ACTION_CAPS.get().isEmpty()) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] No hunter mob caps to remove."));
-                    return;
-                }
-                List<String> existing = PolicyRuleListUtil.removeLast(RealCivConfig.HUNTER_MOB_ACTION_CAPS.get());
-                RealCivConfig.HUNTER_MOB_ACTION_CAPS.set(existing);
-                RealCivConfig.invalidateExternalRuleFileCache();
-                RealCivConfig.SPEC.save();
-                actor.sendSystemMessage(Component.literal("[RealCiv] Removed last hunter cap rule entry."));
             }
             default -> actor.sendSystemMessage(Component.literal("[RealCiv] Unsupported panel action: " + action.type()));
         }
@@ -227,9 +513,12 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
                     actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage hub distribution."));
                     yield null;
                 }
-                CivSavedData.HubDistributionMode next = data.hubDistributionMode(civId) == CivSavedData.HubDistributionMode.CONTRIBUTION_RATIO
-                        ? CivSavedData.HubDistributionMode.DAILY_ALLOWANCE
-                        : CivSavedData.HubDistributionMode.CONTRIBUTION_RATIO;
+                CivSavedData.HubDistributionMode current = data.hubDistributionMode(civId);
+                CivSavedData.HubDistributionMode next = switch (current) {
+                    case CONTRIBUTION_RATIO -> CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO;
+                    case SHARED_STOCK_RATIO -> CivSavedData.HubDistributionMode.DAILY_ALLOWANCE;
+                    case DAILY_ALLOWANCE -> CivSavedData.HubDistributionMode.CONTRIBUTION_RATIO;
+                };
                 yield new CivGovernanceWorkflowService.PanelAction(
                         "distribution_mode",
                         next.serializedName(),
@@ -248,100 +537,8 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
                         "Set intra-civ PvP to " + (next ? "enabled" : "disabled"),
                         CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE);
             }
-            case CivControlPanelActionIds.ALLOWANCE_BREAD_PLUS -> dailyAllowanceAction(actor, BREAD_ID, DAILY_ALLOWANCE_STEP);
-            case CivControlPanelActionIds.ALLOWANCE_BREAD_MINUS -> dailyAllowanceAction(actor, BREAD_ID, -DAILY_ALLOWANCE_STEP);
-            case CivControlPanelActionIds.ALLOWANCE_GOLD_PLUS -> dailyAllowanceAction(actor, GOLD_NUGGET_ID, DAILY_ALLOWANCE_STEP);
-            case CivControlPanelActionIds.ALLOWANCE_GOLD_MINUS -> dailyAllowanceAction(actor, GOLD_NUGGET_ID, -DAILY_ALLOWANCE_STEP);
-            case CivControlPanelActionIds.ALLOWANCE_CLEAR_ALL -> {
-                if (!CivPermissionService.hasCivPermission(actor, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
-                    actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage daily allowances."));
-                    yield null;
-                }
-                yield new CivGovernanceWorkflowService.PanelAction(
-                        "allowance_clear_all",
-                        "all",
-                        "Clear all hub daily allowances",
-                        CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
-            }
-            case CivControlPanelActionIds.HOOK_ADD_ANIMAL_BREED -> hookTemplateAction(
-                    actor,
-                    "ANIMAL_BREED|FARMER|1|min_profession_level=1|profession_xp=5|general_xp=1");
-            case CivControlPanelActionIds.HOOK_ADD_VILLAGER_TRADE -> hookTemplateAction(
-                    actor,
-                    "VILLAGER_TRADE|CRAFTER|1|min_profession_level=1|profession_xp=6|general_xp=2");
-            case CivControlPanelActionIds.HOOK_ADD_SHEAR_ENTITY -> hookTemplateAction(
-                    actor,
-                    "SHEAR_ENTITY|FARMER|1|min_profession_level=1|profession_xp=4|general_xp=1");
-            case CivControlPanelActionIds.HOOK_REMOVE_LAST -> hookRemoveLastAction(actor);
-            case CivControlPanelActionIds.HUNTER_CAP_ADD_ZOMBIE -> hunterCapTemplateAction(
-                    actor,
-                    "minecraft:zombie|2,4,6,8,10,12,16");
-            case CivControlPanelActionIds.HUNTER_CAP_ADD_ENDER_DRAGON -> hunterCapTemplateAction(
-                    actor,
-                    "minecraft:ender_dragon|0,0,0,0,0,0,1");
-            case CivControlPanelActionIds.HUNTER_CAP_REMOVE_LAST -> hunterCapRemoveLastAction(actor);
             default -> null;
         };
-    }
-
-    private @Nullable CivGovernanceWorkflowService.PanelAction dailyAllowanceAction(ServerPlayer actor, ResourceLocation itemId, int delta) {
-        if (!CivPermissionService.hasCivPermission(actor, serverData, serverCivId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
-            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage daily allowances."));
-            return null;
-        }
-        return new CivGovernanceWorkflowService.PanelAction(
-                "allowance_delta",
-                itemId + "|" + delta,
-                (delta >= 0 ? "Increase " : "Decrease ") + itemId + " daily allowance by " + Math.abs(delta),
-                CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
-    }
-
-    private @Nullable CivGovernanceWorkflowService.PanelAction hookTemplateAction(ServerPlayer actor, String ruleTemplate) {
-        if (!CivPermissionService.hasCivPermission(actor, serverData, serverCivId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
-            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage profession hook policy templates."));
-            return null;
-        }
-        return new CivGovernanceWorkflowService.PanelAction(
-                "hook_rules_template",
-                ruleTemplate,
-                "Add hook rule template: " + ruleTemplate,
-                CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
-    }
-
-    private @Nullable CivGovernanceWorkflowService.PanelAction hookRemoveLastAction(ServerPlayer actor) {
-        if (!CivPermissionService.hasCivPermission(actor, serverData, serverCivId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
-            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage profession hook policy templates."));
-            return null;
-        }
-        return new CivGovernanceWorkflowService.PanelAction(
-                "hook_rules_remove_last",
-                "last",
-                "Remove last hook rule template",
-                CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
-    }
-
-    private @Nullable CivGovernanceWorkflowService.PanelAction hunterCapTemplateAction(ServerPlayer actor, String capTemplate) {
-        if (!CivPermissionService.hasCivPermission(actor, serverData, serverCivId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
-            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage hunter selector policies."));
-            return null;
-        }
-        return new CivGovernanceWorkflowService.PanelAction(
-                "hunter_caps_template",
-                capTemplate,
-                "Add hunter cap template: " + capTemplate,
-                CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
-    }
-
-    private @Nullable CivGovernanceWorkflowService.PanelAction hunterCapRemoveLastAction(ServerPlayer actor) {
-        if (!CivPermissionService.hasCivPermission(actor, serverData, serverCivId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
-            actor.sendSystemMessage(Component.literal("[RealCiv] You cannot manage hunter selector policies."));
-            return null;
-        }
-        return new CivGovernanceWorkflowService.PanelAction(
-                "hunter_caps_remove_last",
-                "last",
-                "Remove last hunter cap template",
-                CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
     }
 
     @Override
@@ -388,10 +585,21 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
             boolean allowIntraCivPvp,
             boolean canManageGovernance,
             boolean canManageCensus,
-            boolean canManageHubDistribution) {
+            boolean canManageHubDistribution,
+            String leadershipContestType,
+            String leadershipContestSummary,
+            String leadershipCoupLeaderName,
+            int leadershipCandidateCount,
+            int leadershipElectionVoteCount,
+            int leadershipCoupApprovalCount,
+            int leadershipCoupRequiredApprovals,
+            long leadershipContestEndsAtMillis,
+            List<String> leadershipCandidateEntries) {
         private static final int MAX_ID_LEN = 64;
         private static final int MAX_NAME_LEN = 96;
         private static final int MAX_TITLE_LEN = 128;
+        private static final int MAX_SUMMARY_LEN = 256;
+        private static final int MAX_CANDIDATE_ENTRY_LEN = 160;
 
         public void write(RegistryFriendlyByteBuf buffer) {
             buffer.writeUtf(civilizationId, MAX_ID_LEN);
@@ -428,6 +636,19 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
             buffer.writeBoolean(canManageGovernance);
             buffer.writeBoolean(canManageCensus);
             buffer.writeBoolean(canManageHubDistribution);
+            buffer.writeUtf(leadershipContestType, MAX_TITLE_LEN);
+            buffer.writeUtf(leadershipContestSummary, MAX_SUMMARY_LEN);
+            buffer.writeUtf(leadershipCoupLeaderName, MAX_TITLE_LEN);
+            buffer.writeInt(leadershipCandidateCount);
+            buffer.writeInt(leadershipElectionVoteCount);
+            buffer.writeInt(leadershipCoupApprovalCount);
+            buffer.writeInt(leadershipCoupRequiredApprovals);
+            buffer.writeLong(leadershipContestEndsAtMillis);
+            List<String> entries = leadershipCandidateEntries == null ? List.of() : leadershipCandidateEntries;
+            buffer.writeInt(entries.size());
+            for (String entry : entries) {
+                buffer.writeUtf(entry == null ? "" : entry, MAX_CANDIDATE_ENTRY_LEN);
+            }
         }
 
         public static Snapshot read(RegistryFriendlyByteBuf buffer) {
@@ -465,7 +686,25 @@ public class CivControlPanelMenu extends AbstractContainerMenu {
                     buffer.readBoolean(),
                     buffer.readBoolean(),
                     buffer.readBoolean(),
-                    buffer.readBoolean());
+                    buffer.readBoolean(),
+                    buffer.readUtf(MAX_TITLE_LEN),
+                    buffer.readUtf(MAX_SUMMARY_LEN),
+                    buffer.readUtf(MAX_TITLE_LEN),
+                    buffer.readInt(),
+                    buffer.readInt(),
+                    buffer.readInt(),
+                    buffer.readInt(),
+                    buffer.readLong(),
+                    readCandidateEntries(buffer));
+        }
+
+        private static List<String> readCandidateEntries(RegistryFriendlyByteBuf buffer) {
+            int declaredSize = Math.max(0, Math.min(32, buffer.readInt()));
+            List<String> entries = new ArrayList<>(declaredSize);
+            for (int i = 0; i < declaredSize; i++) {
+                entries.add(buffer.readUtf(MAX_CANDIDATE_ENTRY_LEN));
+            }
+            return List.copyOf(entries);
         }
     }
 }

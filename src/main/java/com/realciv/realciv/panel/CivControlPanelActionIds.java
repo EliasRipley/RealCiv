@@ -5,23 +5,17 @@ public final class CivControlPanelActionIds {
     public static final int DISTRIBUTION_TOGGLE = 101;
     public static final int FRIENDLY_FIRE_TOGGLE = 102;
 
-    public static final int ALLOWANCE_BREAD_PLUS = 110;
-    public static final int ALLOWANCE_BREAD_MINUS = 111;
-    public static final int ALLOWANCE_GOLD_PLUS = 112;
-    public static final int ALLOWANCE_GOLD_MINUS = 113;
-    public static final int ALLOWANCE_CLEAR_ALL = 114;
-
-    public static final int HOOK_ADD_ANIMAL_BREED = 120;
-    public static final int HOOK_ADD_VILLAGER_TRADE = 121;
-    public static final int HOOK_ADD_SHEAR_ENTITY = 122;
-    public static final int HOOK_REMOVE_LAST = 123;
-
-    public static final int HUNTER_CAP_ADD_ZOMBIE = 130;
-    public static final int HUNTER_CAP_ADD_ENDER_DRAGON = 131;
-    public static final int HUNTER_CAP_REMOVE_LAST = 132;
-
     public static final int PROPOSAL_VOTE_YES = 140;
     public static final int PROPOSAL_VOTE_NO = 141;
+    public static final int LEADERSHIP_START_ELECTION = 150;
+    public static final int LEADERSHIP_JOIN_ELECTION = 151;
+    public static final int LEADERSHIP_START_COUP_SELF = 152;
+    public static final int LEADERSHIP_APPROVE_COUP = 153;
+    public static final int LEADERSHIP_VOTE_CANDIDATE_1 = 160;
+    public static final int LEADERSHIP_VOTE_CANDIDATE_2 = 161;
+    public static final int LEADERSHIP_VOTE_CANDIDATE_3 = 162;
+    public static final int LEADERSHIP_VOTE_CANDIDATE_4 = 163;
+    public static final int LEADERSHIP_VOTE_CANDIDATE_5 = 164;
 
     private CivControlPanelActionIds() {
     }

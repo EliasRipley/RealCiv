@@ -2,6 +2,7 @@ package com.realciv.realciv.census;
 
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivMessages;
 import java.util.HashMap;
 import java.util.List;
@@ -202,11 +203,16 @@ public class CensusMenu extends AbstractContainerMenu {
         for (int i = memberStart; i < memberEnd; i++) {
             UUID memberId = members.get(i);
             ItemStack stack = memberIcon(memberId);
+            CivSavedData.PlayerRecord memberRecord = data.getOrCreatePlayer(memberId);
+            Profession topProfession = topProfession(memberRecord);
+            int topLevel = memberRecord.levelFor(topProfession);
             String role = data.isMayor(civilizationId, memberId)
                     ? "MAYOR"
                     : (data.isCivicManager(civilizationId, memberId) ? "MANAGER" : "CITIZEN");
             stack.set(DataComponents.CUSTOM_NAME, Component.literal(
                     "[Member] " + displayName(memberId) + " | " + role
+                            + " | Top " + displayProfession(topProfession)
+                            + " Lv " + topLevel
                             + (canManage ? " | LClick remove, RClick manager" : "")));
             display.setItem(uiSlot, stack);
             slotActions.put(uiSlot, new SlotAction(ActionKind.MEMBER, memberId));
@@ -294,6 +300,65 @@ public class CensusMenu extends AbstractContainerMenu {
     private String displayCivName() {
         @org.jetbrains.annotations.Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civilizationId);
         return civ == null ? civilizationId : civ.displayName();
+    }
+
+    private Profession topProfession(CivSavedData.PlayerRecord record) {
+        Profession best = Profession.NONE;
+        int bestLevel = Integer.MIN_VALUE;
+        int bestXp = Integer.MIN_VALUE;
+        for (Profession profession : Profession.values()) {
+            if (profession == Profession.NONE) {
+                continue;
+            }
+            int level = record.levelFor(profession);
+            int xp = xpForProfession(record, profession);
+            if (level > bestLevel || (level == bestLevel && xp > bestXp)) {
+                best = profession;
+                bestLevel = level;
+                bestXp = xp;
+            }
+        }
+        return best;
+    }
+
+    private int xpForProfession(CivSavedData.PlayerRecord record, Profession profession) {
+        return switch (profession) {
+            case FARMER -> record.farmerXp();
+            case MINER -> record.minerXp();
+            case TERRAFORMER -> record.terraformerXp();
+            case LUMBERJACK -> record.lumberjackXp();
+            case FISHER -> record.fisherXp();
+            case HUNTER -> record.hunterXp();
+            case WARRIOR -> record.warriorXp();
+            case EXPLOSIVES_EXPERT -> record.explosivesExpertXp();
+            case CRAFTER -> record.crafterXp();
+            case ENCHANTER -> record.enchanterXp();
+            case BREWER -> record.brewerXp();
+            case TRADER -> record.traderXp();
+            case NONE -> 0;
+        };
+    }
+
+    private String displayProfession(Profession profession) {
+        if (profession == null || profession == Profession.NONE) {
+            return "None";
+        }
+        String name = profession.name().toLowerCase(java.util.Locale.ROOT).replace('_', ' ');
+        String[] words = name.split(" ");
+        StringBuilder out = new StringBuilder();
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) {
+                out.append(' ');
+            }
+            if (words[i].isEmpty()) {
+                continue;
+            }
+            out.append(Character.toUpperCase(words[i].charAt(0)));
+            if (words[i].length() > 1) {
+                out.append(words[i].substring(1));
+            }
+        }
+        return out.toString();
     }
 
     private void notifyOnline(UUID playerId, String message) {

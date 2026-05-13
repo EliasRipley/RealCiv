@@ -84,6 +84,7 @@ public class CivSavedData extends SavedData {
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
     private final Map<UUID, String> playerCivilization = new HashMap<>();
     private final Map<String, DiplomacyState> diplomacy = new HashMap<>();
+    private final Map<String, WarCasualtyRecord> warCasualties = new HashMap<>();
     private final Set<UUID> founderApprovals = new HashSet<>();
     @Nullable
     private transient MinecraftServer attachedServer;
@@ -173,6 +174,29 @@ public class CivSavedData extends SavedData {
             data.setDiplomacyStateInternal(civA, civB, state);
         }
 
+        ListTag warCasualtyTags = tag.getList("warCasualties", Tag.TAG_COMPOUND);
+        for (Tag entry : warCasualtyTags) {
+            if (!(entry instanceof CompoundTag casualtyTag)) {
+                continue;
+            }
+            String civA = normalizeCivId(casualtyTag.getString("civA"));
+            String civB = normalizeCivId(casualtyTag.getString("civB"));
+            if (civA == null || civB == null || civA.equals(civB)) {
+                continue;
+            }
+            String key = diplomacyKey(civA, civB);
+            if (key == null) {
+                continue;
+            }
+            WarCasualtyRecord casualtyRecord = new WarCasualtyRecord();
+            casualtyRecord.firstCasualties = Math.max(0L, casualtyTag.getLong("casualtiesA"));
+            casualtyRecord.secondCasualties = Math.max(0L, casualtyTag.getLong("casualtiesB"));
+            if (casualtyRecord.firstCasualties <= 0L && casualtyRecord.secondCasualties <= 0L) {
+                continue;
+            }
+            data.warCasualties.put(key, casualtyRecord);
+        }
+
         CompoundTag membershipTag = tag.getCompound("playerCivilization");
         for (String playerIdRaw : membershipTag.getAllKeys()) {
             try {
@@ -245,6 +269,30 @@ public class CivSavedData extends SavedData {
             diplomacyTags.add(relationTag);
         }
         tag.put("diplomacy", diplomacyTags);
+
+        ListTag casualtyTags = new ListTag();
+        for (Map.Entry<String, WarCasualtyRecord> entry : warCasualties.entrySet()) {
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                continue;
+            }
+            WarCasualtyRecord casualtyRecord = entry.getValue();
+            if (casualtyRecord == null) {
+                continue;
+            }
+            long first = Math.max(0L, casualtyRecord.firstCasualties);
+            long second = Math.max(0L, casualtyRecord.secondCasualties);
+            if (first <= 0L && second <= 0L) {
+                continue;
+            }
+            CompoundTag casualtyTag = new CompoundTag();
+            casualtyTag.putString("civA", pair.firstCivId());
+            casualtyTag.putString("civB", pair.secondCivId());
+            casualtyTag.putLong("casualtiesA", first);
+            casualtyTag.putLong("casualtiesB", second);
+            casualtyTags.add(casualtyTag);
+        }
+        tag.put("warCasualties", casualtyTags);
 
         return tag;
     }
@@ -350,6 +398,20 @@ public class CivSavedData extends SavedData {
             return trimmed.substring(0, MAX_LEADER_TITLE_LENGTH);
         }
         return trimmed;
+    }
+
+    private static double clampUpkeepRateMultiplier(double multiplier) {
+        if (Double.isNaN(multiplier) || Double.isInfinite(multiplier)) {
+            return 1.0D;
+        }
+        return Math.max(0.25D, Math.min(5.0D, multiplier));
+    }
+
+    private static double clampUnitRatio(double ratio) {
+        if (Double.isNaN(ratio) || Double.isInfinite(ratio)) {
+            return 0.0D;
+        }
+        return Math.max(0.0D, Math.min(1.0D, ratio));
     }
 
     @Nullable
@@ -532,6 +594,7 @@ public class CivSavedData extends SavedData {
             return null;
         }
         removeDiplomacyLinksForCivilization(civId);
+        removeWarCasualtiesForCivilization(civId);
 
         CivilizationRecord fallback = getOrCreateCivilization(fallbackId);
         int reassignedMembers = 0;
@@ -752,6 +815,20 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    public boolean addToHubStock(String civIdRaw, ResourceLocation itemId, long amount, String actorName) {
+        if (amount <= 0L) {
+            return false;
+        }
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.hubStock().merge(itemId.toString(), amount, Long::sum);
+        addAuditLog(
+                civ.id(),
+                actorName + " added " + amount + "x " + itemId + " to Community Hub stock",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
     public void applyDeposit(
             String civIdRaw,
             UUID playerId,
@@ -806,6 +883,15 @@ public class CivSavedData extends SavedData {
             }
             case CRAFTER -> {
                 record.setCrafterActions(record.crafterActions() - safeRestoredActions);
+            }
+            case ENCHANTER -> {
+                record.setEnchanterActions(record.enchanterActions() - safeRestoredActions);
+            }
+            case BREWER -> {
+                record.setBrewerActions(record.brewerActions() - safeRestoredActions);
+            }
+            case TRADER -> {
+                record.setTraderActions(record.traderActions() - safeRestoredActions);
             }
             case NONE -> {
             }
@@ -1074,6 +1160,36 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    public double upkeepRateMultiplier(String civIdRaw) {
+        return clampUpkeepRateMultiplier(getOrCreateCivilization(civIdRaw).upkeepRateMultiplier());
+    }
+
+    public long upkeepCostPerPlotCents(String civIdRaw) {
+        double scaled = RealCivConfig.upkeepCostCents() * upkeepRateMultiplier(civIdRaw);
+        if (scaled <= 0.0D) {
+            return 0L;
+        }
+        return Math.max(0L, Math.round(scaled));
+    }
+
+    public boolean setUpkeepRateMultiplier(String civIdRaw, double multiplier, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        double next = clampUpkeepRateMultiplier(multiplier);
+        if (Math.abs(civ.upkeepRateMultiplier() - next) < 0.00001D) {
+            return false;
+        }
+        civ.setUpkeepRateMultiplier(next);
+        addAuditLog(
+                civ.id(),
+                actorName + " set upkeep rate multiplier to " + String.format(Locale.ROOT, "%.2f", next),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
     public GovernanceModel governanceModel(String civIdRaw) {
         return getOrCreateCivilization(civIdRaw).governanceModel();
     }
@@ -1126,6 +1242,335 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    @Nullable
+    public LeadershipContestRecord leadershipContest(String civIdRaw) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null || civ.leadershipContest() == null) {
+            return null;
+        }
+        return civ.leadershipContest().copy();
+    }
+
+    public LeadershipContestDecision startLeadershipElection(String civIdRaw, UUID initiatorId, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return LeadershipContestDecision.denied("Civilization not found.");
+        }
+        if (!isCivilizationMember(civ.id(), initiatorId)) {
+            return LeadershipContestDecision.denied("Only civilization members can call an election.");
+        }
+
+        LeadershipContestDecision resolved = resolveLeadershipContest(civ.id(), actorName, false);
+        if (resolved.changed()) {
+            // Fall through after resolving stale/finished contest.
+        }
+        if (civ.leadershipContest() != null) {
+            return LeadershipContestDecision.denied("A leadership contest is already active.");
+        }
+
+        long now = System.currentTimeMillis();
+        LeadershipContestRecord contest = LeadershipContestRecord.newElection(
+                initiatorId,
+                now,
+                now + RealCivConfig.governanceElectionDurationMillis());
+        contest.candidates().add(initiatorId);
+        civ.setLeadershipContest(contest);
+        addAuditLog(
+                civ.id(),
+                actorName + " started a leadership election (candidate signup open).",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return LeadershipContestDecision.changed("Leadership election started. You are registered as a candidate.");
+    }
+
+    public LeadershipContestDecision joinLeadershipElectionCandidate(String civIdRaw, UUID candidateId, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return LeadershipContestDecision.denied("Civilization not found.");
+        }
+        if (!isCivilizationMember(civ.id(), candidateId)) {
+            return LeadershipContestDecision.denied("Only civilization members can run in elections.");
+        }
+        LeadershipContestRecord contest = civ.leadershipContest();
+        if (contest == null || contest.contestType() != LeadershipContestType.ELECTION) {
+            return LeadershipContestDecision.denied("No active election to join.");
+        }
+        if (contest.expiresAtMillis() <= System.currentTimeMillis()) {
+            LeadershipContestDecision resolved = resolveLeadershipContest(civ.id(), actorName, true);
+            return resolved.changed()
+                    ? resolved
+                    : LeadershipContestDecision.denied("Election has ended.");
+        }
+        if (!contest.candidates().add(candidateId)) {
+            return LeadershipContestDecision.denied("You are already registered as a candidate.");
+        }
+        addAuditLog(
+                civ.id(),
+                actorName + " registered as an election candidate.",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return LeadershipContestDecision.changed("You are now registered as an election candidate.");
+    }
+
+    public LeadershipContestDecision voteLeadershipElectionCandidate(
+            String civIdRaw,
+            UUID voterId,
+            UUID candidateId,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return LeadershipContestDecision.denied("Civilization not found.");
+        }
+        if (!isCivilizationMember(civ.id(), voterId)) {
+            return LeadershipContestDecision.denied("Only civilization members can vote.");
+        }
+        LeadershipContestRecord contest = civ.leadershipContest();
+        if (contest == null || contest.contestType() != LeadershipContestType.ELECTION) {
+            return LeadershipContestDecision.denied("No active election to vote in.");
+        }
+        if (!isCivilizationMember(civ.id(), candidateId) || !contest.candidates().contains(candidateId)) {
+            return LeadershipContestDecision.denied("That candidate is not registered.");
+        }
+        contest.electionVotes().put(voterId, candidateId);
+        setDirty();
+        LeadershipContestDecision maybeResolved = resolveLeadershipContest(civ.id(), actorName, false);
+        if (maybeResolved.changed()) {
+            return maybeResolved;
+        }
+        return LeadershipContestDecision.changed("Election vote recorded.");
+    }
+
+    public LeadershipContestDecision startLeadershipCoup(
+            String civIdRaw,
+            UUID initiatorId,
+            UUID proposedLeaderId,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return LeadershipContestDecision.denied("Civilization not found.");
+        }
+        if (!isCivilizationMember(civ.id(), initiatorId)) {
+            return LeadershipContestDecision.denied("Only civilization members can start a coup vote.");
+        }
+        if (!isCivilizationMember(civ.id(), proposedLeaderId)) {
+            return LeadershipContestDecision.denied("The proposed coup leader must be a civilization member.");
+        }
+        int members = civilizationMembersSorted(civ.id()).size();
+        int minimum = RealCivConfig.governanceCoupMinMembers();
+        if (members < minimum) {
+            return LeadershipContestDecision.denied(
+                    "Coup voting requires at least " + minimum + " members (current: " + members + ").");
+        }
+
+        LeadershipContestDecision resolved = resolveLeadershipContest(civ.id(), actorName, false);
+        if (resolved.changed()) {
+            // Fall through after resolving stale/finished contest.
+        }
+        if (civ.leadershipContest() != null) {
+            return LeadershipContestDecision.denied("A leadership contest is already active.");
+        }
+
+        long now = System.currentTimeMillis();
+        LeadershipContestRecord contest = LeadershipContestRecord.newCoup(
+                initiatorId,
+                proposedLeaderId,
+                now,
+                now + RealCivConfig.governanceCoupDurationMillis());
+        contest.coupApprovals().add(initiatorId);
+        civ.setLeadershipContest(contest);
+        addAuditLog(
+                civ.id(),
+                actorName + " initiated a coup vote for leader " + proposedLeaderId + ".",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        LeadershipContestDecision maybeResolved = resolveLeadershipContest(civ.id(), actorName, false);
+        if (maybeResolved.changed()) {
+            return maybeResolved;
+        }
+        return LeadershipContestDecision.changed("Coup vote started.");
+    }
+
+    public LeadershipContestDecision approveLeadershipCoup(String civIdRaw, UUID voterId, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return LeadershipContestDecision.denied("Civilization not found.");
+        }
+        if (!isCivilizationMember(civ.id(), voterId)) {
+            return LeadershipContestDecision.denied("Only civilization members can vote.");
+        }
+        LeadershipContestRecord contest = civ.leadershipContest();
+        if (contest == null || contest.contestType() != LeadershipContestType.COUP) {
+            return LeadershipContestDecision.denied("No active coup vote.");
+        }
+        if (contest.expiresAtMillis() <= System.currentTimeMillis()) {
+            LeadershipContestDecision resolved = resolveLeadershipContest(civ.id(), actorName, true);
+            return resolved.changed()
+                    ? resolved
+                    : LeadershipContestDecision.denied("Coup vote has ended.");
+        }
+        if (!contest.coupApprovals().add(voterId)) {
+            return LeadershipContestDecision.denied("You have already approved this coup vote.");
+        }
+        setDirty();
+        LeadershipContestDecision maybeResolved = resolveLeadershipContest(civ.id(), actorName, false);
+        if (maybeResolved.changed()) {
+            return maybeResolved;
+        }
+        return LeadershipContestDecision.changed("Coup approval recorded.");
+    }
+
+    public LeadershipContestDecision resolveLeadershipContest(String civIdRaw, String actorName, boolean force) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null || civ.leadershipContest() == null) {
+            return LeadershipContestDecision.denied("No active leadership contest.");
+        }
+        LeadershipContestRecord contest = civ.leadershipContest();
+        int memberCount = civilizationMembersSorted(civ.id()).size();
+        long now = System.currentTimeMillis();
+        boolean expired = now >= contest.expiresAtMillis();
+
+        if (!force && !expired) {
+            if (contest.contestType() == LeadershipContestType.ELECTION) {
+                int totalVotes = 0;
+                for (Map.Entry<UUID, UUID> vote : contest.electionVotes().entrySet()) {
+                    if (isCivilizationMember(civ.id(), vote.getKey())
+                            && contest.candidates().contains(vote.getValue())
+                            && isCivilizationMember(civ.id(), vote.getValue())) {
+                        totalVotes++;
+                    }
+                }
+                if (memberCount <= 0 || totalVotes < memberCount) {
+                    return LeadershipContestDecision.denied("Leadership contest remains active.");
+                }
+            } else if (contest.contestType() == LeadershipContestType.COUP) {
+                int approvals = countValidCoupApprovals(civ.id(), contest);
+                int required = requiredCoupApprovals(memberCount);
+                if (approvals < required) {
+                    return LeadershipContestDecision.denied("Leadership contest remains active.");
+                }
+            }
+        }
+
+        if (contest.contestType() == LeadershipContestType.ELECTION) {
+            @Nullable UUID winner = electionWinner(civ.id(), contest);
+            civ.setLeadershipContest(null);
+            setDirty();
+            if (winner == null) {
+                addAuditLog(
+                        civ.id(),
+                        actorName + " closed election with no valid winner.",
+                        RealCivConfig.MAX_AUDIT_LOGS.get());
+                return LeadershipContestDecision.changed("Election ended with no winner (no valid votes/candidates).");
+            }
+            setMayor(civ.id(), winner, actorName);
+            addAuditLog(
+                    civ.id(),
+                    actorName + " resolved election winner: " + winner + ".",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            return LeadershipContestDecision.changed("Election resolved. New leader selected.");
+        }
+
+        @Nullable UUID coupLeaderId = contest.coupLeaderId();
+        int approvals = countValidCoupApprovals(civ.id(), contest);
+        int required = requiredCoupApprovals(memberCount);
+        civ.setLeadershipContest(null);
+        setDirty();
+        if (coupLeaderId == null || !isCivilizationMember(civ.id(), coupLeaderId)) {
+            addAuditLog(
+                    civ.id(),
+                    actorName + " resolved coup vote with invalid leader target.",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            return LeadershipContestDecision.changed("Coup vote ended without a valid leader target.");
+        }
+        if (approvals >= required) {
+            setMayor(civ.id(), coupLeaderId, actorName);
+            addAuditLog(
+                    civ.id(),
+                    actorName + " resolved successful coup vote. New leader: " + coupLeaderId
+                            + " (" + approvals + "/" + required + " approvals).",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            return LeadershipContestDecision.changed("Coup approved. New leader selected.");
+        }
+        addAuditLog(
+                civ.id(),
+                actorName + " resolved failed coup vote (" + approvals + "/" + required + " approvals).",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        return LeadershipContestDecision.changed("Coup vote failed to reach required approval.");
+    }
+
+    public List<String> resolveLeadershipContestsSystem() {
+        List<String> resolved = new ArrayList<>();
+        for (String civId : civilizationIdsSorted()) {
+            CivilizationRecord civ = getCivilization(civId);
+            if (civ == null || civ.leadershipContest() == null) {
+                continue;
+            }
+            LeadershipContestDecision decision = resolveLeadershipContest(civ.id(), "system", false);
+            if (decision.changed()) {
+                resolved.add(civ.id() + ": " + decision.message());
+            }
+        }
+        return resolved;
+    }
+
+    private int requiredCoupApprovals(int memberCount) {
+        int safeMembers = Math.max(1, memberCount);
+        return Math.max(1, (int) Math.ceil(safeMembers * 0.51D));
+    }
+
+    private int countValidCoupApprovals(String civId, LeadershipContestRecord contest) {
+        int approvals = 0;
+        for (UUID voterId : contest.coupApprovals()) {
+            if (isCivilizationMember(civId, voterId)) {
+                approvals++;
+            }
+        }
+        return approvals;
+    }
+
+    @Nullable
+    private UUID electionWinner(String civId, LeadershipContestRecord contest) {
+        Map<UUID, Integer> votes = new HashMap<>();
+        for (Map.Entry<UUID, UUID> voteEntry : contest.electionVotes().entrySet()) {
+            UUID voterId = voteEntry.getKey();
+            UUID candidateId = voteEntry.getValue();
+            if (!isCivilizationMember(civId, voterId)) {
+                continue;
+            }
+            if (!contest.candidates().contains(candidateId) || !isCivilizationMember(civId, candidateId)) {
+                continue;
+            }
+            votes.merge(candidateId, 1, Integer::sum);
+        }
+        if (votes.isEmpty()) {
+            return null;
+        }
+        @Nullable UUID incumbent = getMayorId(civId);
+        UUID winner = null;
+        int bestVotes = Integer.MIN_VALUE;
+        for (Map.Entry<UUID, Integer> entry : votes.entrySet()) {
+            UUID candidateId = entry.getKey();
+            int value = entry.getValue();
+            if (winner == null || value > bestVotes) {
+                winner = candidateId;
+                bestVotes = value;
+                continue;
+            }
+            if (value == bestVotes) {
+                if (incumbent != null && candidateId.equals(incumbent) && !winner.equals(incumbent)) {
+                    winner = candidateId;
+                    continue;
+                }
+                String currentRaw = winner.toString();
+                String candidateRaw = candidateId.toString();
+                if (candidateRaw.compareTo(currentRaw) < 0) {
+                    winner = candidateId;
+                }
+            }
+        }
+        return winner;
+    }
+
     public HubDistributionMode hubDistributionMode(String civIdRaw) {
         return getOrCreateCivilization(civIdRaw).hubDistributionMode();
     }
@@ -1145,6 +1590,113 @@ public class CivSavedData extends SavedData {
         addAuditLog(
                 civ.id(),
                 actorName + " set hub distribution mode to " + normalized.serializedName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public double hubSharedWithdrawRatio(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return clampUnitRatio(civ.hubSharedWithdrawRatio());
+    }
+
+    public boolean setHubSharedWithdrawRatio(String civIdRaw, double ratio, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        double next = clampUnitRatio(ratio);
+        if (Math.abs(next - civ.hubSharedWithdrawRatio()) < 0.000001D) {
+            return false;
+        }
+        civ.setHubSharedWithdrawRatio(next);
+        addAuditLog(
+                civ.id(),
+                actorName + " set hub shared-stock withdraw ratio to "
+                        + String.format(Locale.ROOT, "%.2f", next * 100.0D) + "%",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public long hubSharedStockDailyLimit(String civIdRaw, ResourceLocation itemId) {
+        long stock = Math.max(0L, getHubStock(civIdRaw, itemId));
+        if (stock <= 0L) {
+            return 0L;
+        }
+        double ratio = clampUnitRatio(hubSharedWithdrawRatio(civIdRaw));
+        if (ratio <= 0.0D) {
+            return 0L;
+        }
+        long limit = (long) Math.floor(stock * ratio);
+        if (limit <= 0L) {
+            return 1L;
+        }
+        return limit;
+    }
+
+    public TaxPaymentMode taxPaymentMode(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return civ.taxPaymentMode();
+    }
+
+    public boolean setTaxPaymentMode(String civIdRaw, @Nullable TaxPaymentMode mode, String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        TaxPaymentMode next = mode == null ? TaxPaymentMode.KARMA : mode;
+        if (civ.taxPaymentMode() == next) {
+            return false;
+        }
+        civ.setTaxPaymentMode(next);
+        addAuditLog(
+                civ.id(),
+                actorName + " set tax payment mode to " + next.serializedName(),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return true;
+    }
+
+    public ResourceLocation taxItemId(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        try {
+            return ResourceLocation.parse(civ.taxItemId());
+        } catch (Exception ignored) {
+            return ResourceLocation.parse("minecraft:gold_nugget");
+        }
+    }
+
+    public int taxItemCountPerPlot(String civIdRaw) {
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        return Math.max(1, civ.taxItemCountPerPlot());
+    }
+
+    public long taxItemCostPerPlotCurrentRate(String civIdRaw) {
+        long base = Math.max(1L, taxItemCountPerPlot(civIdRaw));
+        double scaled = base * upkeepRateMultiplier(civIdRaw);
+        return Math.max(1L, Math.round(scaled));
+    }
+
+    public boolean setTaxItemRule(
+            String civIdRaw,
+            ResourceLocation itemId,
+            int countPerPlot,
+            String actorName) {
+        CivilizationRecord civ = getCivilization(civIdRaw);
+        if (civ == null) {
+            return false;
+        }
+        String key = itemId.toString();
+        int safeCount = Math.max(1, countPerPlot);
+        if (civ.taxItemId().equals(key) && civ.taxItemCountPerPlot() == safeCount) {
+            return false;
+        }
+        civ.setTaxItemId(key);
+        civ.setTaxItemCountPerPlot(safeCount);
+        addAuditLog(
+                civ.id(),
+                actorName + " set tax item rule to " + key + " x" + safeCount + "/plot/cycle",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
         return true;
@@ -1521,6 +2073,50 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    public WarCasualtyView warCasualtiesBetween(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return new WarCasualtyView(0L, 0L);
+        }
+        String key = diplomacyKey(civA, civB);
+        if (key == null) {
+            return new WarCasualtyView(0L, 0L);
+        }
+        WarCasualtyRecord record = warCasualties.get(key);
+        if (record == null) {
+            return new WarCasualtyView(0L, 0L);
+        }
+        DiplomacyPair pair = diplomacyPairFromKey(key);
+        if (pair == null) {
+            return new WarCasualtyView(0L, 0L);
+        }
+        if (civA.equals(pair.firstCivId())) {
+            return new WarCasualtyView(Math.max(0L, record.firstCasualties), Math.max(0L, record.secondCasualties));
+        }
+        return new WarCasualtyView(Math.max(0L, record.secondCasualties), Math.max(0L, record.firstCasualties));
+    }
+
+    public void recordWarCasualty(String killerCivRaw, String victimCivRaw) {
+        String killerCiv = normalizeCivId(killerCivRaw);
+        String victimCiv = normalizeCivId(victimCivRaw);
+        if (killerCiv == null || victimCiv == null || killerCiv.equals(victimCiv)) {
+            return;
+        }
+        String key = diplomacyKey(killerCiv, victimCiv);
+        DiplomacyPair pair = key == null ? null : diplomacyPairFromKey(key);
+        if (key == null || pair == null) {
+            return;
+        }
+        WarCasualtyRecord record = warCasualties.computeIfAbsent(key, ignored -> new WarCasualtyRecord());
+        if (victimCiv.equals(pair.firstCivId())) {
+            record.firstCasualties = Math.min(Long.MAX_VALUE, record.firstCasualties + 1L);
+        } else if (victimCiv.equals(pair.secondCivId())) {
+            record.secondCasualties = Math.min(Long.MAX_VALUE, record.secondCasualties + 1L);
+        }
+        setDirty();
+    }
+
     public List<DiplomacyView> nonNeutralDiplomacyEntriesFor(String civIdRaw) {
         String civId = normalizeCivId(civIdRaw);
         if (civId == null || !civilizations.containsKey(civId)) {
@@ -1587,6 +2183,29 @@ public class CivSavedData extends SavedData {
         Iterator<Map.Entry<String, DiplomacyState>> iterator = diplomacy.entrySet().iterator();
         while (iterator.hasNext()) {
             Map.Entry<String, DiplomacyState> entry = iterator.next();
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                iterator.remove();
+                removed++;
+                continue;
+            }
+            if (civId.equals(pair.firstCivId()) || civId.equals(pair.secondCivId())) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private int removeWarCasualtiesForCivilization(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return 0;
+        }
+        int removed = 0;
+        Iterator<Map.Entry<String, WarCasualtyRecord>> iterator = warCasualties.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, WarCasualtyRecord> entry = iterator.next();
             DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
             if (pair == null) {
                 iterator.remove();
@@ -1818,10 +2437,10 @@ public class CivSavedData extends SavedData {
     public void processUpkeep(long gameTime) {
         long interval = Math.max(1L, RealCivConfig.upkeepIntervalTicks());
         long grace = Math.max(1L, RealCivConfig.upkeepGraceTicks());
-        long cost = Math.max(0L, RealCivConfig.upkeepCostCents());
         boolean changed = false;
 
         for (CivilizationRecord civ : civilizations.values()) {
+            long cost = upkeepCostPerPlotCents(civ.id());
             Iterator<Map.Entry<String, PlotRecord>> it = civ.plots().entrySet().iterator();
             while (it.hasNext()) {
                 PlotRecord plot = it.next().getValue();
@@ -1994,6 +2613,7 @@ public class CivSavedData extends SavedData {
 
     public enum HubDistributionMode {
         CONTRIBUTION_RATIO,
+        SHARED_STOCK_RATIO,
         DAILY_ALLOWANCE;
 
         @Nullable
@@ -2003,7 +2623,29 @@ public class CivSavedData extends SavedData {
             }
             return switch (raw.trim().toUpperCase(Locale.ROOT)) {
                 case "CONTRIBUTION_RATIO", "RATIO", "CONTRIBUTION", "DEFAULT" -> CONTRIBUTION_RATIO;
+                case "SHARED_STOCK_RATIO", "SHARED", "GLOBAL", "ALL_GOODS", "STOCK_RATIO" -> SHARED_STOCK_RATIO;
                 case "DAILY_ALLOWANCE", "ALLOWANCE", "DAILY" -> DAILY_ALLOWANCE;
+                default -> null;
+            };
+        }
+
+        public String serializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    public enum TaxPaymentMode {
+        KARMA,
+        ITEM;
+
+        @Nullable
+        public static TaxPaymentMode fromSerializedName(@Nullable String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+                case "KARMA", "CREDIT", "CREDITS", "COMMUNITY_KARMA" -> KARMA;
+                case "ITEM", "ITEMS", "GOODS" -> ITEM;
                 default -> null;
             };
         }
@@ -2191,6 +2833,237 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    public enum LeadershipContestType {
+        ELECTION,
+        COUP;
+
+        @Nullable
+        public static LeadershipContestType fromSerializedName(@Nullable String raw) {
+            if (raw == null || raw.isBlank()) {
+                return null;
+            }
+            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
+                case "ELECTION" -> ELECTION;
+                case "COUP" -> COUP;
+                default -> null;
+            };
+        }
+
+        public String serializedName() {
+            return name().toLowerCase(Locale.ROOT);
+        }
+    }
+
+    public static final class LeadershipContestRecord {
+        private final LeadershipContestType contestType;
+        @Nullable
+        private final UUID initiatorId;
+        @Nullable
+        private final UUID coupLeaderId;
+        private final long startedAtMillis;
+        private final long expiresAtMillis;
+        private final Set<UUID> candidates = new HashSet<>();
+        private final Map<UUID, UUID> electionVotes = new HashMap<>();
+        private final Set<UUID> coupApprovals = new HashSet<>();
+
+        private LeadershipContestRecord(
+                LeadershipContestType contestType,
+                @Nullable UUID initiatorId,
+                @Nullable UUID coupLeaderId,
+                long startedAtMillis,
+                long expiresAtMillis) {
+            this.contestType = contestType == null ? LeadershipContestType.ELECTION : contestType;
+            this.initiatorId = initiatorId;
+            this.coupLeaderId = coupLeaderId;
+            this.startedAtMillis = startedAtMillis;
+            this.expiresAtMillis = expiresAtMillis;
+        }
+
+        public static LeadershipContestRecord newElection(
+                @Nullable UUID initiatorId,
+                long startedAtMillis,
+                long expiresAtMillis) {
+            return new LeadershipContestRecord(
+                    LeadershipContestType.ELECTION,
+                    initiatorId,
+                    null,
+                    startedAtMillis,
+                    expiresAtMillis);
+        }
+
+        public static LeadershipContestRecord newCoup(
+                @Nullable UUID initiatorId,
+                @Nullable UUID coupLeaderId,
+                long startedAtMillis,
+                long expiresAtMillis) {
+            return new LeadershipContestRecord(
+                    LeadershipContestType.COUP,
+                    initiatorId,
+                    coupLeaderId,
+                    startedAtMillis,
+                    expiresAtMillis);
+        }
+
+        public LeadershipContestType contestType() {
+            return contestType;
+        }
+
+        @Nullable
+        public UUID initiatorId() {
+            return initiatorId;
+        }
+
+        @Nullable
+        public UUID coupLeaderId() {
+            return coupLeaderId;
+        }
+
+        public long startedAtMillis() {
+            return startedAtMillis;
+        }
+
+        public long expiresAtMillis() {
+            return expiresAtMillis;
+        }
+
+        public Set<UUID> candidates() {
+            return candidates;
+        }
+
+        public Map<UUID, UUID> electionVotes() {
+            return electionVotes;
+        }
+
+        public Set<UUID> coupApprovals() {
+            return coupApprovals;
+        }
+
+        public LeadershipContestRecord copy() {
+            LeadershipContestRecord copy = new LeadershipContestRecord(
+                    contestType,
+                    initiatorId,
+                    coupLeaderId,
+                    startedAtMillis,
+                    expiresAtMillis);
+            copy.candidates.addAll(candidates);
+            copy.electionVotes.putAll(electionVotes);
+            copy.coupApprovals.addAll(coupApprovals);
+            return copy;
+        }
+
+        public CompoundTag save() {
+            CompoundTag tag = new CompoundTag();
+            tag.putString("contestType", contestType.serializedName());
+            if (initiatorId != null) {
+                tag.putString("initiatorId", initiatorId.toString());
+            }
+            if (coupLeaderId != null) {
+                tag.putString("coupLeaderId", coupLeaderId.toString());
+            }
+            tag.putLong("startedAtMillis", startedAtMillis);
+            tag.putLong("expiresAtMillis", expiresAtMillis);
+
+            ListTag candidateTags = new ListTag();
+            for (UUID candidateId : candidates) {
+                candidateTags.add(StringTag.valueOf(candidateId.toString()));
+            }
+            tag.put("candidates", candidateTags);
+
+            ListTag voteTags = new ListTag();
+            for (Map.Entry<UUID, UUID> vote : electionVotes.entrySet()) {
+                CompoundTag voteTag = new CompoundTag();
+                voteTag.putString("voterId", vote.getKey().toString());
+                voteTag.putString("candidateId", vote.getValue().toString());
+                voteTags.add(voteTag);
+            }
+            tag.put("electionVotes", voteTags);
+
+            ListTag approvalTags = new ListTag();
+            for (UUID voterId : coupApprovals) {
+                approvalTags.add(StringTag.valueOf(voterId.toString()));
+            }
+            tag.put("coupApprovals", approvalTags);
+            return tag;
+        }
+
+        @Nullable
+        public static LeadershipContestRecord load(CompoundTag tag) {
+            if (!tag.contains("contestType", Tag.TAG_STRING)) {
+                return null;
+            }
+            @Nullable LeadershipContestType type = LeadershipContestType.fromSerializedName(tag.getString("contestType"));
+            if (type == null) {
+                return null;
+            }
+
+            @Nullable UUID initiator = null;
+            if (tag.contains("initiatorId", Tag.TAG_STRING)) {
+                try {
+                    initiator = UUID.fromString(tag.getString("initiatorId"));
+                } catch (Exception ignored) {
+                }
+            }
+
+            @Nullable UUID coupLeader = null;
+            if (tag.contains("coupLeaderId", Tag.TAG_STRING)) {
+                try {
+                    coupLeader = UUID.fromString(tag.getString("coupLeaderId"));
+                } catch (Exception ignored) {
+                }
+            }
+
+            LeadershipContestRecord out = new LeadershipContestRecord(
+                    type,
+                    initiator,
+                    coupLeader,
+                    tag.getLong("startedAtMillis"),
+                    tag.getLong("expiresAtMillis"));
+
+            ListTag candidateTags = tag.getList("candidates", Tag.TAG_STRING);
+            for (Tag entry : candidateTags) {
+                try {
+                    out.candidates.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+
+            ListTag voteTags = tag.getList("electionVotes", Tag.TAG_COMPOUND);
+            for (Tag entry : voteTags) {
+                if (!(entry instanceof CompoundTag voteTag)) {
+                    continue;
+                }
+                if (!voteTag.contains("voterId", Tag.TAG_STRING) || !voteTag.contains("candidateId", Tag.TAG_STRING)) {
+                    continue;
+                }
+                try {
+                    UUID voterId = UUID.fromString(voteTag.getString("voterId"));
+                    UUID candidateId = UUID.fromString(voteTag.getString("candidateId"));
+                    out.electionVotes.put(voterId, candidateId);
+                } catch (Exception ignored) {
+                }
+            }
+
+            ListTag approvalTags = tag.getList("coupApprovals", Tag.TAG_STRING);
+            for (Tag entry : approvalTags) {
+                try {
+                    out.coupApprovals.add(UUID.fromString(entry.getAsString()));
+                } catch (Exception ignored) {
+                }
+            }
+            return out;
+        }
+    }
+
+    public record LeadershipContestDecision(boolean changed, String message) {
+        public static LeadershipContestDecision changed(String message) {
+            return new LeadershipContestDecision(true, message);
+        }
+
+        public static LeadershipContestDecision denied(String message) {
+            return new LeadershipContestDecision(false, message);
+        }
+    }
+
     public record CivRoleView(
             String roleId,
             String displayName,
@@ -2199,6 +3072,9 @@ public class CivSavedData extends SavedData {
     }
 
     public record DiplomacyView(String otherCivilizationId, DiplomacyState state) {
+    }
+
+    public record WarCasualtyView(long yourCasualties, long otherCasualties) {
     }
 
     public record DeleteCivilizationResult(
@@ -2212,6 +3088,11 @@ public class CivSavedData extends SavedData {
     }
 
     private record DiplomacyPair(String firstCivId, String secondCivId) {
+    }
+
+    private static final class WarCasualtyRecord {
+        private long firstCasualties;
+        private long secondCasualties;
     }
 
     public static final class CivilizationRecord {
@@ -2237,9 +3118,16 @@ public class CivSavedData extends SavedData {
         private String leaderTitle = DEFAULT_LEADER_TITLE;
         private GovernanceModel governanceModel = GovernanceModel.AUTOCRATIC;
         private HubDistributionMode hubDistributionMode = HubDistributionMode.CONTRIBUTION_RATIO;
+        private double hubSharedWithdrawRatio = 0.10D;
+        private double upkeepRateMultiplier = 1.0D;
+        private TaxPaymentMode taxPaymentMode = TaxPaymentMode.KARMA;
+        private String taxItemId = "minecraft:gold_nugget";
+        private int taxItemCountPerPlot = 1;
         private final Map<String, Integer> hubDailyAllowances = new HashMap<>();
         @Nullable
         private GovernanceProposalRecord governanceProposal;
+        @Nullable
+        private LeadershipContestRecord leadershipContest;
         private boolean allowIntraCivPvp;
         private boolean starterTownAreaGranted;
 
@@ -2284,6 +3172,50 @@ public class CivSavedData extends SavedData {
             this.hubDistributionMode = mode == null ? HubDistributionMode.CONTRIBUTION_RATIO : mode;
         }
 
+        public double hubSharedWithdrawRatio() {
+            return hubSharedWithdrawRatio;
+        }
+
+        public void setHubSharedWithdrawRatio(double ratio) {
+            this.hubSharedWithdrawRatio = clampUnitRatio(ratio);
+        }
+
+        public double upkeepRateMultiplier() {
+            return upkeepRateMultiplier;
+        }
+
+        public void setUpkeepRateMultiplier(double multiplier) {
+            this.upkeepRateMultiplier = clampUpkeepRateMultiplier(multiplier);
+        }
+
+        public TaxPaymentMode taxPaymentMode() {
+            return taxPaymentMode;
+        }
+
+        public void setTaxPaymentMode(@Nullable TaxPaymentMode mode) {
+            this.taxPaymentMode = mode == null ? TaxPaymentMode.KARMA : mode;
+        }
+
+        public String taxItemId() {
+            return taxItemId;
+        }
+
+        public void setTaxItemId(String itemId) {
+            if (itemId == null || itemId.isBlank()) {
+                this.taxItemId = "minecraft:gold_nugget";
+                return;
+            }
+            this.taxItemId = itemId;
+        }
+
+        public int taxItemCountPerPlot() {
+            return taxItemCountPerPlot;
+        }
+
+        public void setTaxItemCountPerPlot(int countPerPlot) {
+            this.taxItemCountPerPlot = Math.max(1, countPerPlot);
+        }
+
         public Map<String, Integer> hubDailyAllowances() {
             return hubDailyAllowances;
         }
@@ -2295,6 +3227,15 @@ public class CivSavedData extends SavedData {
 
         public void setGovernanceProposal(@Nullable GovernanceProposalRecord proposal) {
             this.governanceProposal = proposal;
+        }
+
+        @Nullable
+        public LeadershipContestRecord leadershipContest() {
+            return leadershipContest;
+        }
+
+        public void setLeadershipContest(@Nullable LeadershipContestRecord contest) {
+            this.leadershipContest = contest;
         }
 
         public boolean allowIntraCivPvp() {
@@ -2463,6 +3404,11 @@ public class CivSavedData extends SavedData {
             tag.putString("leaderTitle", sanitizeLeaderTitle(leaderTitle));
             tag.putString("governanceModel", governanceModel.serializedName());
             tag.putString("hubDistributionMode", hubDistributionMode.serializedName());
+            tag.putDouble("hubSharedWithdrawRatio", clampUnitRatio(hubSharedWithdrawRatio));
+            tag.putDouble("upkeepRateMultiplier", clampUpkeepRateMultiplier(upkeepRateMultiplier));
+            tag.putString("taxPaymentMode", taxPaymentMode.serializedName());
+            tag.putString("taxItemId", taxItemId);
+            tag.putInt("taxItemCountPerPlot", Math.max(1, taxItemCountPerPlot));
             CompoundTag dailyAllowanceTag = new CompoundTag();
             for (Map.Entry<String, Integer> entry : hubDailyAllowances.entrySet()) {
                 int value = Math.max(0, entry.getValue());
@@ -2473,6 +3419,9 @@ public class CivSavedData extends SavedData {
             tag.put("hubDailyAllowances", dailyAllowanceTag);
             if (governanceProposal != null) {
                 tag.put("governanceProposal", governanceProposal.save());
+            }
+            if (leadershipContest != null) {
+                tag.put("leadershipContest", leadershipContest.save());
             }
 
             ListTag roleTags = new ListTag();
@@ -2586,6 +3535,24 @@ public class CivSavedData extends SavedData {
                     record.hubDistributionMode = parsed;
                 }
             }
+            if (tag.contains("hubSharedWithdrawRatio")) {
+                record.hubSharedWithdrawRatio = clampUnitRatio(tag.getDouble("hubSharedWithdrawRatio"));
+            }
+            if (tag.contains("upkeepRateMultiplier")) {
+                record.upkeepRateMultiplier = clampUpkeepRateMultiplier(tag.getDouble("upkeepRateMultiplier"));
+            }
+            if (tag.contains("taxPaymentMode", Tag.TAG_STRING)) {
+                @Nullable TaxPaymentMode parsed = TaxPaymentMode.fromSerializedName(tag.getString("taxPaymentMode"));
+                if (parsed != null) {
+                    record.taxPaymentMode = parsed;
+                }
+            }
+            if (tag.contains("taxItemId", Tag.TAG_STRING)) {
+                record.taxItemId = tag.getString("taxItemId");
+            }
+            if (tag.contains("taxItemCountPerPlot")) {
+                record.taxItemCountPerPlot = Math.max(1, tag.getInt("taxItemCountPerPlot"));
+            }
             CompoundTag dailyAllowanceTag = tag.getCompound("hubDailyAllowances");
             for (String key : dailyAllowanceTag.getAllKeys()) {
                 int value = Math.max(0, dailyAllowanceTag.getInt(key));
@@ -2597,6 +3564,12 @@ public class CivSavedData extends SavedData {
                 @Nullable GovernanceProposalRecord proposal = GovernanceProposalRecord.load(tag.getCompound("governanceProposal"));
                 if (proposal != null) {
                     record.governanceProposal = proposal;
+                }
+            }
+            if (tag.contains("leadershipContest", Tag.TAG_COMPOUND)) {
+                @Nullable LeadershipContestRecord contest = LeadershipContestRecord.load(tag.getCompound("leadershipContest"));
+                if (contest != null) {
+                    record.leadershipContest = contest;
                 }
             }
             ListTag roleTags = tag.getList("customRoles", Tag.TAG_COMPOUND);
@@ -2844,6 +3817,7 @@ public class CivSavedData extends SavedData {
         private long minerActionsUpdatedAtMillis;
         private int farmerXp;
         private int minerXp;
+        private final Map<String, Integer> minerBlockActions = new HashMap<>();
         private int terraformerActions;
         private long terraformerActionsUpdatedAtMillis;
         private int terraformerXp;
@@ -2866,10 +3840,23 @@ public class CivSavedData extends SavedData {
         private int crafterActions;
         private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
+        private int enchanterActions;
+        private long enchanterActionsUpdatedAtMillis;
+        private int enchanterXp;
+        private int brewerActions;
+        private long brewerActionsUpdatedAtMillis;
+        private int brewerXp;
+        private int traderActions;
+        private long traderActionsUpdatedAtMillis;
+        private int traderXp;
         private int generalXp;
         private long firstSeenAtMillis;
         private final Map<String, HookWindowUsage> hookWindowUsage = new HashMap<>();
         private final Map<String, Integer> hunterMobActions = new HashMap<>();
+        private long professionDailyActionDayIndex = -1L;
+        private final Map<String, Integer> professionDailyActions = new HashMap<>();
+        private long minerDailyBlockActionDayIndex = -1L;
+        private final Map<String, Integer> minerDailyBlockActions = new HashMap<>();
         private long professionProgressDayIndex = -1L;
         private int generalLevelsGainedToday;
         private final Map<String, Integer> professionLevelsGainedToday = new HashMap<>();
@@ -3006,9 +3993,76 @@ public class CivSavedData extends SavedData {
         public void setMinerActions(int value) {
             int updated = Math.max(0, value);
             if (this.minerActions != updated) {
+                if (updated <= 0) {
+                    minerBlockActions.clear();
+                }
                 this.minerActions = updated;
                 this.minerActionsUpdatedAtMillis = System.currentTimeMillis();
             }
+        }
+
+        public int minerBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            return Math.max(0, minerBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addMinerBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            String key = blockId.toString();
+            int current = Math.max(0, minerBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            minerBlockActions.put(key, (int) next);
+        }
+
+        public int minerDailyBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            resetMinerDailyBlockActionWindowIfNeeded();
+            return Math.max(0, minerDailyBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addMinerDailyBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            resetMinerDailyBlockActionWindowIfNeeded();
+            String key = blockId.toString();
+            int current = Math.max(0, minerDailyBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            minerDailyBlockActions.put(key, (int) next);
+        }
+
+        public int dailyProfessionActionsUsed(Profession profession) {
+            if (profession == null || profession == Profession.NONE) {
+                return 0;
+            }
+            resetDailyProfessionActionWindowIfNeeded();
+            return Math.max(0, professionDailyActions.getOrDefault(profession.name(), 0));
+        }
+
+        public void addDailyProfessionActions(Profession profession, int delta) {
+            if (profession == null || profession == Profession.NONE || delta <= 0) {
+                return;
+            }
+            resetDailyProfessionActionWindowIfNeeded();
+            String key = profession.name();
+            int current = Math.max(0, professionDailyActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            professionDailyActions.put(key, (int) next);
         }
 
         public long farmerActionsUpdatedAtMillis() {
@@ -3249,6 +4303,66 @@ public class CivSavedData extends SavedData {
             return crafterXp;
         }
 
+        public int enchanterActions() {
+            return enchanterActions;
+        }
+
+        public void setEnchanterActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.enchanterActions != updated) {
+                this.enchanterActions = updated;
+                this.enchanterActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long enchanterActionsUpdatedAtMillis() {
+            return enchanterActionsUpdatedAtMillis;
+        }
+
+        public int enchanterXp() {
+            return enchanterXp;
+        }
+
+        public int brewerActions() {
+            return brewerActions;
+        }
+
+        public void setBrewerActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.brewerActions != updated) {
+                this.brewerActions = updated;
+                this.brewerActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long brewerActionsUpdatedAtMillis() {
+            return brewerActionsUpdatedAtMillis;
+        }
+
+        public int brewerXp() {
+            return brewerXp;
+        }
+
+        public int traderActions() {
+            return traderActions;
+        }
+
+        public void setTraderActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.traderActions != updated) {
+                this.traderActions = updated;
+                this.traderActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long traderActionsUpdatedAtMillis() {
+            return traderActionsUpdatedAtMillis;
+        }
+
+        public int traderXp() {
+            return traderXp;
+        }
+
         public int actionsForProfession(Profession profession) {
             if (profession == null) {
                 return 0;
@@ -3263,6 +4377,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> warriorActions;
                 case EXPLOSIVES_EXPERT -> explosivesExpertActions;
                 case CRAFTER -> crafterActions;
+                case ENCHANTER -> enchanterActions;
+                case BREWER -> brewerActions;
+                case TRADER -> traderActions;
                 case NONE -> 0;
             };
         }
@@ -3281,6 +4398,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> setWarriorActions(value);
                 case EXPLOSIVES_EXPERT -> setExplosivesExpertActions(value);
                 case CRAFTER -> setCrafterActions(value);
+                case ENCHANTER -> setEnchanterActions(value);
+                case BREWER -> setBrewerActions(value);
+                case TRADER -> setTraderActions(value);
                 case NONE -> {
                 }
             }
@@ -3300,6 +4420,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> warriorActionsUpdatedAtMillis;
                 case EXPLOSIVES_EXPERT -> explosivesExpertActionsUpdatedAtMillis;
                 case CRAFTER -> crafterActionsUpdatedAtMillis;
+                case ENCHANTER -> enchanterActionsUpdatedAtMillis;
+                case BREWER -> brewerActionsUpdatedAtMillis;
+                case TRADER -> traderActionsUpdatedAtMillis;
                 case NONE -> 0L;
             };
         }
@@ -3523,6 +4646,24 @@ public class CivSavedData extends SavedData {
             contributionGainTodayCents.clear();
         }
 
+        private void resetDailyProfessionActionWindowIfNeeded() {
+            long dayIndex = currentUtcDayIndex();
+            if (professionDailyActionDayIndex == dayIndex) {
+                return;
+            }
+            professionDailyActionDayIndex = dayIndex;
+            professionDailyActions.clear();
+        }
+
+        private void resetMinerDailyBlockActionWindowIfNeeded() {
+            long dayIndex = currentUtcDayIndex();
+            if (minerDailyBlockActionDayIndex == dayIndex) {
+                return;
+            }
+            minerDailyBlockActionDayIndex = dayIndex;
+            minerDailyBlockActions.clear();
+        }
+
         private int maxXpForProfessionLevel(int level) {
             if (level < 0) {
                 return 0;
@@ -3595,6 +4736,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> warriorXp;
                 case EXPLOSIVES_EXPERT -> explosivesExpertXp;
                 case CRAFTER -> crafterXp;
+                case ENCHANTER -> enchanterXp;
+                case BREWER -> brewerXp;
+                case TRADER -> traderXp;
                 case NONE -> 0;
             };
         }
@@ -3611,6 +4755,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> warriorXp = clamped;
                 case EXPLOSIVES_EXPERT -> explosivesExpertXp = clamped;
                 case CRAFTER -> crafterXp = clamped;
+                case ENCHANTER -> enchanterXp = clamped;
+                case BREWER -> brewerXp = clamped;
+                case TRADER -> traderXp = clamped;
                 case NONE -> {
                 }
             }
@@ -3768,6 +4915,14 @@ public class CivSavedData extends SavedData {
             tag.putLong("minerActionsUpdatedAtMillis", minerActionsUpdatedAtMillis);
             tag.putInt("farmerXp", farmerXp);
             tag.putInt("minerXp", minerXp);
+            CompoundTag minerBlockTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : minerBlockActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    minerBlockTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("minerBlockActions", minerBlockTag);
             tag.putInt("terraformerActions", terraformerActions);
             tag.putLong("terraformerActionsUpdatedAtMillis", terraformerActionsUpdatedAtMillis);
             tag.putInt("terraformerXp", terraformerXp);
@@ -3790,6 +4945,15 @@ public class CivSavedData extends SavedData {
             tag.putInt("crafterActions", crafterActions);
             tag.putLong("crafterActionsUpdatedAtMillis", crafterActionsUpdatedAtMillis);
             tag.putInt("crafterXp", crafterXp);
+            tag.putInt("enchanterActions", enchanterActions);
+            tag.putLong("enchanterActionsUpdatedAtMillis", enchanterActionsUpdatedAtMillis);
+            tag.putInt("enchanterXp", enchanterXp);
+            tag.putInt("brewerActions", brewerActions);
+            tag.putLong("brewerActionsUpdatedAtMillis", brewerActionsUpdatedAtMillis);
+            tag.putInt("brewerXp", brewerXp);
+            tag.putInt("traderActions", traderActions);
+            tag.putLong("traderActionsUpdatedAtMillis", traderActionsUpdatedAtMillis);
+            tag.putInt("traderXp", traderXp);
             tag.putInt("generalXp", generalXp);
             if (firstSeenAtMillis > 0L) {
                 tag.putLong("firstSeenAtMillis", firstSeenAtMillis);
@@ -3821,6 +4985,30 @@ public class CivSavedData extends SavedData {
                 }
             }
             tag.put("hunterMobActions", hunterMobTag);
+
+            if (professionDailyActionDayIndex >= 0L) {
+                tag.putLong("professionDailyActionDayIndex", professionDailyActionDayIndex);
+            }
+            CompoundTag professionDailyTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : professionDailyActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    professionDailyTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("professionDailyActions", professionDailyTag);
+
+            if (minerDailyBlockActionDayIndex >= 0L) {
+                tag.putLong("minerDailyBlockActionDayIndex", minerDailyBlockActionDayIndex);
+            }
+            CompoundTag minerDailyBlockTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : minerDailyBlockActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    minerDailyBlockTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("minerDailyBlockActions", minerDailyBlockTag);
 
             if (professionProgressDayIndex >= 0L) {
                 tag.putLong("professionProgressDayIndex", professionProgressDayIndex);
@@ -3881,6 +5069,13 @@ public class CivSavedData extends SavedData {
             record.minerActions = Math.max(0, tag.getInt("minerActions"));
             record.farmerXp = Math.max(0, tag.getInt("farmerXp"));
             record.minerXp = Math.max(0, tag.getInt("minerXp"));
+            CompoundTag minerBlockTag = tag.getCompound("minerBlockActions");
+            for (String key : minerBlockTag.getAllKeys()) {
+                int value = Math.max(0, minerBlockTag.getInt(key));
+                if (value > 0) {
+                    record.minerBlockActions.put(key, value);
+                }
+            }
             record.terraformerActions = Math.max(0, tag.getInt("terraformerActions"));
             record.terraformerXp = Math.max(0, tag.getInt("terraformerXp"));
             record.lumberjackActions = Math.max(0, tag.getInt("lumberjackActions"));
@@ -3896,6 +5091,12 @@ public class CivSavedData extends SavedData {
             record.explosivesExpertXp = Math.max(0, tag.getInt("explosivesExpertXp"));
             record.crafterActions = Math.max(0, tag.getInt("crafterActions"));
             record.crafterXp = Math.max(0, tag.getInt("crafterXp"));
+            record.enchanterActions = Math.max(0, tag.getInt("enchanterActions"));
+            record.enchanterXp = Math.max(0, tag.getInt("enchanterXp"));
+            record.brewerActions = Math.max(0, tag.getInt("brewerActions"));
+            record.brewerXp = Math.max(0, tag.getInt("brewerXp"));
+            record.traderActions = Math.max(0, tag.getInt("traderActions"));
+            record.traderXp = Math.max(0, tag.getInt("traderXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
             if (tag.contains("focusedProfession")) {
                 Profession parsed = Profession.fromConfigName(tag.getString("focusedProfession"));
@@ -3938,6 +5139,15 @@ public class CivSavedData extends SavedData {
             record.crafterActionsUpdatedAtMillis = tag.contains("crafterActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("crafterActionsUpdatedAtMillis"))
                     : (record.crafterActions > 0 ? loadedAt : 0L);
+            record.enchanterActionsUpdatedAtMillis = tag.contains("enchanterActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("enchanterActionsUpdatedAtMillis"))
+                    : (record.enchanterActions > 0 ? loadedAt : 0L);
+            record.brewerActionsUpdatedAtMillis = tag.contains("brewerActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("brewerActionsUpdatedAtMillis"))
+                    : (record.brewerActions > 0 ? loadedAt : 0L);
+            record.traderActionsUpdatedAtMillis = tag.contains("traderActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("traderActionsUpdatedAtMillis"))
+                    : (record.traderActions > 0 ? loadedAt : 0L);
 
             ListTag hookUsageTag = tag.getList("hookWindowUsage", Tag.TAG_COMPOUND);
             for (Tag entry : hookUsageTag) {
@@ -3964,6 +5174,28 @@ public class CivSavedData extends SavedData {
                 int value = Math.max(0, hunterMobTag.getInt(key));
                 if (value > 0) {
                     record.hunterMobActions.put(key, value);
+                }
+            }
+
+            record.professionDailyActionDayIndex = tag.contains("professionDailyActionDayIndex")
+                    ? tag.getLong("professionDailyActionDayIndex")
+                    : -1L;
+            CompoundTag professionDailyTag = tag.getCompound("professionDailyActions");
+            for (String key : professionDailyTag.getAllKeys()) {
+                int value = Math.max(0, professionDailyTag.getInt(key));
+                if (value > 0) {
+                    record.professionDailyActions.put(key, value);
+                }
+            }
+
+            record.minerDailyBlockActionDayIndex = tag.contains("minerDailyBlockActionDayIndex")
+                    ? tag.getLong("minerDailyBlockActionDayIndex")
+                    : -1L;
+            CompoundTag minerDailyBlockTag = tag.getCompound("minerDailyBlockActions");
+            for (String key : minerDailyBlockTag.getAllKeys()) {
+                int value = Math.max(0, minerDailyBlockTag.getInt(key));
+                if (value > 0) {
+                    record.minerDailyBlockActions.put(key, value);
                 }
             }
 
@@ -4025,6 +5257,9 @@ public class CivSavedData extends SavedData {
                 case WARRIOR -> RealCivConfig.professionLevelFromXp(Profession.WARRIOR, warriorXp());
                 case EXPLOSIVES_EXPERT -> RealCivConfig.professionLevelFromXp(Profession.EXPLOSIVES_EXPERT, explosivesExpertXp());
                 case CRAFTER -> RealCivConfig.professionLevelFromXp(Profession.CRAFTER, crafterXp());
+                case ENCHANTER -> RealCivConfig.professionLevelFromXp(Profession.ENCHANTER, enchanterXp());
+                case BREWER -> RealCivConfig.professionLevelFromXp(Profession.BREWER, brewerXp());
+                case TRADER -> RealCivConfig.professionLevelFromXp(Profession.TRADER, traderXp());
                 case NONE -> 0;
             };
         }

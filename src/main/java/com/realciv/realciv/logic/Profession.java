@@ -13,6 +13,9 @@ public enum Profession {
     WARRIOR,
     EXPLOSIVES_EXPERT,
     CRAFTER,
+    ENCHANTER,
+    BREWER,
+    TRADER,
     NONE;
 
     @Nullable
@@ -30,6 +33,9 @@ public enum Profession {
             case "WARRIOR", "SOLDIER", "PVP" -> WARRIOR;
             case "EXPLOSIVES_EXPERT", "EXPLOSIVESEXPERT", "EXPLOSIVES", "DEMOLITIONIST", "BOMBER" -> EXPLOSIVES_EXPERT;
             case "CRAFTER" -> CRAFTER;
+            case "ENCHANTER", "ENCHANTING", "ENCHANTOR" -> ENCHANTER;
+            case "BREWER", "ALCHEMIST", "BREWING" -> BREWER;
+            case "TRADER", "MERCHANT", "TRADE" -> TRADER;
             case "NONE", "GENERAL" -> NONE;
             default -> null;
         };

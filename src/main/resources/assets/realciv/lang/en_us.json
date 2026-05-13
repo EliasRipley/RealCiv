@@ -4,7 +4,7 @@
   "block.realciv.tax_block": "Tax Block",
   "block.realciv.civic_control_console": "Civic Control Console",
   "block.realciv.profession_ledger": "Profession Ledger",
-  "block.realciv.war_table": "War Table",
+  "block.realciv.war_table": "Diplomacy Table",
   "item.realciv.land_wand": "Land Wand",
   "itemGroup.realciv": "Real Civilization",
   "realciv.ftbchunks.claim_denied": "Claim denied by RealCiv rules. See chat for details.",

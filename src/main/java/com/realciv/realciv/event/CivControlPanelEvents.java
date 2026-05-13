@@ -6,8 +6,13 @@ import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.panel.CivControlPanelMenu;
 import com.realciv.realciv.panel.CivGovernanceWorkflowService;
+import java.util.ArrayList;
+import java.util.HashMap;
+import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
+import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
@@ -32,9 +37,11 @@ public final class CivControlPanelEvents {
                 snapshot::write);
         player.sendSystemMessage(Component.literal(
                 "Control Panel opened for " + civilizationDisplayName(data, civId)
-                        + ". This panel includes write actions, governance approval paths, and policy templates."));
+                        + ". This panel includes governance controls plus leadership election/coup actions."));
         player.sendSystemMessage(Component.literal(
-                "Tip: left click Census for member management, shift-right click for policy dashboard."));
+                "Tip: use Census for membership, Tax Office for upkeep, Profession Ledger for leveling, and Diplomacy Table for relations."));
+        player.sendSystemMessage(Component.literal(
+                "Role management tip: when no election is active, the vote-row actions are used for role create/select/member/permission controls."));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
@@ -84,6 +91,76 @@ public final class CivControlPanelEvents {
         int proposalYes = proposal == null ? 0 : proposal.yesVotes();
         int proposalRequired = proposal == null ? 0 : proposal.requiredYesVotes();
 
+        String leadershipContestType = "None";
+        String leadershipContestSummary = "No active leadership contest";
+        String leadershipCoupLeaderName = "-";
+        int leadershipCandidateCount = 0;
+        int leadershipElectionVoteCount = 0;
+        int leadershipCoupApprovalCount = 0;
+        int leadershipCoupRequiredApprovals = 0;
+        long leadershipContestEndsAtMillis = 0L;
+        List<String> leadershipCandidateEntries = List.of();
+
+        @Nullable CivSavedData.LeadershipContestRecord leadershipContest = data.leadershipContest(civId);
+        if (leadershipContest != null) {
+            leadershipContestEndsAtMillis = Math.max(0L, leadershipContest.expiresAtMillis());
+            Set<UUID> memberSet = new HashSet<>(members);
+            if (leadershipContest.contestType() == CivSavedData.LeadershipContestType.ELECTION) {
+                leadershipContestType = "Election";
+                Map<UUID, Integer> votesByCandidate = new HashMap<>();
+                int validVotes = 0;
+                for (Map.Entry<UUID, UUID> vote : leadershipContest.electionVotes().entrySet()) {
+                    UUID voterId = vote.getKey();
+                    UUID candidateId = vote.getValue();
+                    if (!memberSet.contains(voterId)) {
+                        continue;
+                    }
+                    if (!memberSet.contains(candidateId) || !leadershipContest.candidates().contains(candidateId)) {
+                        continue;
+                    }
+                    validVotes++;
+                    votesByCandidate.merge(candidateId, 1, Integer::sum);
+                }
+                leadershipElectionVoteCount = validVotes;
+
+                List<UUID> candidates = leadershipContest.candidates().stream()
+                        .filter(memberSet::contains)
+                        .sorted(java.util.Comparator.comparing(UUID::toString))
+                        .toList();
+                leadershipCandidateCount = candidates.size();
+
+                List<String> candidateRows = new ArrayList<>();
+                int maxEntries = Math.min(5, candidates.size());
+                for (int index = 0; index < maxEntries; index++) {
+                    UUID candidateId = candidates.get(index);
+                    int votes = votesByCandidate.getOrDefault(candidateId, 0);
+                    String label = playerDisplayName(player, candidateId)
+                            + " (" + votes + " vote" + (votes == 1 ? "" : "s") + ")";
+                    candidateRows.add(candidateId + "|" + label);
+                }
+                leadershipCandidateEntries = List.copyOf(candidateRows);
+                leadershipContestSummary = "Election in progress: "
+                        + leadershipCandidateCount + " candidate(s), "
+                        + leadershipElectionVoteCount + "/" + members.size() + " vote(s) cast.";
+            } else {
+                leadershipContestType = "Coup";
+                int approvals = 0;
+                for (UUID voterId : leadershipContest.coupApprovals()) {
+                    if (memberSet.contains(voterId)) {
+                        approvals++;
+                    }
+                }
+                leadershipCoupApprovalCount = approvals;
+                leadershipCoupRequiredApprovals = Math.max(1, (int) Math.ceil(Math.max(1, members.size()) * 0.51D));
+                @Nullable UUID coupLeaderId = leadershipContest.coupLeaderId();
+                if (coupLeaderId != null) {
+                    leadershipCoupLeaderName = playerDisplayName(player, coupLeaderId);
+                }
+                leadershipContestSummary = "Coup in progress: "
+                        + approvals + "/" + leadershipCoupRequiredApprovals + " approval(s).";
+            }
+        }
+
         return new CivControlPanelMenu.Snapshot(
                 civId,
                 civilizationDisplayName(data, civId),
@@ -118,7 +195,16 @@ public final class CivControlPanelEvents {
                 data.allowIntraCivPvp(civId),
                 canManageGovernance,
                 canManageCensus,
-                canManageHubDistribution);
+                canManageHubDistribution,
+                leadershipContestType,
+                leadershipContestSummary,
+                leadershipCoupLeaderName,
+                leadershipCandidateCount,
+                leadershipElectionVoteCount,
+                leadershipCoupApprovalCount,
+                leadershipCoupRequiredApprovals,
+                leadershipContestEndsAtMillis,
+                leadershipCandidateEntries);
     }
 
     private static long totalContributions(CivSavedData.PlayerRecord record, String civId) {
@@ -167,5 +253,16 @@ public final class CivControlPanelEvents {
             return civId;
         }
         return civ.displayName();
+    }
+
+    private static String playerDisplayName(ServerPlayer viewer, UUID playerId) {
+        if (viewer.getServer() != null) {
+            @Nullable ServerPlayer online = viewer.getServer().getPlayerList().getPlayer(playerId);
+            if (online != null) {
+                return online.getGameProfile().getName();
+            }
+        }
+        String raw = playerId.toString();
+        return raw.length() > 8 ? raw.substring(0, 8) : raw;
     }
 }

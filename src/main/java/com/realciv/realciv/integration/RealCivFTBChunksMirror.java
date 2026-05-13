@@ -265,10 +265,10 @@ public final class RealCivFTBChunksMirror {
             if (existing != null) {
                 existing.unclaim(source, true);
             }
-            ClaimResult claimResult = teamData.claim(source, pos, true);
+            ClaimResult claimResult = teamData.claim(source, pos, false);
             if (!claimResult.isSuccess()) {
                 ensureTeamClaimCapacity(teamData, teamData.getClaimedChunks().size() + 1);
-                claimResult = teamData.claim(source, pos, true);
+                claimResult = teamData.claim(source, pos, false);
             }
             if (!claimResult.isSuccess()) {
                 RealCivMod.LOGGER.warn(
@@ -389,3 +389,4 @@ public final class RealCivFTBChunksMirror {
         return fallback.length() >= 3 ? fallback : "RealCiv-" + civId;
     }
 }
+

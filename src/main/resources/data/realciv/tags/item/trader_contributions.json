@@ -1,0 +1,12 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:emerald",
+    "minecraft:emerald_block",
+    "minecraft:paper",
+    "minecraft:book",
+    "minecraft:compass",
+    "minecraft:map",
+    "minecraft:name_tag"
+  ]
+}

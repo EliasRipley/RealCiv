@@ -43,30 +43,25 @@ public class CivControlPanelScreen extends AbstractContainerScreen<CivControlPan
         }
 
         int x = leftPos + 12;
-        int y = topPos + 182;
-        addActionButton(x, y, 78, "Gov Cycle", CivControlPanelActionIds.GOVERNANCE_CYCLE);
-        addActionButton(x + 82, y, 90, "Dist Toggle", CivControlPanelActionIds.DISTRIBUTION_TOGGLE);
-        addActionButton(x + 176, y, 84, "Friendly PvP", CivControlPanelActionIds.FRIENDLY_FIRE_TOGGLE);
-        addActionButton(x + 264, y, 36, "Yes", CivControlPanelActionIds.PROPOSAL_VOTE_YES);
-        addActionButton(x + 304, y, 36, "No", CivControlPanelActionIds.PROPOSAL_VOTE_NO);
+        int y = topPos + 170;
+        addActionButton(x, y, 64, "Gov Model", CivControlPanelActionIds.GOVERNANCE_CYCLE);
+        addActionButton(x + 68, y, 64, "Hub Mode", CivControlPanelActionIds.DISTRIBUTION_TOGGLE);
+        addActionButton(x + 136, y, 64, "Friendly PvP", CivControlPanelActionIds.FRIENDLY_FIRE_TOGGLE);
+        addActionButton(x + 204, y, 56, "Vote Yes", CivControlPanelActionIds.PROPOSAL_VOTE_YES);
+        addActionButton(x + 264, y, 56, "Vote No", CivControlPanelActionIds.PROPOSAL_VOTE_NO);
 
-        y += 20;
-        addActionButton(x, y, 54, "Bread +", CivControlPanelActionIds.ALLOWANCE_BREAD_PLUS);
-        addActionButton(x + 58, y, 54, "Bread -", CivControlPanelActionIds.ALLOWANCE_BREAD_MINUS);
-        addActionButton(x + 116, y, 54, "Gold +", CivControlPanelActionIds.ALLOWANCE_GOLD_PLUS);
-        addActionButton(x + 174, y, 54, "Gold -", CivControlPanelActionIds.ALLOWANCE_GOLD_MINUS);
-        addActionButton(x + 232, y, 108, "Clear Allow", CivControlPanelActionIds.ALLOWANCE_CLEAR_ALL);
+        int leadershipY = y + 20;
+        addActionButton(x, leadershipY, 80, "Start Election", CivControlPanelActionIds.LEADERSHIP_START_ELECTION);
+        addActionButton(x + 83, leadershipY, 80, "Join/Mem", CivControlPanelActionIds.LEADERSHIP_JOIN_ELECTION);
+        addActionButton(x + 166, leadershipY, 80, "Start Coup", CivControlPanelActionIds.LEADERSHIP_START_COUP_SELF);
+        addActionButton(x + 249, leadershipY, 80, "Approve/Perm", CivControlPanelActionIds.LEADERSHIP_APPROVE_COUP);
 
-        y += 20;
-        addActionButton(x, y, 74, "Hook Breed", CivControlPanelActionIds.HOOK_ADD_ANIMAL_BREED);
-        addActionButton(x + 78, y, 74, "Hook Trade", CivControlPanelActionIds.HOOK_ADD_VILLAGER_TRADE);
-        addActionButton(x + 156, y, 74, "Hook Shear", CivControlPanelActionIds.HOOK_ADD_SHEAR_ENTITY);
-        addActionButton(x + 234, y, 106, "Hook Remove", CivControlPanelActionIds.HOOK_REMOVE_LAST);
-
-        y += 20;
-        addActionButton(x, y, 94, "Cap Zombie", CivControlPanelActionIds.HUNTER_CAP_ADD_ZOMBIE);
-        addActionButton(x + 98, y, 108, "Cap Dragon", CivControlPanelActionIds.HUNTER_CAP_ADD_ENDER_DRAGON);
-        addActionButton(x + 210, y, 130, "Cap Remove", CivControlPanelActionIds.HUNTER_CAP_REMOVE_LAST);
+        int voteY = leadershipY + 20;
+        addActionButton(x, voteY, 64, "Role+/V1", CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_1);
+        addActionButton(x + 66, voteY, 64, "Role>/V2", CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_2);
+        addActionButton(x + 132, voteY, 64, "Mem>/V3", CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_3);
+        addActionButton(x + 198, voteY, 64, "Perm>/V4", CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_4);
+        addActionButton(x + 264, voteY, 64, "MemT/V5", CivControlPanelActionIds.LEADERSHIP_VOTE_CANDIDATE_5);
     }
 
     private void addActionButton(int x, int y, int width, String label, int actionId) {
@@ -133,13 +128,6 @@ public class CivControlPanelScreen extends AbstractContainerScreen<CivControlPan
             case GOVERNANCE -> renderGovernance(guiGraphics, snapshot, row);
         }
 
-        guiGraphics.drawString(
-                font,
-                Component.literal("Action Toolbar: buttons issue server-side policy actions with permissions."),
-                CONTENT_X,
-                168,
-                SUBTLE_COLOR,
-                false);
     }
 
     private int drawActiveTabIndicator(GuiGraphics guiGraphics, int row) {
@@ -215,10 +203,39 @@ public class CivControlPanelScreen extends AbstractContainerScreen<CivControlPan
         row = drawRow(guiGraphics, row, "Governance model", snapshot.governanceModel());
         row = drawRow(guiGraphics, row, "Workflow mode", snapshot.governanceApprovalWorkflowEnabled() ? "Enabled" : "Disabled");
         row = drawRow(guiGraphics, row, "May edit governance", snapshot.canManageGovernance() ? "Yes" : "No");
-        row = drawRow(guiGraphics, row, "May manage census", snapshot.canManageCensus() ? "Yes" : "No");
-        row = drawRow(guiGraphics, row, "May manage hub", snapshot.canManageHubDistribution() ? "Yes" : "No");
-        row = drawRow(guiGraphics, row, "Hook rules", Integer.toString(snapshot.professionHookRuleCount()));
-        drawRow(guiGraphics, row, "Hunter selector rules", Integer.toString(snapshot.hunterMobActionCapRuleCount()));
+        row = drawRow(guiGraphics, row, "Leadership contest", snapshot.leadershipContestType());
+        row = drawRow(guiGraphics, row, "Contest status", snapshot.leadershipContestSummary());
+        row = drawRow(guiGraphics, row, "Role control hint", "No election: vote row manages roles.");
+        row = drawRow(guiGraphics, row, "Coup leader", snapshot.leadershipCoupLeaderName());
+        row = drawRow(
+                guiGraphics,
+                row,
+                "Coup approvals",
+                snapshot.leadershipCoupRequiredApprovals() <= 0
+                        ? "-"
+                        : (snapshot.leadershipCoupApprovalCount() + "/" + snapshot.leadershipCoupRequiredApprovals()));
+        row = drawRow(
+                guiGraphics,
+                row,
+                "Election votes",
+                snapshot.leadershipElectionVoteCount() + " | candidates " + snapshot.leadershipCandidateCount());
+        row = drawRow(guiGraphics, row, "Candidate #1", candidateLabel(snapshot, 0));
+        row = drawRow(guiGraphics, row, "Candidate #2", candidateLabel(snapshot, 1));
+        row = drawRow(guiGraphics, row, "Candidate #3", candidateLabel(snapshot, 2));
+        row = drawRow(guiGraphics, row, "Candidate #4", candidateLabel(snapshot, 3));
+        drawRow(guiGraphics, row, "Candidate #5", candidateLabel(snapshot, 4));
+    }
+
+    private String candidateLabel(CivControlPanelMenu.Snapshot snapshot, int index) {
+        if (index < 0 || index >= snapshot.leadershipCandidateEntries().size()) {
+            return "-";
+        }
+        String entry = snapshot.leadershipCandidateEntries().get(index);
+        int split = entry.indexOf('|');
+        if (split < 0 || split + 1 >= entry.length()) {
+            return entry;
+        }
+        return entry.substring(split + 1);
     }
 
     private int drawRow(GuiGraphics guiGraphics, int rowY, String label, String value) {

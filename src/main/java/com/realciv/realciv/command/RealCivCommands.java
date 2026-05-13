@@ -582,11 +582,16 @@ public final class RealCivCommands {
                                 .then(Commands.literal("mode")
                                         .then(Commands.argument("mode", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                        List.of("contribution_ratio", "daily_allowance"),
+                                                        List.of("contribution_ratio", "shared_stock_ratio", "daily_allowance"),
                                                         builder))
                                                 .executes(ctx -> hubDistributionSetMode(
                                                         ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "mode")))))
+                                .then(Commands.literal("shared-ratio")
+                                        .then(Commands.argument("percent", DoubleArgumentType.doubleArg(0.0D, 100.0D))
+                                                .executes(ctx -> hubDistributionSetSharedRatio(
+                                                        ctx.getSource(),
+                                                        DoubleArgumentType.getDouble(ctx, "percent")))))
                                 .then(Commands.literal("allowance")
                                         .then(Commands.literal("list")
                                                 .executes(ctx -> hubDistributionAllowanceList(ctx.getSource(), 1))
@@ -795,6 +800,9 @@ public final class RealCivCommands {
         int warriorLevel = record.levelFor(Profession.WARRIOR);
         int explosivesLevel = record.levelFor(Profession.EXPLOSIVES_EXPERT);
         int crafterLevel = record.levelFor(Profession.CRAFTER);
+        int enchanterLevel = record.levelFor(Profession.ENCHANTER);
+        int brewerLevel = record.levelFor(Profession.BREWER);
+        int traderLevel = record.levelFor(Profession.TRADER);
         int generalLevel = record.generalLevel();
 
         source.sendSuccess(() -> Component.literal("RealCiv profile for " + target.getGameProfile().getName()), false);
@@ -849,6 +857,18 @@ public final class RealCivCommands {
                 "Crafter L" + crafterLevel + " | crafted " + record.crafterActions() + "/"
                         + RealCivConfig.crafterLimitForLevel(crafterLevel)
                         + " | XP " + record.crafterXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Enchanter L" + enchanterLevel + " | actions " + record.enchanterActions() + "/"
+                        + RealCivConfig.enchanterLimitForLevel(enchanterLevel)
+                        + " | XP " + record.enchanterXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Brewer L" + brewerLevel + " | actions " + record.brewerActions() + "/"
+                        + RealCivConfig.brewerLimitForLevel(brewerLevel)
+                        + " | XP " + record.brewerXp()), false);
+        source.sendSuccess(() -> Component.literal(
+                "Trader L" + traderLevel + " | actions " + record.traderActions() + "/"
+                        + RealCivConfig.traderLimitForLevel(traderLevel)
+                        + " | XP " + record.traderXp()), false);
         source.sendSuccess(() -> Component.literal(
                 "Hub personal withdrawal rate: "
                         + RealCivUtil.formatPercentFromRatio(record.effectivePersonalWithdrawRatio(civId))
@@ -3037,21 +3057,32 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        CivSavedData.TaxPaymentMode paymentMode = data.taxPaymentMode(civId);
+        ResourceLocation taxItemId = data.taxItemId(civId);
 
         int ownedPlots = data.privatePlotCountForOwner(civId, target.getUUID());
         int delinquentPlots = data.delinquentPrivatePlotCountForOwner(civId, target.getUUID());
         long nextUpkeepTick = data.earliestPrivatePlotUpkeepTick(civId, target.getUUID());
-        long cycleCost = RealCivConfig.upkeepCostCents() * ownedPlots;
+        long cycleCost = data.upkeepCostPerPlotCents(civId) * ownedPlots;
+        long cycleItemCost = data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots;
 
         source.sendSuccess(() -> Component.literal(
                 "Tax status for " + target.getGameProfile().getName() + " in " + civDisplay(data, civId) + ":"), false);
         source.sendSuccess(() -> Component.literal(
                 "Private plots: " + ownedPlots + " | Delinquent: " + delinquentPlots + " | Next upkeep tick: " + nextUpkeepTick), false);
-        source.sendSuccess(() -> Component.literal(
-                "Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
-                        + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                        + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
-                false);
+        if (paymentMode == CivSavedData.TaxPaymentMode.KARMA) {
+            source.sendSuccess(() -> Component.literal(
+                    "Mode: karma | Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
+                            + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                            + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                    false);
+        } else {
+            source.sendSuccess(() -> Component.literal(
+                    "Mode: item | Cycle cost: " + cycleItemCost + "x " + taxItemId
+                            + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                            + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                    false);
+        }
     }
 
     private static int taxPay(CommandSourceStack source, int cycles)
@@ -3059,6 +3090,8 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
+        CivSavedData.TaxPaymentMode paymentMode = data.taxPaymentMode(civId);
+        ResourceLocation taxItemId = data.taxItemId(civId);
         int safeCycles = Math.max(1, cycles);
         int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
         if (ownedPlots <= 0) {
@@ -3067,14 +3100,32 @@ public final class RealCivCommands {
             return 0;
         }
 
-        long cycleCost = RealCivConfig.upkeepCostCents() * ownedPlots;
+        long cycleCost = data.upkeepCostPerPlotCents(civId) * ownedPlots;
+        long cycleItemCost = data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots;
         long totalCost = cycleCost * safeCycles;
+        long totalItemCost = cycleItemCost * safeCycles;
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        if (record.socialCreditCents(civId) < totalCost) {
-            source.sendFailure(Component.literal(
-                    "Insufficient contribution karma. Need " + RealCivUtil.formatCredits(totalCost)
-                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
-            return 0;
+        if (paymentMode == CivSavedData.TaxPaymentMode.KARMA) {
+            if (record.socialCreditCents(civId) < totalCost) {
+                source.sendFailure(Component.literal(
+                        "Insufficient contribution karma. Need " + RealCivUtil.formatCredits(totalCost)
+                                + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
+                return 0;
+            }
+        } else {
+            Item taxItem = BuiltInRegistries.ITEM.getOptional(taxItemId).orElse(Items.AIR);
+            if (taxItem == Items.AIR) {
+                source.sendFailure(Component.literal(
+                        "Tax item is invalid for " + civDisplay(data, civId) + "."));
+                return 0;
+            }
+            long available = countInventoryItem(player, taxItem);
+            if (available < totalItemCost) {
+                source.sendFailure(Component.literal(
+                        "Insufficient tax items. Need " + totalItemCost + "x " + taxItemId
+                                + ", you have " + available + "."));
+                return 0;
+            }
         }
 
         long now = source.getServer().overworld().getGameTime();
@@ -3084,22 +3135,82 @@ public final class RealCivCommands {
             return 0;
         }
 
-        record.addSocialCreditCents(civId, -totalCost);
-        data.addCivTreasuryCents(civId, totalCost);
+        if (paymentMode == CivSavedData.TaxPaymentMode.KARMA) {
+            record.addSocialCreditCents(civId, -totalCost);
+            data.addCivTreasuryCents(civId, totalCost);
+        } else {
+            Item taxItem = BuiltInRegistries.ITEM.getOptional(taxItemId).orElse(Items.AIR);
+            removeInventoryItem(player, taxItem, totalItemCost);
+            data.addToHubStock(civId, taxItemId, totalItemCost, actorName(source));
+        }
         data.addAuditLog(
                 civId,
-                actorName(source) + " paid upkeep tax " + RealCivUtil.formatCredits(totalCost)
+                actorName(source) + " paid upkeep tax "
+                        + (paymentMode == CivSavedData.TaxPaymentMode.KARMA
+                        ? RealCivUtil.formatCredits(totalCost) + " karma"
+                        : totalItemCost + "x " + taxItemId)
                         + " for " + affected + " private plot(s) across " + safeCycles + " cycle(s).",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
-        source.sendSuccess(() -> Component.literal(
-                "Paid " + RealCivUtil.formatCredits(totalCost)
-                        + " upkeep tax for " + affected + " private plot(s). New balance: "
-                        + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                        + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
-                true);
+        if (paymentMode == CivSavedData.TaxPaymentMode.KARMA) {
+            source.sendSuccess(() -> Component.literal(
+                    "Paid " + RealCivUtil.formatCredits(totalCost)
+                            + " upkeep tax for " + affected + " private plot(s). New balance: "
+                            + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                            + " | Civ collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                    true);
+        } else {
+            source.sendSuccess(() -> Component.literal(
+                    "Paid " + totalItemCost + "x " + taxItemId
+                            + " upkeep tax for " + affected + " private plot(s)."),
+                    true);
+        }
         return 1;
+    }
+
+    private static long countInventoryItem(ServerPlayer player, Item item) {
+        long total = 0L;
+        for (ItemStack stack : player.getInventory().items) {
+            if (!stack.isEmpty() && stack.getItem() == item) {
+                total += stack.getCount();
+            }
+        }
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (!stack.isEmpty() && stack.getItem() == item) {
+                total += stack.getCount();
+            }
+        }
+        return Math.max(0L, total);
+    }
+
+    private static void removeInventoryItem(ServerPlayer player, Item item, long count) {
+        long remaining = Math.max(0L, count);
+        if (remaining <= 0L) {
+            return;
+        }
+        for (ItemStack stack : player.getInventory().items) {
+            if (remaining <= 0L) {
+                break;
+            }
+            if (stack.isEmpty() || stack.getItem() != item) {
+                continue;
+            }
+            int remove = (int) Math.min(remaining, stack.getCount());
+            stack.shrink(remove);
+            remaining -= remove;
+        }
+        for (ItemStack stack : player.getInventory().offhand) {
+            if (remaining <= 0L) {
+                break;
+            }
+            if (stack.isEmpty() || stack.getItem() != item) {
+                continue;
+            }
+            int remove = (int) Math.min(remaining, stack.getCount());
+            stack.shrink(remove);
+            remaining -= remove;
+        }
     }
 
     private static int openHubStockMenu(CommandSourceStack source)
@@ -3108,14 +3219,30 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean privileged = source.hasPermission(3) || RealCivUtil.isBypass(player);
+        boolean canManagePolicy = hasCivPermission(
+                source,
+                data,
+                civId,
+                CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
-                        new CommunityHubStockMenu(containerId, playerInventory, player, data, civId, privileged),
+                        new CommunityHubStockMenu(
+                                containerId,
+                                playerInventory,
+                                player,
+                                data,
+                                civId,
+                                privileged,
+                                canManagePolicy),
                 Component.literal("Community Hub Stock")));
         player.sendSystemMessage(Component.literal(
                 "Hub stock page opened for " + civDisplay(data, civId)
                         + ". Left click=stack, Right click=1 item, Shift click=4 stacks."));
+        if (canManagePolicy) {
+            player.sendSystemMessage(Component.literal(
+                    "Leadership controls enabled in top row: policy mode, shared ratio, and daily allowances."));
+        }
         return 1;
     }
 
@@ -3149,7 +3276,7 @@ public final class RealCivCommands {
 
         CivSavedData.PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
         CivSavedData.HubDistributionMode distributionMode = data.hubDistributionMode(civId);
-        long configuredDailyLimit = 0L;
+        long activeModeLimit = 0L;
         if (!canBypassQuota) {
             if (requester == null) {
                 source.sendFailure(Component.literal("Only players can use personal hub withdrawals."));
@@ -3162,14 +3289,17 @@ public final class RealCivCommands {
 
             long remainingAllowance;
             if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
-                configuredDailyLimit = data.hubDailyAllowanceLimit(civId, itemId);
-                if (configuredDailyLimit <= 0L) {
+                activeModeLimit = data.hubDailyAllowanceLimit(civId, itemId);
+                if (activeModeLimit <= 0L) {
                     source.sendFailure(Component.literal(
                             "No daily allowance is configured for " + itemId + " in "
                                     + civDisplay(data, civId) + "."));
                     return 0;
                 }
-                remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, configuredDailyLimit);
+                remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
+            } else if (distributionMode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+                activeModeLimit = data.hubSharedStockDailyLimit(civId, itemId);
+                remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
             } else {
                 remainingAllowance = quotaRecord.remainingPersonalWithdraw(civId, itemId);
             }
@@ -3178,6 +3308,12 @@ public final class RealCivCommands {
                     source.sendFailure(Component.literal(
                             "No daily allowance remaining for " + itemId + " for "
                                     + target.getGameProfile().getName() + "."));
+                } else if (distributionMode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+                    source.sendFailure(Component.literal(
+                            "No shared-stock allowance remaining for " + itemId + " for "
+                                    + target.getGameProfile().getName()
+                                    + " today (ratio "
+                                    + RealCivUtil.formatPercentFromRatio(data.hubSharedWithdrawRatio(civId)) + ")."));
                 } else {
                     source.sendFailure(Component.literal(
                             "No personal withdrawal allowance left for " + itemId + " for "
@@ -3191,6 +3327,10 @@ public final class RealCivCommands {
                     source.sendFailure(Component.literal(
                             "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
                                     + target.getGameProfile().getName() + " right now (daily allowance)."));
+                } else if (distributionMode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+                    source.sendFailure(Component.literal(
+                            "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
+                                    + target.getGameProfile().getName() + " right now (shared-stock allowance)."));
                 } else {
                     source.sendFailure(Component.literal(
                             "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
@@ -3235,9 +3375,10 @@ public final class RealCivCommands {
 
         long newRemaining = 0L;
         if (!canBypassQuota) {
-            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
+            if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE
+                    || distributionMode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
                 quotaRecord.recordDailyAllowanceWithdrawal(civId, itemId, count);
-                newRemaining = quotaRecord.remainingDailyAllowance(civId, itemId, configuredDailyLimit);
+                newRemaining = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
             } else {
                 quotaRecord.recordPersonalWithdrawal(civId, itemId, count);
                 newRemaining = quotaRecord.remainingPersonalWithdraw(civId, itemId);
@@ -3257,7 +3398,7 @@ public final class RealCivCommands {
         } else {
             if (distributionMode == CivSavedData.HubDistributionMode.DAILY_ALLOWANCE) {
                 long finalNewRemaining = newRemaining;
-                long finalConfiguredDailyLimit = configuredDailyLimit;
+                long finalConfiguredDailyLimit = activeModeLimit;
                 data.addAuditLog(
                         civId,
                         actor + " withdrew " + count + "x " + itemId
@@ -3268,6 +3409,21 @@ public final class RealCivCommands {
                 source.sendSuccess(() -> Component.literal(
                         "Daily allowance remaining for " + target.getGameProfile().getName()
                                 + " on " + itemId + ": " + finalNewRemaining + "/" + finalConfiguredDailyLimit),
+                        false);
+            } else if (distributionMode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+                long finalNewRemaining = newRemaining;
+                long finalSharedLimit = activeModeLimit;
+                data.addAuditLog(
+                        civId,
+                        actor + " withdrew " + count + "x " + itemId
+                                + " from " + target.getGameProfile().getName()
+                                + " shared-stock allowance (remaining today: " + finalNewRemaining
+                                + "/" + finalSharedLimit + ", ratio "
+                                + RealCivUtil.formatPercentFromRatio(data.hubSharedWithdrawRatio(civId)) + ")",
+                        RealCivConfig.MAX_AUDIT_LOGS.get());
+                source.sendSuccess(() -> Component.literal(
+                        "Shared-stock allowance remaining for " + target.getGameProfile().getName()
+                                + " on " + itemId + ": " + finalNewRemaining + "/" + finalSharedLimit),
                         false);
             } else {
                 long finalNewRemaining = newRemaining;
@@ -3392,6 +3548,57 @@ public final class RealCivCommands {
             return 1;
         }
 
+        if (mode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+            List<Map.Entry<String, Long>> stockEntries = data.getHubStockEntriesSorted(civId);
+            if (stockEntries.isEmpty()) {
+                source.sendSuccess(() -> Component.literal(
+                        "Hub quota for " + civDisplay(data, civId)
+                                + " is in shared_stock_ratio mode, but stock is empty."),
+                        false);
+                return 1;
+            }
+
+            int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
+            int totalPages = (stockEntries.size() + pageSize - 1) / pageSize;
+            int safePage = Math.max(1, Math.min(page, totalPages));
+            int start = (safePage - 1) * pageSize;
+            int end = Math.min(stockEntries.size(), start + pageSize);
+
+            source.sendSuccess(() -> Component.literal(
+                    "Hub quota for " + target.getGameProfile().getName()
+                            + " in " + civDisplay(data, civId)
+                            + " (mode shared_stock_ratio @ "
+                            + RealCivUtil.formatPercentFromRatio(data.hubSharedWithdrawRatio(civId))
+                            + ", page " + safePage + "/" + totalPages + "):"),
+                    false);
+
+            for (int i = start; i < end; i++) {
+                Map.Entry<String, Long> entry = stockEntries.get(i);
+                String itemKey = entry.getKey();
+                long stock = Math.max(0L, entry.getValue());
+                long limit = 0L;
+                long withdrawn = 0L;
+                long remaining = 0L;
+                try {
+                    ResourceLocation parsed = ResourceLocation.parse(itemKey);
+                    limit = data.hubSharedStockDailyLimit(civId, parsed);
+                    withdrawn = record.dailyAllowanceWithdrawnCount(civId, parsed);
+                    remaining = record.remainingDailyAllowance(civId, parsed, limit);
+                } catch (Exception ignored) {
+                }
+                long safeLimit = Math.max(0L, limit);
+                long safeWithdrawn = Math.max(0L, withdrawn);
+                long safeRemaining = Math.max(0L, remaining);
+                source.sendSuccess(() -> Component.literal(
+                        "- " + itemKey
+                                + " | stock " + stock
+                                + " | shared allowance " + safeRemaining + "/" + safeLimit
+                                + " | withdrawn today " + safeWithdrawn),
+                        false);
+            }
+            return 1;
+        }
+
         List<Map.Entry<String, Long>> entries = record.contributions(civId).entrySet().stream()
                 .filter(entry -> entry.getValue() != null && entry.getValue() > 0L)
                 .sorted(Map.Entry.<String, Long>comparingByValue(Comparator.reverseOrder()))
@@ -3462,6 +3669,15 @@ public final class RealCivCommands {
                     false);
             return 1;
         }
+        if (mode == CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO) {
+            source.sendSuccess(() -> Component.literal(
+                    "Shared-stock ratio mode gives each member a daily allowance per item based on current stock and shared ratio."),
+                    false);
+            source.sendSuccess(() -> Component.literal(
+                    "Current shared ratio: " + RealCivUtil.formatPercentFromRatio(data.hubSharedWithdrawRatio(civId)) + "."),
+                    false);
+            return 1;
+        }
 
         List<Map.Entry<String, Integer>> allowances = data.hubDailyAllowanceEntriesSorted(civId);
         if (allowances.isEmpty()) {
@@ -3498,7 +3714,8 @@ public final class RealCivCommands {
         }
         @Nullable CivSavedData.HubDistributionMode mode = CivSavedData.HubDistributionMode.fromSerializedName(modeRaw);
         if (mode == null) {
-            source.sendFailure(Component.literal("Unknown mode. Use contribution_ratio or daily_allowance."));
+            source.sendFailure(Component.literal(
+                    "Unknown mode. Use contribution_ratio, shared_stock_ratio, or daily_allowance."));
             return 0;
         }
         if (!data.setHubDistributionMode(civId, mode, actorName(source))) {
@@ -3508,6 +3725,27 @@ public final class RealCivCommands {
         source.sendSuccess(() -> Component.literal(
                 "Hub distribution mode for " + civDisplay(data, civId)
                         + " set to " + mode.serializedName() + "."), true);
+        return 1;
+    }
+
+    private static int hubDistributionSetSharedRatio(CommandSourceStack source, double percent)
+            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
+        ServerPlayer actor = source.getPlayerOrException();
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String civId = data.getOrAssignCivilization(actor.getUUID());
+        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+            source.sendFailure(Component.literal("Only leadership/admin can manage hub shared-stock ratio."));
+            return 0;
+        }
+        double ratio = Math.max(0.0D, Math.min(1.0D, percent / 100.0D));
+        if (!data.setHubSharedWithdrawRatio(civId, ratio, actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Shared-stock ratio already matches."));
+            return 0;
+        }
+        source.sendSuccess(() -> Component.literal(
+                "Hub shared-stock ratio for " + civDisplay(data, civId)
+                        + " set to " + RealCivUtil.formatPercentFromRatio(data.hubSharedWithdrawRatio(civId)) + "."),
+                true);
         return 1;
     }
 
@@ -4134,7 +4372,7 @@ public final class RealCivCommands {
                 new StarterItem(ModBlocks.TAX_BLOCK_ITEM.get(), "Tax Block"),
                 new StarterItem(ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM.get(), "Civic Control Console"),
                 new StarterItem(ModBlocks.PROFESSION_LEDGER_ITEM.get(), "Profession Ledger"),
-                new StarterItem(ModBlocks.WAR_TABLE_ITEM.get(), "War Table"),
+                new StarterItem(ModBlocks.WAR_TABLE_ITEM.get(), "Diplomacy Table"),
                 new StarterItem(ModBlocks.LAND_WAND.get(), "Land Wand"));
 
         List<String> granted = new ArrayList<>();
@@ -4222,3 +4460,4 @@ public final class RealCivCommands {
         return value;
     }
 }
+

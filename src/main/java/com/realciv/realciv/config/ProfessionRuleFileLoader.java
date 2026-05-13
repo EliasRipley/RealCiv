@@ -29,7 +29,10 @@ final class ProfessionRuleFileLoader {
             Profession.LUMBERJACK,
             Profession.FISHER,
             Profession.HUNTER,
-            Profession.CRAFTER);
+            Profession.CRAFTER,
+            Profession.ENCHANTER,
+            Profession.BREWER,
+            Profession.TRADER);
 
     private ProfessionRuleFileLoader() {
     }

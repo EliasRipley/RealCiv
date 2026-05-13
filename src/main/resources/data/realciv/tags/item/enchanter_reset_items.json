@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:enchanted_book",
+    "minecraft:lapis_lazuli",
+    "minecraft:experience_bottle",
+    "minecraft:book"
+  ]
+}

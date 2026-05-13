@@ -2,6 +2,7 @@ package com.realciv.realciv.event;
 
 import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.census.CensusMenu;
+import com.realciv.realciv.diplomacy.DiplomacyTableMenu;
 import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
@@ -18,6 +19,8 @@ import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubStockMenu;
 import com.realciv.realciv.integration.RealCivFTBChunksMirror;
+import com.realciv.realciv.ledger.ProfessionLedgerMenu;
+import com.realciv.realciv.tax.TaxMenu;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +44,7 @@ import net.minecraft.world.damagesource.DamageSource;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TraceableEntity;
+import net.minecraft.world.entity.item.ItemEntity;
 import net.minecraft.world.entity.boss.enderdragon.EndCrystal;
 import net.minecraft.world.entity.boss.wither.WitherBoss;
 import net.minecraft.world.entity.item.PrimedTnt;
@@ -106,7 +110,10 @@ public final class RealCivEvents {
             Profession.HUNTER,
             Profession.WARRIOR,
             Profession.EXPLOSIVES_EXPERT,
-            Profession.CRAFTER);
+            Profession.CRAFTER,
+            Profession.ENCHANTER,
+            Profession.BREWER,
+            Profession.TRADER);
 
     private RealCivEvents() {
     }
@@ -141,7 +148,10 @@ public final class RealCivEvents {
                         + " | Hunter: " + record.levelFor(Profession.HUNTER)
                         + " | Warrior: " + record.levelFor(Profession.WARRIOR)
                         + " | Explosives: " + record.levelFor(Profession.EXPLOSIVES_EXPERT)
-                        + " | Crafter: " + record.levelFor(Profession.CRAFTER)));
+                        + " | Crafter: " + record.levelFor(Profession.CRAFTER)
+                        + " | Enchanter: " + record.levelFor(Profession.ENCHANTER)
+                        + " | Brewer: " + record.levelFor(Profession.BREWER)
+                        + " | Trader: " + record.levelFor(Profession.TRADER)));
         if (RealCivConfig.specializationSingleProfessionLockEnabled()) {
             @Nullable Profession focus = record.focusedProfession();
             if (focus == null) {
@@ -234,6 +244,24 @@ public final class RealCivEvents {
         lastUpkeepTick = now;
         CivSavedData data = CivSavedData.get(event.getServer());
         data.processUpkeep(now);
+        List<String> resolvedLeadership = data.resolveLeadershipContestsSystem();
+        if (!resolvedLeadership.isEmpty()) {
+            for (String entry : resolvedLeadership) {
+                String civId = entry;
+                String message = entry;
+                int split = entry.indexOf(':');
+                if (split >= 0) {
+                    civId = entry.substring(0, split).trim();
+                    message = entry.substring(split + 1).trim();
+                }
+                Component out = Component.literal("[RealCiv] Leadership update (" + civId + "): " + message);
+                for (ServerPlayer online : event.getServer().getPlayerList().getPlayers()) {
+                    if (online.hasPermissions(3) || data.isCivilizationMember(civId, online.getUUID())) {
+                        online.sendSystemMessage(out);
+                    }
+                }
+            }
+        }
         if (RealCivConfig.staleActionResetEnabled()) {
             long nowMillis = System.currentTimeMillis();
             for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
@@ -300,24 +328,28 @@ public final class RealCivEvents {
             return;
         }
 
-        if (clickedState.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())
-                || clickedState.is(ModBlocks.PROFESSION_LEDGER.get())
-                || clickedState.is(ModBlocks.WAR_TABLE.get())) {
+        if (clickedState.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())) {
             CivControlPanelEvents.openControlPanel(event, player, data);
             return;
         }
 
         if (clickedState.is(ModBlocks.CENSUS_BLOCK.get())) {
-            if (player.isShiftKeyDown()) {
-                openCensusPanel(event, player, data);
-            } else {
-                CivControlPanelEvents.openControlPanel(event, player, data);
-            }
+            openCensusPanel(event, player, data);
             return;
         }
 
         if (clickedState.is(ModBlocks.TAX_BLOCK.get())) {
-            openTaxPanel(event, player, data, player.isShiftKeyDown());
+            openTaxPanel(event, player, data);
+            return;
+        }
+
+        if (clickedState.is(ModBlocks.PROFESSION_LEDGER.get())) {
+            openProfessionLedgerPanel(event, player, data);
+            return;
+        }
+
+        if (clickedState.is(ModBlocks.WAR_TABLE.get())) {
+            openDiplomacyTablePanel(event, player, data);
             return;
         }
 
@@ -346,6 +378,11 @@ public final class RealCivEvents {
                         player,
                         "You can't use crafting tables until you've contributed crafted goods to the Community Hub. "
                                 + "Crafter limit reached (" + limit + ").");
+                event.setCancellationResult(InteractionResult.FAIL);
+                event.setCanceled(true);
+                return;
+            }
+            if (!canConsumeDailyActionBudget(player, record, Profession.CRAFTER, 1, "craft")) {
                 event.setCancellationResult(InteractionResult.FAIL);
                 event.setCanceled(true);
                 return;
@@ -428,12 +465,12 @@ public final class RealCivEvents {
         long now = currentGameTime(player);
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean placingCommunityHub = placedBlock.is(ModBlocks.COMMUNITY_HUB.get());
-        boolean mayorOrAdmin = player.hasPermissions(3) || data.isMayor(civId, player.getUUID());
+        boolean canPlaceCivicControlBlocks = canRecoverCivicControlBlock(player, data, civId);
 
-        if (isCivicControlBlock(placedBlock) && !mayorOrAdmin) {
+        if (isCivicControlBlock(placedBlock) && !canPlaceCivicControlBlocks) {
             RealCivMessages.deny(
                     player,
-                    "Only your civilization mayor (or admins) can place civic control blocks.");
+                    "Only civilization leadership can place civic control blocks.");
             event.setCanceled(true);
             return;
         }
@@ -530,8 +567,13 @@ public final class RealCivEvents {
                 event.setCanceled(true);
                 return;
             }
+            if (!canConsumeDailyActionBudget(player, record, Profession.FARMER, 1, "plant")) {
+                event.setCanceled(true);
+                return;
+            }
 
             record.setFarmerActions(record.farmerActions() + 1);
+            record.addDailyProfessionActions(Profession.FARMER, 1);
             data.setDirty();
         }
     }
@@ -559,8 +601,8 @@ public final class RealCivEvents {
                     pos.getY(),
                     pos.getZ());
             if (hubOwnerCiv != null) {
-                if (!player.hasPermissions(3) && !data.isMayor(hubOwnerCiv, player.getUUID())) {
-                    RealCivMessages.deny(player, "Only the owning civilization mayor can move this Community Hub.");
+                if (!canRecoverCivicControlBlock(player, data, hubOwnerCiv)) {
+                    RealCivMessages.deny(player, "Only civilization leadership can move this Community Hub.");
                     event.setCanceled(true);
                     return;
                 }
@@ -568,7 +610,7 @@ public final class RealCivEvents {
                 authorizedHubCiv = hubOwnerCiv;
             } else if (!player.hasPermissions(3)) {
                 String civId = data.getOrAssignCivilization(player.getUUID());
-                if (!data.isMayor(civId, player.getUUID())) {
+                if (!canRecoverCivicControlBlock(player, data, civId)) {
                     RealCivMessages.deny(player, "Community Hub is protected.");
                     event.setCanceled(true);
                     return;
@@ -576,8 +618,8 @@ public final class RealCivEvents {
             }
         } else if (isProtectedCivicControlBlock(state) && !player.hasPermissions(3)) {
             String civId = data.getOrAssignCivilization(player.getUUID());
-            if (!data.isMayor(civId, player.getUUID())) {
-                RealCivMessages.deny(player, "Civic control blocks are protected.");
+            if (!canRecoverCivicControlBlock(player, data, civId)) {
+                RealCivMessages.deny(player, "Only civilization leadership can recover civic control blocks.");
                 event.setCanceled(true);
                 return;
             }
@@ -637,6 +679,10 @@ public final class RealCivEvents {
             if (breakProfession == BreakProfession.LUMBERJACK) {
                 int levelValue = record.levelFor(Profession.LUMBERJACK);
                 int limit = RealCivConfig.lumberjackLimitForLevel(levelValue);
+                if (!canConsumeDailyActionBudget(player, record, Profession.LUMBERJACK, actionCost, "chop")) {
+                    event.setCanceled(true);
+                    return;
+                }
                 if (record.lumberjackActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
@@ -648,6 +694,34 @@ public final class RealCivEvents {
             } else if (breakProfession == BreakProfession.MINER) {
                 int levelValue = record.levelFor(Profession.MINER);
                 int limit = RealCivConfig.minerLimitForLevel(levelValue);
+                ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+                int blockCap = RealCivConfig.minerBlockActionCapForLevel(blockId, levelValue);
+                if (blockCap > 0) {
+                    int used = record.minerBlockActions(blockId);
+                    if (used + 1 > blockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Miner block cap reached for " + blockId + " (" + used + "/" + blockCap + "). "
+                                        + "Contribute mining output at the Community Hub to reset your miner window.");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
+                int dailyBlockCap = RealCivConfig.minerDailyBlockActionCapForLevel(blockId, levelValue);
+                if (dailyBlockCap > 0) {
+                    int dailyUsed = record.minerDailyBlockActions(blockId);
+                    if (dailyUsed + 1 > dailyBlockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Daily miner cap reached for " + blockId + " (" + dailyUsed + "/" + dailyBlockCap + ").");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
+                if (!canConsumeDailyActionBudget(player, record, Profession.MINER, actionCost, "mine")) {
+                    event.setCanceled(true);
+                    return;
+                }
                 if (record.minerActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
@@ -659,6 +733,10 @@ public final class RealCivEvents {
             } else if (breakProfession == BreakProfession.TERRAFORMER) {
                 int levelValue = record.levelFor(Profession.TERRAFORMER);
                 int limit = RealCivConfig.terraformerLimitForLevel(levelValue);
+                if (!canConsumeDailyActionBudget(player, record, Profession.TERRAFORMER, actionCost, "terraform")) {
+                    event.setCanceled(true);
+                    return;
+                }
                 if (record.terraformerActions() + actionCost > limit) {
                     RealCivMessages.deny(
                             player,
@@ -680,6 +758,46 @@ public final class RealCivEvents {
         }
 
         BlockState state = event.getState();
+        if (isCivicControlBlock(state)) {
+            CivSavedData data = CivSavedData.get(player.getServer());
+            @Nullable ItemStack recoveredStack = recoveredCivicBlockStack(state);
+            if (recoveredStack == null) {
+                return;
+            }
+
+            if (!player.hasPermissions(3)) {
+                String dimension = player.level().dimension().location().toString();
+                BlockPos pos = event.getPos();
+                @Nullable String ownerCiv;
+                if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
+                    ownerCiv = data.findCivilizationIdByHubPosition(dimension, pos.getX(), pos.getY(), pos.getZ());
+                } else {
+                    @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                            dimension,
+                            pos.getX() >> 4,
+                            pos.getZ() >> 4);
+                    ownerCiv = lookup == null ? data.getOrAssignCivilization(player.getUUID()) : lookup.civilizationId();
+                }
+                if (ownerCiv == null || !canRecoverCivicControlBlock(player, data, ownerCiv)) {
+                    event.getDrops().clear();
+                    return;
+                }
+            }
+
+            if (event.getDrops().isEmpty()) {
+                ItemEntity blockEntity = new ItemEntity(
+                        event.getLevel(),
+                        event.getPos().getX(),
+                        event.getPos().getY(),
+                        event.getPos().getZ(),
+                        recoveredStack.copy());
+                event.getDrops().add(blockEntity);
+            }
+            player.sendSystemMessage(Component.literal(
+                    recoveredStack.getHoverName().getString() + " recovered. You can place it again."));
+            return;
+        }
+
         BreakProfession breakProfession = breakProfessionFor(state);
         if (breakProfession == BreakProfession.NONE) {
             return;
@@ -690,10 +808,16 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (breakProfession == BreakProfession.LUMBERJACK) {
             record.setLumberjackActions(record.lumberjackActions() + actionCost);
+            record.addDailyProfessionActions(Profession.LUMBERJACK, actionCost);
         } else if (breakProfession == BreakProfession.MINER) {
             record.setMinerActions(record.minerActions() + actionCost);
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            record.addMinerBlockActions(blockId, 1);
+            record.addMinerDailyBlockActions(blockId, 1);
+            record.addDailyProfessionActions(Profession.MINER, actionCost);
         } else if (breakProfession == BreakProfession.TERRAFORMER) {
             record.setTerraformerActions(record.terraformerActions() + actionCost);
+            record.addDailyProfessionActions(Profession.TERRAFORMER, actionCost);
         }
         data.setDirty();
     }
@@ -736,6 +860,10 @@ public final class RealCivEvents {
                 return;
             }
             CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
+            if (!canConsumeDailyActionBudget(attacker, record, Profession.WARRIOR, 1, "fight")) {
+                event.setCanceled(true);
+                return;
+            }
             int warriorLevel = record.levelFor(Profession.WARRIOR);
             int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
             if (record.warriorActions() >= limit) {
@@ -757,6 +885,10 @@ public final class RealCivEvents {
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
         if (isHunterMobCapReached(attacker, record, (Mob) event.getTarget(), hunterLevel)) {
+            event.setCanceled(true);
+            return;
+        }
+        if (!canConsumeDailyActionBudget(attacker, record, Profession.HUNTER, 1, "hunt")) {
             event.setCanceled(true);
             return;
         }
@@ -801,6 +933,13 @@ public final class RealCivEvents {
             boolean defendingHomeLand = isWarriorHomeDefenseExempt(killerCiv, victim, data);
             CivSavedData.PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
             if (!defendingHomeLand) {
+                if (!canConsumeDailyActionBudget(killer, killerRecord, Profession.WARRIOR, 1, "fight")) {
+                    event.setCanceled(true);
+                    if (victim.getHealth() <= 0.0F) {
+                        victim.setHealth(1.0F);
+                    }
+                    return;
+                }
                 int warriorLevel = killerRecord.levelFor(Profession.WARRIOR);
                 int limit = RealCivConfig.warriorLimitForLevel(warriorLevel);
                 if (killerRecord.warriorActions() >= limit) {
@@ -815,6 +954,7 @@ public final class RealCivEvents {
 
             if (!defendingHomeLand) {
                 killerRecord.setWarriorActions(killerRecord.warriorActions() + 1);
+                killerRecord.addDailyProfessionActions(Profession.WARRIOR, 1);
             }
             if (RealCivConfig.warriorRequireHubRegistration()) {
                 killerRecord.addPendingWarriorHubRegistrations(1);
@@ -824,6 +964,7 @@ public final class RealCivEvents {
                 killerRecord.addWarriorXp(RealCivConfig.warriorXpPerPlayerKill());
                 killerRecord.addGeneralXp(RealCivConfig.warriorGeneralXpPerPlayerKill());
             }
+            data.recordWarCasualty(killerCiv, victimCiv);
             data.setDirty();
             return;
         }
@@ -855,6 +996,13 @@ public final class RealCivEvents {
             }
             return;
         }
+        if (!canConsumeDailyActionBudget(killer, record, Profession.HUNTER, 1, "hunt")) {
+            event.setCanceled(true);
+            if (mob.getHealth() <= 0.0F) {
+                mob.setHealth(1.0F);
+            }
+            return;
+        }
         if (record.hunterActions() >= limit) {
             RealCivMessages.deny(
                     killer,
@@ -870,6 +1018,7 @@ public final class RealCivEvents {
         record.setHunterActions(record.hunterActions() + 1);
         ResourceLocation mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
         record.addHunterMobActions(mobId, 1);
+        record.addDailyProfessionActions(Profession.HUNTER, 1);
         data.setDirty();
     }
 
@@ -1276,6 +1425,10 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int fisherLevel = record.levelFor(Profession.FISHER);
         int limit = RealCivConfig.fisherLimitForLevel(fisherLevel);
+        if (!canConsumeDailyActionBudget(player, record, Profession.FISHER, fishCaught, "fish")) {
+            event.setCanceled(true);
+            return;
+        }
         if (record.fisherActions() + fishCaught > limit) {
             RealCivMessages.deny(
                     player,
@@ -1287,6 +1440,7 @@ public final class RealCivEvents {
         }
 
         record.setFisherActions(record.fisherActions() + fishCaught);
+        record.addDailyProfessionActions(Profession.FISHER, fishCaught);
         data.setDirty();
     }
 
@@ -1317,6 +1471,7 @@ public final class RealCivEvents {
 
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(actor.getUUID());
         record.setExplosivesExpertActions(record.explosivesExpertActions() + 1);
+        record.addDailyProfessionActions(Profession.EXPLOSIVES_EXPERT, 1);
         record.addExplosivesExpertXp(RealCivConfig.explosivesExpertXpPerUse());
         record.addGeneralXp(RealCivConfig.explosivesExpertGeneralXpPerUse());
         data.setDirty();
@@ -1432,6 +1587,14 @@ public final class RealCivEvents {
             Mob mob,
             int hunterLevel) {
         ResourceLocation mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
+        int requiredLevel = RealCivConfig.hunterRequiredLevelForMob(mobId);
+        if (requiredLevel > 0 && hunterLevel < requiredLevel) {
+            RealCivMessages.deny(
+                    player,
+                    "Hunter level " + requiredLevel + " is required to kill " + mobId
+                            + " (you are level " + hunterLevel + ").");
+            return true;
+        }
         int mobCap = RealCivConfig.hunterMobActionCapForLevel(mobId, hunterLevel);
         if (mobCap <= 0) {
             return false;
@@ -1505,7 +1668,18 @@ public final class RealCivEvents {
 
         int allowed = Math.max(0, limit - current);
         int applied = Math.min(allowed, craftedCount);
-        record.setCrafterActions(current + applied);
+
+        int dailyCap = RealCivConfig.dailyActionCapForLevel(Profession.CRAFTER, crafterLevel);
+        if (dailyCap > 0) {
+            int dailyUsed = record.dailyProfessionActionsUsed(Profession.CRAFTER);
+            int dailyRemaining = Math.max(0, dailyCap - dailyUsed);
+            applied = Math.min(applied, dailyRemaining);
+        }
+
+        if (applied > 0) {
+            record.setCrafterActions(current + applied);
+            record.addDailyProfessionActions(Profession.CRAFTER, applied);
+        }
         data.setDirty();
 
         if (craftedCount > applied) {
@@ -1544,7 +1718,10 @@ public final class RealCivEvents {
                         + " | Hunter " + record.hunterActions() + "/" + RealCivConfig.hunterLimitForLevel(record.levelFor(Profession.HUNTER))
                         + " | Warrior " + record.warriorActions() + "/" + RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR))
                         + " | Explosives " + record.explosivesExpertActions() + "/" + RealCivConfig.explosivesExpertLimitForLevel(record.levelFor(Profession.EXPLOSIVES_EXPERT))
-                        + " | Crafter " + record.crafterActions() + "/" + RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER))));
+                        + " | Crafter " + record.crafterActions() + "/" + RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER))
+                        + " | Enchanter " + record.enchanterActions() + "/" + RealCivConfig.enchanterLimitForLevel(record.levelFor(Profession.ENCHANTER))
+                        + " | Brewer " + record.brewerActions() + "/" + RealCivConfig.brewerLimitForLevel(record.levelFor(Profession.BREWER))
+                        + " | Trader " + record.traderActions() + "/" + RealCivConfig.traderLimitForLevel(record.levelFor(Profession.TRADER))));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
@@ -1554,14 +1731,30 @@ public final class RealCivEvents {
         String civId = data.getOrAssignCivilization(player.getUUID());
         registerPendingWarriorHubProgress(player, data, civId);
         boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player);
+        boolean canManagePolicy = CivPermissionService.hasCivPermission(
+                player,
+                data,
+                civId,
+                CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
-                        new CommunityHubStockMenu(containerId, playerInventory, player, data, civId, privileged),
+                        new CommunityHubStockMenu(
+                                containerId,
+                                playerInventory,
+                                player,
+                                data,
+                                civId,
+                                privileged,
+                                canManagePolicy),
                 Component.literal("Community Hub Stock")));
         player.sendSystemMessage(Component.literal(
                 "Stock/withdraw mode for civilization '" + civId + "'. "
                         + "Left click: 1 stack, Right click: 1 item, Shift click: 4 stacks."));
+        if (canManagePolicy) {
+            player.sendSystemMessage(Component.literal(
+                    "Leadership controls enabled: use the top row to adjust policy mode, shared ratio, and daily allowances."));
+        }
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
@@ -1578,10 +1771,6 @@ public final class RealCivEvents {
         player.sendSystemMessage(Component.literal(
                 "Census opened for " + civilizationDisplayName(data, civId)
                         + ". Use left/right click actions inside the menu to manage members, requests, and invites."));
-        player.sendSystemMessage(Component.literal(
-                "Right-click this Census Block for the modern Civilization Control Panel."));
-        player.sendSystemMessage(Component.literal(
-                "Shift + right-click opens this legacy Census management grid."));
         if (canManage) {
             player.sendSystemMessage(Component.literal(
                     "Tip: /realciv census invite <player> sends invites, and requests can be approved/denied in the menu."));
@@ -1594,87 +1783,48 @@ public final class RealCivEvents {
     private static void openTaxPanel(
             PlayerInteractEvent.RightClickBlock event,
             ServerPlayer player,
-            CivSavedData data,
-            boolean payOneCycleNow) {
+            CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
-        if (ownedPlots <= 0) {
-            RealCivMessages.deny(
-                    player,
-                    "You do not own any private plots in this civilization, so no upkeep tax is due.");
-            event.setCancellationResult(InteractionResult.FAIL);
-            event.setCanceled(true);
-            return;
-        }
-
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        long upkeepPerPlot = RealCivConfig.upkeepCostCents();
-        long cycleCost = upkeepPerPlot * ownedPlots;
-        int delinquent = data.delinquentPrivatePlotCountForOwner(civId, player.getUUID());
-        long nextTick = data.earliestPrivatePlotUpkeepTick(civId, player.getUUID());
-
-        if (payOneCycleNow) {
-            payPrivateUpkeepCycles(player, data, civId, 1, ownedPlots, cycleCost);
-        } else {
-            player.sendSystemMessage(Component.literal(
-                    "Tax Office: private plots=" + ownedPlots
-                            + " | delinquent=" + delinquent
-                            + " | next upkeep tick=" + nextTick));
-            player.sendSystemMessage(Component.literal(
-                    "Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
-                            + " | Your balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
-            player.sendSystemMessage(Component.literal(
-                    "Sneak + right-click to prepay 1 upkeep cycle now, or run /realciv tax pay <cycles>."));
-        }
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, p) ->
+                        new TaxMenu(containerId, playerInventory, player, data, civId),
+                Component.literal("Tax Office: " + civilizationDisplayName(data, civId))));
+        player.sendSystemMessage(Component.literal(
+                "Tax Office opened for " + civilizationDisplayName(data, civId)
+                        + ". Use this menu to review dues and prepay upkeep."));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
     }
 
-    private static void payPrivateUpkeepCycles(
+    private static void openProfessionLedgerPanel(
+            PlayerInteractEvent.RightClickBlock event,
             ServerPlayer player,
-            CivSavedData data,
-            String civId,
-            int cycles,
-            int ownedPlots,
-            long cycleCost) {
-        int safeCycles = Math.max(1, cycles);
-        long totalCost = cycleCost * safeCycles;
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        long balance = record.socialCreditCents(civId);
-        if (balance < totalCost) {
-            RealCivMessages.deny(
-                    player,
-                    "Insufficient contribution karma for upkeep prepayment. Need "
-                            + RealCivUtil.formatCredits(totalCost)
-                            + ", you have " + RealCivUtil.formatCredits(balance) + ".");
-            return;
-        }
-
-        long now = currentGameTime(player);
-        int affectedPlots = data.prepayPrivatePlotUpkeep(civId, player.getUUID(), safeCycles, now, player.getGameProfile().getName());
-        if (affectedPlots <= 0) {
-            RealCivMessages.deny(player, "No private plots were eligible for upkeep prepayment.");
-            return;
-        }
-
-        record.addSocialCreditCents(civId, -totalCost);
-        data.addCivTreasuryCents(civId, totalCost);
-        data.addAuditLog(
-                civId,
-                player.getGameProfile().getName() + " paid " + RealCivUtil.formatCredits(totalCost)
-                        + " upkeep tax via Tax Block for " + affectedPlots + " plot(s)"
-                        + " across " + safeCycles + " cycle(s).",
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-
+            CivSavedData data) {
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, p) ->
+                        new ProfessionLedgerMenu(containerId, playerInventory, player, data, civId),
+                Component.literal("Profession Ledger: " + civilizationDisplayName(data, civId))));
         player.sendSystemMessage(Component.literal(
-                "Upkeep tax paid for " + affectedPlots + " plot(s). Cost: "
-                        + RealCivUtil.formatCredits(totalCost)
-                        + " | New balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
+                "Profession Ledger opened. Track profession levels, XP, and action usage in one place."));
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        event.setCanceled(true);
+    }
+
+    private static void openDiplomacyTablePanel(
+            PlayerInteractEvent.RightClickBlock event,
+            ServerPlayer player,
+            CivSavedData data) {
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        player.openMenu(new SimpleMenuProvider(
+                (containerId, playerInventory, p) ->
+                        new DiplomacyTableMenu(containerId, playerInventory, player, data, civId),
+                Component.literal("Diplomacy Table: " + civilizationDisplayName(data, civId))));
         player.sendSystemMessage(Component.literal(
-                "Civ collective contribution karma (" + civId + "): "
-                        + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
+                "Diplomacy Table opened. Review relations and war casualties with other civilizations."));
+        event.setCancellationResult(InteractionResult.SUCCESS);
+        event.setCanceled(true);
     }
 
     private static boolean claimStarterTownAreaFromHub(
@@ -2098,6 +2248,29 @@ public final class RealCivEvents {
             Profession profession = entry.getKey();
             PendingHookCharge pending = entry.getValue();
             int level = record.levelFor(profession);
+            int dailyCap = RealCivConfig.dailyActionCapForLevel(profession, level);
+            if (dailyCap > 0) {
+                int dailyUsed = record.dailyProfessionActionsUsed(profession);
+                if (dailyUsed + pending.actionCost() > dailyCap) {
+                    String message = formatHookDenyMessage(
+                            pending.sourceRule(),
+                            hook,
+                            dailyUsed,
+                            dailyCap,
+                            pending.actionCost(),
+                            0,
+                            0,
+                            0L,
+                            0,
+                            0,
+                            0,
+                            defaultDenyMessage,
+                            "Daily " + readableProfessionName(profession).toLowerCase(Locale.ROOT)
+                                    + " cap reached (" + dailyUsed + "/" + dailyCap + ").");
+                    RealCivMessages.deny(player, message);
+                    return false;
+                }
+            }
             int limit = RealCivConfig.limitForProfession(profession, level);
             int current = record.actionsForProfession(profession);
             if (current + pending.actionCost() > limit) {
@@ -2123,7 +2296,9 @@ public final class RealCivEvents {
         for (Map.Entry<Profession, PendingHookCharge> entry : pendingByProfession.entrySet()) {
             Profession profession = entry.getKey();
             int current = record.actionsForProfession(profession);
-            record.setActionsForProfession(profession, current + entry.getValue().actionCost());
+            int actionCost = entry.getValue().actionCost();
+            record.setActionsForProfession(profession, current + actionCost);
+            record.addDailyProfessionActions(profession, actionCost);
             mutated = true;
         }
 
@@ -2392,6 +2567,9 @@ public final class RealCivEvents {
             }
             return false;
         }
+        if (!canConsumeDailyActionBudget(player, record, Profession.EXPLOSIVES_EXPERT, 1, "use explosives", sendMessage)) {
+            return false;
+        }
         return true;
     }
 
@@ -2400,22 +2578,83 @@ public final class RealCivEvents {
             return false;
         }
 
-        int requiredLevel = RealCivUtil.requiredGeneralLevelForTool(itemStack);
-        if (requiredLevel <= 0) {
-            return false;
-        }
-
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        int generalLevel = record.generalLevel();
-        if (generalLevel >= requiredLevel) {
-            return false;
+        if (RealCivConfig.professionToolLevelGatesEnabled()) {
+            @Nullable Profession requiredProfession = RealCivUtil.professionForTieredTool(itemStack);
+            if (requiredProfession != null && requiredProfession != Profession.NONE) {
+                int requiredProfessionLevel = RealCivConfig.requiredProfessionLevelForToolTier(
+                        requiredProfession,
+                        RealCivUtil.toolTier(itemStack));
+                if (requiredProfessionLevel > 0) {
+                    int currentProfessionLevel = record.levelFor(requiredProfession);
+                    if (currentProfessionLevel < requiredProfessionLevel) {
+                        RealCivMessages.deny(
+                                player,
+                                "Tool locked. " + readableProfessionName(requiredProfession)
+                                        + " level " + requiredProfessionLevel + " is required for "
+                                        + RealCivUtil.toolTierLabel(itemStack) + " tier tools (you are level "
+                                        + currentProfessionLevel + ").");
+                        return true;
+                    }
+                }
+            }
         }
 
-        RealCivMessages.deny(
-                player,
-                "Tool locked. " + RealCivUtil.requiredToolLevelName(itemStack)
-                        + " tier requires general level " + requiredLevel + " (you are level " + generalLevel + ").");
-        return true;
+        if (RealCivConfig.generalToolLevelGatesEnabled()) {
+            int requiredLevel = RealCivUtil.requiredGeneralLevelForTool(itemStack);
+            if (requiredLevel > 0) {
+                int generalLevel = record.generalLevel();
+                if (generalLevel < requiredLevel) {
+                    RealCivMessages.deny(
+                            player,
+                            "Tool locked. " + RealCivUtil.requiredToolLevelName(itemStack)
+                                    + " tier requires general level " + requiredLevel + " (you are level " + generalLevel + ").");
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    private static boolean canConsumeDailyActionBudget(
+            ServerPlayer player,
+            CivSavedData.PlayerRecord record,
+            Profession profession,
+            int actionCost,
+            String activityVerb) {
+        return canConsumeDailyActionBudget(player, record, profession, actionCost, activityVerb, true);
+    }
+
+    private static boolean canConsumeDailyActionBudget(
+            ServerPlayer player,
+            CivSavedData.PlayerRecord record,
+            Profession profession,
+            int actionCost,
+            String activityVerb,
+            boolean sendMessage) {
+        if (profession == null || profession == Profession.NONE) {
+            return true;
+        }
+        int safeCost = Math.max(0, actionCost);
+        if (safeCost <= 0) {
+            return true;
+        }
+        int level = record.levelFor(profession);
+        int dailyCap = RealCivConfig.dailyActionCapForLevel(profession, level);
+        if (dailyCap <= 0) {
+            return true;
+        }
+        int used = record.dailyProfessionActionsUsed(profession);
+        if (used + safeCost <= dailyCap) {
+            return true;
+        }
+        if (sendMessage) {
+            RealCivMessages.deny(
+                    player,
+                    "You can't " + activityVerb + " more today. "
+                            + readableProfessionName(profession) + " daily cap reached (" + used + "/" + dailyCap + ").");
+        }
+        return false;
     }
 
     private static long currentGameTime(ServerPlayer player) {
@@ -2423,6 +2662,38 @@ public final class RealCivEvents {
             return 0L;
         }
         return player.getServer().overworld().getGameTime();
+    }
+
+    private static boolean canRecoverCivicControlBlock(ServerPlayer player, CivSavedData data, String civId) {
+        if (player.hasPermissions(3) || RealCivUtil.isBypass(player)) {
+            return true;
+        }
+        return CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP)
+                || CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)
+                || data.isCivicManager(civId, player.getUUID());
+    }
+
+    @Nullable
+    private static ItemStack recoveredCivicBlockStack(BlockState state) {
+        if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
+            return ModBlocks.COMMUNITY_HUB_ITEM.get().getDefaultInstance();
+        }
+        if (state.is(ModBlocks.CENSUS_BLOCK.get())) {
+            return ModBlocks.CENSUS_BLOCK_ITEM.get().getDefaultInstance();
+        }
+        if (state.is(ModBlocks.TAX_BLOCK.get())) {
+            return ModBlocks.TAX_BLOCK_ITEM.get().getDefaultInstance();
+        }
+        if (state.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())) {
+            return ModBlocks.CIVIC_CONTROL_CONSOLE_ITEM.get().getDefaultInstance();
+        }
+        if (state.is(ModBlocks.PROFESSION_LEDGER.get())) {
+            return ModBlocks.PROFESSION_LEDGER_ITEM.get().getDefaultInstance();
+        }
+        if (state.is(ModBlocks.WAR_TABLE.get())) {
+            return ModBlocks.WAR_TABLE_ITEM.get().getDefaultInstance();
+        }
+        return null;
     }
 
     private static boolean isCivicControlBlock(BlockState state) {

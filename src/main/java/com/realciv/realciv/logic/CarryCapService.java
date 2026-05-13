@@ -107,6 +107,9 @@ public final class CarryCapService {
             case WARRIOR -> RealCivConfig.warriorLimitForLevel(record.levelFor(Profession.WARRIOR));
             case EXPLOSIVES_EXPERT -> RealCivConfig.explosivesExpertLimitForLevel(record.levelFor(Profession.EXPLOSIVES_EXPERT));
             case CRAFTER -> RealCivConfig.crafterLimitForLevel(record.levelFor(Profession.CRAFTER));
+            case ENCHANTER -> RealCivConfig.enchanterLimitForLevel(record.levelFor(Profession.ENCHANTER));
+            case BREWER -> RealCivConfig.brewerLimitForLevel(record.levelFor(Profession.BREWER));
+            case TRADER -> RealCivConfig.traderLimitForLevel(record.levelFor(Profession.TRADER));
             case NONE -> 0;
         };
     }
