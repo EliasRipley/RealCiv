@@ -8,6 +8,7 @@ import dev.ftb.mods.ftbchunks.api.ClaimResult;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunkManager;
 import dev.ftb.mods.ftbchunks.api.FTBChunksAPI;
+import dev.ftb.mods.ftbchunks.api.FTBChunksProperties;
 import dev.ftb.mods.ftblibrary.icon.Color4I;
 import dev.ftb.mods.ftblibrary.math.ChunkDimPos;
 import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
@@ -324,6 +325,16 @@ public final class RealCivFTBChunksMirror {
         }
         if (!expectedDescription.equals(team.getProperty(TeamProperties.DESCRIPTION))) {
             team.setProperty(TeamProperties.DESCRIPTION, expectedDescription);
+            changed = true;
+        }
+        // Keep core combat/explosion outcomes authoritative in RealCiv handlers.
+        // FTB map remains the UX layer, but war/policy logic stays in RealCiv data/events.
+        if (!Boolean.TRUE.equals(team.getProperty(FTBChunksProperties.ALLOW_PVP))) {
+            team.setProperty(FTBChunksProperties.ALLOW_PVP, true);
+            changed = true;
+        }
+        if (!Boolean.TRUE.equals(team.getProperty(FTBChunksProperties.ALLOW_EXPLOSIONS))) {
+            team.setProperty(FTBChunksProperties.ALLOW_EXPLOSIONS, true);
             changed = true;
         }
         if (changed) {
