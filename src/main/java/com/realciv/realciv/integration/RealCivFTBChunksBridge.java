@@ -4,6 +4,7 @@ import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
+import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
 import dev.architectury.event.CompoundEventResult;
 import dev.architectury.networking.NetworkManager;
@@ -207,7 +208,7 @@ public final class RealCivFTBChunksBridge {
                             + "(" + RealCivConfig.claimDimensionPolicyLabel() + ").");
         }
 
-        boolean mayorOrAdmin = isMayorOrAdmin(source, data, civId, player.getUUID());
+        boolean mayorOrAdmin = canManageFtbMode(source, data, civId);
         String mode = effectiveClaimModeLabel(
                 mayorOrAdmin,
                 data.getOrCreatePlayer(player.getUUID()).ftbClaimModeOverride());
@@ -221,6 +222,10 @@ public final class RealCivFTBChunksBridge {
         }
 
         if (targetClass == LandClass.CIVIC) {
+            if (!canManageTownClaims(source, data, civId)) {
+                return ClaimDecision.denied("Only leadership/admin can expand town claims.");
+            }
+
             int civicChunks = data.countPlotsByClass(civId, LandClass.CIVIC);
             if (civicChunks > 0 && !isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
                 return ClaimDecision.denied("Town claims must be within or adjacent to existing CIVIC territory.");
@@ -297,14 +302,14 @@ public final class RealCivFTBChunksBridge {
             UUID ownerId = existing.plot().ownerId();
             if (ownerId != null
                     && !ownerId.equals(player.getUUID())
-                    && !isMayorOrAdmin(source, data, existing.civilizationId(), player.getUUID())) {
-                return UnclaimDecision.denied("Only the owner, mayor, or admins can unclaim this private plot.");
+                    && !canManageLandZoning(source, data, existing.civilizationId())) {
+                return UnclaimDecision.denied("Only owner/leadership/admin can unclaim this private plot.");
             }
             return UnclaimDecision.permit();
         }
 
-        if (!isMayorOrAdmin(source, data, existing.civilizationId(), player.getUUID())) {
-            return UnclaimDecision.denied("Only the mayor or admins can unclaim civic/public territory.");
+        if (!canManageTownClaims(source, data, existing.civilizationId())) {
+            return UnclaimDecision.denied("Only leadership/admin can unclaim civic/public territory.");
         }
         return UnclaimDecision.permit();
     }
@@ -398,8 +403,16 @@ public final class RealCivFTBChunksBridge {
         source.sendFailure(Component.literal(message));
     }
 
-    private static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId, UUID playerId) {
-        return source.hasPermission(3) || data.isMayor(civId, playerId);
+    private static boolean canManageFtbMode(CommandSourceStack source, CivSavedData data, String civId) {
+        return CivPermissionService.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
+    }
+
+    private static boolean canManageTownClaims(CommandSourceStack source, CivSavedData data, String civId) {
+        return CivPermissionService.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS);
+    }
+
+    private static boolean canManageLandZoning(CommandSourceStack source, CivSavedData data, String civId) {
+        return CivPermissionService.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING);
     }
 
     private static boolean isWithinOrAdjacentToTown(

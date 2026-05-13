@@ -482,9 +482,15 @@ FTB Chunks Integration Notes
 
 - RealCiv now hooks into FTB Chunks claim/unclaim events and enforces RealCiv zoning, adjacency, collective contribution karma costs, and role permissions.
 - Non-leadership players always claim PRIVATE via FTB map; leadership/admin can use `auto`, `civic`, or `private` via `/realciv land ftb-mode`.
+- FTB map permission alignment matches command behavior:
+  - `manage_ftb_mode` controls who can choose `auto|civic|private` in FTB mode.
+  - `manage_town_claims` is required for CIVIC claim/unclaim actions from FTB.
+  - `manage_land_zoning` allows leadership-style private unclaim (non-owner) from FTB.
 - `auto` uses `land.ftbMayorDefaultClaimMode` from `config/realciv-common.toml`.
 - RealCiv land rules are authoritative: `CIVIC` and `PRIVATE` permissions are always checked from RealCiv data, not accepted blindly from FTB defaults.
+- RealCiv progression/combat policy remains authoritative even when using FTB UI: diplomacy/war checks, warrior home-defense exemptions, and explosives restrictions are resolved from RealCiv data/events.
 - RealCiv mirrors civilization membership and claimed chunks into FTB Teams/Chunks, so the FTB map is used as a RealCiv view/control surface rather than a separate source of truth.
+- Team mirroring maps civ roles into FTB ranks (`OWNER` mayor, `OFFICER` civic manager, `MEMBER` citizen) to keep FTB team context aligned with civ governance.
 - Claim mirroring now performs real FTB claims (not check-only validation), so mirrored claims appear correctly on map/minimap/chunk-map views.
 - `/realciv land gui` (and Land Wand right-click in air) tries the FTB map first, then opens the RealCiv fallback map if FTB team context is unavailable.
 
