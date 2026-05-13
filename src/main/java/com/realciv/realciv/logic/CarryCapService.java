@@ -110,6 +110,12 @@ public final class CarryCapService {
             case ENCHANTER -> RealCivConfig.enchanterLimitForLevel(record.levelFor(Profession.ENCHANTER));
             case BREWER -> RealCivConfig.brewerLimitForLevel(record.levelFor(Profession.BREWER));
             case TRADER -> RealCivConfig.traderLimitForLevel(record.levelFor(Profession.TRADER));
+            case SHEPHERD -> RealCivConfig.shepherdLimitForLevel(record.levelFor(Profession.SHEPHERD));
+            case EXPLORER -> RealCivConfig.explorerLimitForLevel(record.levelFor(Profession.EXPLORER));
+            case TREASURE_HUNTER -> RealCivConfig.treasureHunterLimitForLevel(record.levelFor(Profession.TREASURE_HUNTER));
+            case BREEDER -> RealCivConfig.breederLimitForLevel(record.levelFor(Profession.BREEDER));
+            case SMITHY -> RealCivConfig.smithyLimitForLevel(record.levelFor(Profession.SMITHY));
+            case SMELTER -> RealCivConfig.smelterLimitForLevel(record.levelFor(Profession.SMELTER));
             case NONE -> 0;
         };
     }

@@ -54,10 +54,10 @@ public final class RealCivConfig {
                     RealCivConfig::isNonNegativeInteger);
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> LUMBERJACK_LIMITS = BUILDER
-            .comment("Lumberjack block-break limits by lumberjack level index (level 0 = first value).")
+            .comment("Lumberjack block-break and strip limits by lumberjack level index (level 0 = first value).")
             .defineListAllowEmpty(
                     "profession.lumberjackLimits",
-                    List.of(8, 16, 32, 64, 96, 128),
+                    List.of(10, 16, 22, 28, 34, 40),
                     () -> 0,
                     RealCivConfig::isNonNegativeInteger);
 
@@ -173,11 +173,11 @@ public final class RealCivConfig {
             .defineInRange("profession.terraformerLimitPerLevel", 10, 0, 1_000_000);
 
     public static final ModConfigSpec.IntValue LUMBERJACK_LIMIT_BASE = BUILDER
-            .comment("Lumberjack level 0 action cap when profession.useLinearLimitFormulas=true.")
-            .defineInRange("profession.lumberjackLimitBase", 8, 0, 1_000_000);
+            .comment("Lumberjack level 0 action cap when profession.useLinearLimitFormulas=true (logs+stripping combined).")
+            .defineInRange("profession.lumberjackLimitBase", 10, 0, 1_000_000);
     public static final ModConfigSpec.IntValue LUMBERJACK_LIMIT_PER_LEVEL = BUILDER
-            .comment("Lumberjack action cap increase per level when profession.useLinearLimitFormulas=true.")
-            .defineInRange("profession.lumberjackLimitPerLevel", 4, 0, 1_000_000);
+            .comment("Lumberjack action cap increase per level when profession.useLinearLimitFormulas=true (logs+stripping combined).")
+            .defineInRange("profession.lumberjackLimitPerLevel", 6, 0, 1_000_000);
 
     public static final ModConfigSpec.IntValue FISHER_LIMIT_BASE = BUILDER
             .comment("Fisher level 0 action cap when profession.useLinearLimitFormulas=true.")
@@ -235,6 +235,96 @@ public final class RealCivConfig {
             .comment("Trader action cap increase per level when profession.useLinearLimitFormulas=true.")
             .defineInRange("profession.traderLimitPerLevel", 1, 0, 1_000_000);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> SHEPHERD_LIMITS = BUILDER
+            .comment("Shepherd shear limits by shepherd level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.shepherdLimits",
+                    List.of(2, 6, 10, 14, 18, 22),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> EXPLORER_LIMITS = BUILDER
+            .comment("Explorer rocket-use limits by explorer level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.explorerLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> TREASURE_HUNTER_LIMITS = BUILDER
+            .comment("Treasure Hunter chest-open limits by level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.treasureHunterLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> BREEDER_LIMITS = BUILDER
+            .comment("Breeder feed/breed limits by breeder level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.breederLimits",
+                    List.of(2, 6, 10, 14, 18, 22),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> SMITHY_LIMITS = BUILDER
+            .comment("Smithy anvil-use limits by smithy level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.smithyLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends Integer>> SMELTER_LIMITS = BUILDER
+            .comment("Smelter furnace-output limits by smelter level index (level 0 = first value).")
+            .defineListAllowEmpty(
+                    "profession.smelterLimits",
+                    List.of(1, 2, 3, 4, 5, 6),
+                    () -> 0,
+                    RealCivConfig::isNonNegativeInteger);
+
+    public static final ModConfigSpec.IntValue SHEPHERD_LIMIT_BASE = BUILDER
+            .comment("Shepherd level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.shepherdLimitBase", 2, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue SHEPHERD_LIMIT_PER_LEVEL = BUILDER
+            .comment("Shepherd action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.shepherdLimitPerLevel", 4, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue EXPLORER_LIMIT_BASE = BUILDER
+            .comment("Explorer level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.explorerLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue EXPLORER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Explorer action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.explorerLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue TREASURE_HUNTER_LIMIT_BASE = BUILDER
+            .comment("Treasure Hunter level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.treasureHunterLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue TREASURE_HUNTER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Treasure Hunter action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.treasureHunterLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue BREEDER_LIMIT_BASE = BUILDER
+            .comment("Breeder level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.breederLimitBase", 2, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue BREEDER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Breeder action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.breederLimitPerLevel", 4, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue SMITHY_LIMIT_BASE = BUILDER
+            .comment("Smithy level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.smithyLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue SMITHY_LIMIT_PER_LEVEL = BUILDER
+            .comment("Smithy action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.smithyLimitPerLevel", 1, 0, 1_000_000);
+
+    public static final ModConfigSpec.IntValue SMELTER_LIMIT_BASE = BUILDER
+            .comment("Smelter level 0 action cap when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.smelterLimitBase", 1, 0, 1_000_000);
+    public static final ModConfigSpec.IntValue SMELTER_LIMIT_PER_LEVEL = BUILDER
+            .comment("Smelter action cap increase per level when profession.useLinearLimitFormulas=true.")
+            .defineInRange("profession.smelterLimitPerLevel", 1, 0, 1_000_000);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_DAILY_ACTION_CAPS = BUILDER
             .comment("Optional daily action caps by profession and level.")
             .comment("Format: PROFESSION|cap0,cap1,cap2,...  (cap <= 0 disables cap for that level)")
@@ -284,7 +374,15 @@ public final class RealCivConfig {
                     List.of(
                             "ITEM_ENCHANT|ENCHANTER|1",
                             "POTION_BREW|BREWER|1",
-                            "VILLAGER_TRADE|TRADER|1"),
+                            "VILLAGER_TRADE|TRADER|1",
+                            "TOOL_STRIP_LOG|LUMBERJACK|1",
+                            "SHEAR_ENTITY|SHEPHERD|1",
+                            "SHEAR_BLOCK|SHEPHERD|1",
+                            "ANIMAL_BREED|BREEDER|1",
+                            "ANIMAL_TAME|BREEDER|1",
+                            "ANVIL_USE|SMITHY|1",
+                            "ANVIL_REPAIR|SMITHY|1",
+                            "ITEM_SMELT|SMELTER|1"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -362,14 +460,6 @@ public final class RealCivConfig {
             .comment("When true, kills against enemy players inside your civilization's land do not consume warrior actions.")
             .comment("This lets defenders repel invaders without being hard-capped by warrior action limits.")
             .define("combat.warriorHomeDefenseNoActionCost", true);
-
-    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_XP_PER_USE = BUILDER
-            .comment("Explosives Expert profession XP awarded instantly per valid explosive action.")
-            .defineInRange("progression.explosivesExpertXpPerUse", 120, 0, 100_000);
-
-    public static final ModConfigSpec.IntValue EXPLOSIVES_EXPERT_GENERAL_XP_PER_USE = BUILDER
-            .comment("General XP awarded instantly per valid explosive action.")
-            .defineInRange("progression.explosivesExpertGeneralXpPerUse", 8, 0, 100_000);
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> HUB_REWARD_RULES = BUILDER
             .comment("Accepted hub item rewards. Format: item_id|profession|credits|profession_xp|general_xp")
@@ -483,7 +573,28 @@ public final class RealCivConfig {
                             "minecraft:chest|CRAFTER|1.0|2|1",
                             "minecraft:furnace|CRAFTER|1.5|3|2",
                             "minecraft:stone_pickaxe|CRAFTER|3.0|4|2",
-                            "minecraft:iron_pickaxe|CRAFTER|8.0|8|4"),
+                            "minecraft:iron_pickaxe|CRAFTER|8.0|8|4",
+                            "minecraft:white_wool|SHEPHERD|1.0|2|1",
+                            "minecraft:mutton|SHEPHERD|0.8|1|1",
+                            "minecraft:egg|BREEDER|0.5|1|1",
+                            "minecraft:feather|BREEDER|0.5|1|1",
+                            "minecraft:leather|BREEDER|1.0|2|1",
+                            "minecraft:honeycomb|BREEDER|1.2|2|1",
+                            "minecraft:honey_bottle|BREEDER|1.5|2|1",
+                            "minecraft:milk_bucket|BREEDER|2.0|3|2",
+                            "minecraft:iron_ingot|SMITHY|2.0|3|2",
+                            "minecraft:gold_ingot|SMITHY|3.0|4|2",
+                            "minecraft:copper_ingot|SMITHY|1.5|2|1",
+                            "minecraft:diamond|SMITHY|8.0|8|4",
+                            "minecraft:netherite_ingot|SMITHY|20.0|16|8",
+                            "minecraft:netherite_scrap|SMITHY|10.0|8|4",
+                            "minecraft:iron_ingot|SMELTER|1.5|2|1",
+                            "minecraft:gold_ingot|SMELTER|2.5|3|2",
+                            "minecraft:copper_ingot|SMELTER|1.0|1|1",
+                            "minecraft:netherite_scrap|SMELTER|10.0|8|4",
+                            "minecraft:glass|SMELTER|0.3|1|1",
+                            "minecraft:brick|SMELTER|0.5|1|1",
+                            "minecraft:charcoal|SMELTER|0.8|1|1"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -503,6 +614,10 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:enchanter_contributions|ENCHANTER|2.00|2|1",
                             "ITEM_TAG|realciv:brewer_contributions|BREWER|1.60|2|1",
                             "ITEM_TAG|realciv:trader_contributions|TRADER|1.40|2|1",
+                            "ITEM_TAG|realciv:shepherd_contributions|SHEPHERD|1.00|2|1",
+                            "ITEM_TAG|realciv:breeder_contributions|BREEDER|1.20|2|1",
+                            "ITEM_TAG|realciv:smithy_contributions|SMITHY|2.00|3|2",
+                            "ITEM_TAG|realciv:smelter_contributions|SMELTER|1.50|2|1",
                             "BLOCK_TAG|minecraft:mineable/pickaxe|MINER|0.10|1|1",
                             "BLOCK_TAG|minecraft:mineable/shovel|TERRAFORMER|0.15|1|1",
                             "BLOCK_TAG|minecraft:logs|LUMBERJACK|1.00|2|1",
@@ -525,7 +640,11 @@ public final class RealCivConfig {
                             "ITEM_TAG|realciv:crafter_reset_items|CRAFTER|1.0",
                             "ITEM_TAG|realciv:enchanter_reset_items|ENCHANTER|1.0",
                             "ITEM_TAG|realciv:brewer_reset_items|BREWER|1.0",
-                            "ITEM_TAG|realciv:trader_reset_items|TRADER|1.0"),
+                            "ITEM_TAG|realciv:trader_reset_items|TRADER|1.0",
+                            "ITEM_TAG|realciv:shepherd_reset_items|SHEPHERD|1.0",
+                            "ITEM_TAG|realciv:breeder_reset_items|BREEDER|1.0",
+                            "ITEM_TAG|realciv:smithy_reset_items|SMITHY|1.0",
+                            "ITEM_TAG|realciv:smelter_reset_items|SMELTER|1.0"),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -634,6 +753,19 @@ public final class RealCivConfig {
             .defineListAllowEmpty(
                     "profession.breakActionCostOverrides",
                     List.of(
+                            "minecraft:cobblestone|2",
+                            "minecraft:stone|2",
+                            "minecraft:cobbled_deepslate|2",
+                            "minecraft:deepslate|2",
+                            "minecraft:dirt|2",
+                            "minecraft:grass_block|2",
+                            "minecraft:coarse_dirt|2",
+                            "minecraft:rooted_dirt|2",
+                            "minecraft:sand|2",
+                            "minecraft:red_sand|2",
+                            "minecraft:gravel|2",
+                            "minecraft:snow_block|2",
+                            "minecraft:mud|2",
                             "minecraft:coal_ore|2",
                             "minecraft:deepslate_coal_ore|2",
                             "minecraft:diamond_ore|3",
@@ -1005,6 +1137,48 @@ public final class RealCivConfig {
         return RealCivUtil.valueForLevel(traderLevel, TRADER_LIMITS.get(), 1);
     }
 
+    public static int shepherdLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, SHEPHERD_LIMIT_BASE.get(), SHEPHERD_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, SHEPHERD_LIMITS.get(), 2);
+    }
+
+    public static int explorerLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, EXPLORER_LIMIT_BASE.get(), EXPLORER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, EXPLORER_LIMITS.get(), 1);
+    }
+
+    public static int treasureHunterLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, TREASURE_HUNTER_LIMIT_BASE.get(), TREASURE_HUNTER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, TREASURE_HUNTER_LIMITS.get(), 1);
+    }
+
+    public static int breederLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, BREEDER_LIMIT_BASE.get(), BREEDER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, BREEDER_LIMITS.get(), 2);
+    }
+
+    public static int smithyLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, SMITHY_LIMIT_BASE.get(), SMITHY_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, SMITHY_LIMITS.get(), 1);
+    }
+
+    public static int smelterLimitForLevel(int level) {
+        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
+            return linearLimitForLevel(level, SMELTER_LIMIT_BASE.get(), SMELTER_LIMIT_PER_LEVEL.get());
+        }
+        return RealCivUtil.valueForLevel(level, SMELTER_LIMITS.get(), 1);
+    }
+
     public static int limitForProfession(Profession profession, int level) {
         if (profession == null) {
             return 0;
@@ -1022,6 +1196,12 @@ public final class RealCivConfig {
             case ENCHANTER -> enchanterLimitForLevel(level);
             case BREWER -> brewerLimitForLevel(level);
             case TRADER -> traderLimitForLevel(level);
+            case SHEPHERD -> shepherdLimitForLevel(level);
+            case EXPLORER -> explorerLimitForLevel(level);
+            case TREASURE_HUNTER -> treasureHunterLimitForLevel(level);
+            case BREEDER -> breederLimitForLevel(level);
+            case SMITHY -> smithyLimitForLevel(level);
+            case SMELTER -> smelterLimitForLevel(level);
             case NONE -> 0;
         };
     }
@@ -1087,109 +1267,6 @@ public final class RealCivConfig {
 
     public static int governanceCoupMinMembers() {
         return Math.max(2, GOVERNANCE_COUP_MIN_MEMBERS.get());
-    }
-
-    public static int explosivesExpertXpPerUse() {
-        return Math.max(0, EXPLOSIVES_EXPERT_XP_PER_USE.get());
-    }
-
-    public static int explosivesExpertGeneralXpPerUse() {
-        return Math.max(0, EXPLOSIVES_EXPERT_GENERAL_XP_PER_USE.get());
-    }
-
-    public static int professionLevelFromXp(int xp) {
-        return RealCivUtil.levelFromThresholds(xp, PROFESSION_XP_THRESHOLDS.get());
-    }
-
-    public static int professionLevelFromXp(@Nullable Profession profession, int xp) {
-        int raw = professionLevelFromXp(xp);
-        return Math.min(raw, professionLevelCap(profession));
-    }
-
-    public static int professionLevelCap(@Nullable Profession profession) {
-        if (profession == null || profession == Profession.NONE) {
-            return 0;
-        }
-        Integer configured = professionLevelCaps().get(profession);
-        if (configured == null) {
-            return Integer.MAX_VALUE;
-        }
-        return Math.max(0, configured);
-    }
-
-    public static Map<Profession, Integer> professionLevelCaps() {
-        Map<Profession, Integer> caps = new HashMap<>();
-        for (String raw : PROFESSION_LEVEL_CAPS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|");
-            if (parts.length != 2) {
-                continue;
-            }
-            Profession profession = Profession.fromConfigName(parts[0].trim());
-            if (profession == null || profession == Profession.NONE) {
-                continue;
-            }
-            Integer cap = tryParseInt(parts[1].trim());
-            if (cap == null || cap < 0) {
-                continue;
-            }
-            caps.put(profession, cap);
-        }
-        return caps;
-    }
-
-    public static int generalLevelFromXp(int xp) {
-        return RealCivUtil.levelFromThresholds(xp, GENERAL_XP_THRESHOLDS.get());
-    }
-
-    public static int maxProfessionLevelGainsPerDay() {
-        return Math.max(0, MAX_PROFESSION_LEVEL_GAINS_PER_DAY.get());
-    }
-
-    public static int maxGeneralLevelGainsPerDay() {
-        return Math.max(0, MAX_GENERAL_LEVEL_GAINS_PER_DAY.get());
-    }
-
-    public static long rentCostCents() {
-        return RealCivUtil.creditsToCents(LAND_RENT_COST.get());
-    }
-
-    public static long rentCostAddedPerOwnedPrivateCents() {
-        return RealCivUtil.creditsToCents(LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE.get());
-    }
-
-    public static long townClaimCostCents() {
-        return RealCivUtil.creditsToCents(LAND_TOWN_CLAIM_COST.get());
-    }
-
-    public static long townClaimCostAddedPerOwnedCents() {
-        return RealCivUtil.creditsToCents(LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED.get());
-    }
-
-    public static int hubStarterAreaBlocks() {
-        return Math.max(1, LAND_HUB_STARTER_AREA_BLOCKS.get());
-    }
-
-    public static long rentDurationTicks() {
-        return 24_000L * LAND_RENT_DAYS.get();
-    }
-
-    public static long upkeepCostCents() {
-        return RealCivUtil.creditsToCents(LAND_UPKEEP_COST.get());
-    }
-
-    public static double hubWithdrawCreditPenaltyRatio() {
-        return Math.max(0.0D, HUB_WITHDRAW_CREDIT_PENALTY_PERCENT.get() / 100.0D);
-    }
-
-    public static long maxContributionKarmaGainPerDayCents() {
-        return RealCivUtil.creditsToCents(Math.max(0.0D, MAX_CONTRIBUTION_KARMA_GAIN_PER_DAY.get()));
     }
 
     public static double civTreasuryDepositRatio() {
@@ -1817,6 +1894,100 @@ public final class RealCivConfig {
     public static void invalidateExternalRuleFileCache() {
         ProfessionRuleFileLoader.invalidateCache();
         cachedProfessionEventHookRules = null;
+    }
+
+    public static double upkeepCostCents() {
+        return Math.max(0.0D, LAND_UPKEEP_COST.get());
+    }
+
+    public static int professionLevelFromXp(@Nullable Profession profession, int xp) {
+        if (profession == null || profession == Profession.NONE || xp < 0) {
+            return 0;
+        }
+        List<? extends Integer> thresholds = PROFESSION_XP_THRESHOLDS.get();
+        int level = 0;
+        for (int i = 0; i < thresholds.size(); i++) {
+            Integer threshold = thresholds.get(i);
+            if (threshold == null || xp < threshold) {
+                break;
+            }
+            level = i;
+        }
+        return level;
+    }
+
+    public static int professionLevelCap(@Nullable Profession profession) {
+        if (profession == null || profession == Profession.NONE) {
+            return 0;
+        }
+        for (String raw : PROFESSION_LEVEL_CAPS.get()) {
+            if (raw == null) continue;
+            String line = raw.trim();
+            if (line.isEmpty() || line.startsWith("#")) continue;
+            String[] parts = line.split("\\|", 2);
+            if (parts.length != 2) continue;
+            Profession parsed = Profession.fromConfigName(parts[0].trim());
+            if (parsed == profession) {
+                try {
+                    return Math.max(0, Integer.parseInt(parts[1].trim()));
+                } catch (NumberFormatException ignored) {
+                    return Integer.MAX_VALUE;
+                }
+            }
+        }
+        return Integer.MAX_VALUE;
+    }
+
+    public static int generalLevelFromXp(int xp) {
+        if (xp < 0) return 0;
+        List<? extends Integer> thresholds = GENERAL_XP_THRESHOLDS.get();
+        int level = 0;
+        for (int i = 0; i < thresholds.size(); i++) {
+            Integer threshold = thresholds.get(i);
+            if (threshold == null || xp < threshold) {
+                break;
+            }
+            level = i;
+        }
+        return level;
+    }
+
+    public static int maxProfessionLevelGainsPerDay() {
+        return Math.max(0, MAX_PROFESSION_LEVEL_GAINS_PER_DAY.get());
+    }
+
+    public static int maxGeneralLevelGainsPerDay() {
+        return Math.max(0, MAX_GENERAL_LEVEL_GAINS_PER_DAY.get());
+    }
+
+    public static long maxContributionKarmaGainPerDayCents() {
+        double cents = MAX_CONTRIBUTION_KARMA_GAIN_PER_DAY.get();
+        if (cents <= 0.0D) return 0L;
+        return (long) Math.round(cents);
+    }
+
+    public static long townClaimCostCents() {
+        return (long) Math.round(Math.max(0.0D, LAND_TOWN_CLAIM_COST.get()));
+    }
+
+    public static long townClaimCostAddedPerOwnedCents() {
+        return (long) Math.round(Math.max(0.0D, LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED.get()));
+    }
+
+    public static long rentCostCents() {
+        return (long) Math.round(Math.max(0.0D, LAND_RENT_COST.get()));
+    }
+
+    public static long rentCostAddedPerOwnedPrivateCents() {
+        return (long) Math.round(Math.max(0.0D, LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE.get()));
+    }
+
+    public static double hubWithdrawCreditPenaltyRatio() {
+        return Math.max(0.0D, Math.min(10.0D, HUB_WITHDRAW_CREDIT_PENALTY_PERCENT.get() / 100.0D));
+    }
+
+    public static int hubStarterAreaBlocks() {
+        return Math.max(1, LAND_HUB_STARTER_AREA_BLOCKS.get());
     }
 
     public static Map<ResourceLocation, RewardRule> rewardRules() {

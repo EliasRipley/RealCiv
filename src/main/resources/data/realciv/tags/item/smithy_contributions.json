@@ -1,0 +1,22 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:iron_ingot",
+    "minecraft:iron_block",
+    "minecraft:gold_ingot",
+    "minecraft:gold_block",
+    "minecraft:copper_ingot",
+    "minecraft:copper_block",
+    "minecraft:diamond",
+    "minecraft:netherite_ingot",
+    "minecraft:netherite_scrap",
+    "minecraft:ancient_debris",
+    "minecraft:chain",
+    "minecraft:iron_nugget",
+    "minecraft:gold_nugget",
+    "minecraft:raw_iron",
+    "minecraft:raw_gold",
+    "minecraft:raw_copper",
+    "#minecraft:trim_templates"
+  ]
+}

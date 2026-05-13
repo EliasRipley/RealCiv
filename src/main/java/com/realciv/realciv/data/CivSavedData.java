@@ -893,6 +893,24 @@ public class CivSavedData extends SavedData {
             case TRADER -> {
                 record.setTraderActions(record.traderActions() - safeRestoredActions);
             }
+            case SHEPHERD -> {
+                record.setShepherdActions(record.shepherdActions() - safeRestoredActions);
+            }
+            case EXPLORER -> {
+                record.setExplorerActions(record.explorerActions() - safeRestoredActions);
+            }
+            case TREASURE_HUNTER -> {
+                record.setTreasureHunterActions(record.treasureHunterActions() - safeRestoredActions);
+            }
+            case BREEDER -> {
+                record.setBreederActions(record.breederActions() - safeRestoredActions);
+            }
+            case SMITHY -> {
+                record.setSmithyActions(record.smithyActions() - safeRestoredActions);
+            }
+            case SMELTER -> {
+                record.setSmelterActions(record.smelterActions() - safeRestoredActions);
+            }
             case NONE -> {
             }
         }
@@ -3849,6 +3867,24 @@ public class CivSavedData extends SavedData {
         private int traderActions;
         private long traderActionsUpdatedAtMillis;
         private int traderXp;
+        private int shepherdActions;
+        private long shepherdActionsUpdatedAtMillis;
+        private int shepherdXp;
+        private int explorerActions;
+        private long explorerActionsUpdatedAtMillis;
+        private int explorerXp;
+        private int treasureHunterActions;
+        private long treasureHunterActionsUpdatedAtMillis;
+        private int treasureHunterXp;
+        private int breederActions;
+        private long breederActionsUpdatedAtMillis;
+        private int breederXp;
+        private int smithyActions;
+        private long smithyActionsUpdatedAtMillis;
+        private int smithyXp;
+        private int smelterActions;
+        private long smelterActionsUpdatedAtMillis;
+        private int smelterXp;
         private int generalXp;
         private long firstSeenAtMillis;
         private final Map<String, HookWindowUsage> hookWindowUsage = new HashMap<>();
@@ -4363,6 +4399,126 @@ public class CivSavedData extends SavedData {
             return traderXp;
         }
 
+        public int shepherdActions() {
+            return shepherdActions;
+        }
+
+        public void setShepherdActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.shepherdActions != updated) {
+                this.shepherdActions = updated;
+                this.shepherdActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long shepherdActionsUpdatedAtMillis() {
+            return shepherdActionsUpdatedAtMillis;
+        }
+
+        public int shepherdXp() {
+            return shepherdXp;
+        }
+
+        public int explorerActions() {
+            return explorerActions;
+        }
+
+        public void setExplorerActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.explorerActions != updated) {
+                this.explorerActions = updated;
+                this.explorerActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long explorerActionsUpdatedAtMillis() {
+            return explorerActionsUpdatedAtMillis;
+        }
+
+        public int explorerXp() {
+            return explorerXp;
+        }
+
+        public int treasureHunterActions() {
+            return treasureHunterActions;
+        }
+
+        public void setTreasureHunterActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.treasureHunterActions != updated) {
+                this.treasureHunterActions = updated;
+                this.treasureHunterActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long treasureHunterActionsUpdatedAtMillis() {
+            return treasureHunterActionsUpdatedAtMillis;
+        }
+
+        public int treasureHunterXp() {
+            return treasureHunterXp;
+        }
+
+        public int breederActions() {
+            return breederActions;
+        }
+
+        public void setBreederActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.breederActions != updated) {
+                this.breederActions = updated;
+                this.breederActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long breederActionsUpdatedAtMillis() {
+            return breederActionsUpdatedAtMillis;
+        }
+
+        public int breederXp() {
+            return breederXp;
+        }
+
+        public int smithyActions() {
+            return smithyActions;
+        }
+
+        public void setSmithyActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.smithyActions != updated) {
+                this.smithyActions = updated;
+                this.smithyActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long smithyActionsUpdatedAtMillis() {
+            return smithyActionsUpdatedAtMillis;
+        }
+
+        public int smithyXp() {
+            return smithyXp;
+        }
+
+        public int smelterActions() {
+            return smelterActions;
+        }
+
+        public void setSmelterActions(int value) {
+            int updated = Math.max(0, value);
+            if (this.smelterActions != updated) {
+                this.smelterActions = updated;
+                this.smelterActionsUpdatedAtMillis = System.currentTimeMillis();
+            }
+        }
+
+        public long smelterActionsUpdatedAtMillis() {
+            return smelterActionsUpdatedAtMillis;
+        }
+
+        public int smelterXp() {
+            return smelterXp;
+        }
+
         public int actionsForProfession(Profession profession) {
             if (profession == null) {
                 return 0;
@@ -4380,6 +4536,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> enchanterActions;
                 case BREWER -> brewerActions;
                 case TRADER -> traderActions;
+                case SHEPHERD -> shepherdActions;
+                case EXPLORER -> explorerActions;
+                case TREASURE_HUNTER -> treasureHunterActions;
+                case BREEDER -> breederActions;
+                case SMITHY -> smithyActions;
+                case SMELTER -> smelterActions;
                 case NONE -> 0;
             };
         }
@@ -4401,6 +4563,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> setEnchanterActions(value);
                 case BREWER -> setBrewerActions(value);
                 case TRADER -> setTraderActions(value);
+                case SHEPHERD -> setShepherdActions(value);
+                case EXPLORER -> setExplorerActions(value);
+                case TREASURE_HUNTER -> setTreasureHunterActions(value);
+                case BREEDER -> setBreederActions(value);
+                case SMITHY -> setSmithyActions(value);
+                case SMELTER -> setSmelterActions(value);
                 case NONE -> {
                 }
             }
@@ -4423,6 +4591,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> enchanterActionsUpdatedAtMillis;
                 case BREWER -> brewerActionsUpdatedAtMillis;
                 case TRADER -> traderActionsUpdatedAtMillis;
+                case SHEPHERD -> shepherdActionsUpdatedAtMillis;
+                case EXPLORER -> explorerActionsUpdatedAtMillis;
+                case TREASURE_HUNTER -> treasureHunterActionsUpdatedAtMillis;
+                case BREEDER -> breederActionsUpdatedAtMillis;
+                case SMITHY -> smithyActionsUpdatedAtMillis;
+                case SMELTER -> smelterActionsUpdatedAtMillis;
                 case NONE -> 0L;
             };
         }
@@ -4739,6 +4913,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> enchanterXp;
                 case BREWER -> brewerXp;
                 case TRADER -> traderXp;
+                case SHEPHERD -> shepherdXp;
+                case EXPLORER -> explorerXp;
+                case TREASURE_HUNTER -> treasureHunterXp;
+                case BREEDER -> breederXp;
+                case SMITHY -> smithyXp;
+                case SMELTER -> smelterXp;
                 case NONE -> 0;
             };
         }
@@ -4758,6 +4938,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> enchanterXp = clamped;
                 case BREWER -> brewerXp = clamped;
                 case TRADER -> traderXp = clamped;
+                case SHEPHERD -> shepherdXp = clamped;
+                case EXPLORER -> explorerXp = clamped;
+                case TREASURE_HUNTER -> treasureHunterXp = clamped;
+                case BREEDER -> breederXp = clamped;
+                case SMITHY -> smithyXp = clamped;
+                case SMELTER -> smelterXp = clamped;
                 case NONE -> {
                 }
             }
@@ -4954,6 +5140,24 @@ public class CivSavedData extends SavedData {
             tag.putInt("traderActions", traderActions);
             tag.putLong("traderActionsUpdatedAtMillis", traderActionsUpdatedAtMillis);
             tag.putInt("traderXp", traderXp);
+            tag.putInt("shepherdActions", shepherdActions);
+            tag.putLong("shepherdActionsUpdatedAtMillis", shepherdActionsUpdatedAtMillis);
+            tag.putInt("shepherdXp", shepherdXp);
+            tag.putInt("explorerActions", explorerActions);
+            tag.putLong("explorerActionsUpdatedAtMillis", explorerActionsUpdatedAtMillis);
+            tag.putInt("explorerXp", explorerXp);
+            tag.putInt("treasureHunterActions", treasureHunterActions);
+            tag.putLong("treasureHunterActionsUpdatedAtMillis", treasureHunterActionsUpdatedAtMillis);
+            tag.putInt("treasureHunterXp", treasureHunterXp);
+            tag.putInt("breederActions", breederActions);
+            tag.putLong("breederActionsUpdatedAtMillis", breederActionsUpdatedAtMillis);
+            tag.putInt("breederXp", breederXp);
+            tag.putInt("smithyActions", smithyActions);
+            tag.putLong("smithyActionsUpdatedAtMillis", smithyActionsUpdatedAtMillis);
+            tag.putInt("smithyXp", smithyXp);
+            tag.putInt("smelterActions", smelterActions);
+            tag.putLong("smelterActionsUpdatedAtMillis", smelterActionsUpdatedAtMillis);
+            tag.putInt("smelterXp", smelterXp);
             tag.putInt("generalXp", generalXp);
             if (firstSeenAtMillis > 0L) {
                 tag.putLong("firstSeenAtMillis", firstSeenAtMillis);
@@ -5097,6 +5301,18 @@ public class CivSavedData extends SavedData {
             record.brewerXp = Math.max(0, tag.getInt("brewerXp"));
             record.traderActions = Math.max(0, tag.getInt("traderActions"));
             record.traderXp = Math.max(0, tag.getInt("traderXp"));
+            record.shepherdActions = Math.max(0, tag.getInt("shepherdActions"));
+            record.shepherdXp = Math.max(0, tag.getInt("shepherdXp"));
+            record.explorerActions = Math.max(0, tag.getInt("explorerActions"));
+            record.explorerXp = Math.max(0, tag.getInt("explorerXp"));
+            record.treasureHunterActions = Math.max(0, tag.getInt("treasureHunterActions"));
+            record.treasureHunterXp = Math.max(0, tag.getInt("treasureHunterXp"));
+            record.breederActions = Math.max(0, tag.getInt("breederActions"));
+            record.breederXp = Math.max(0, tag.getInt("breederXp"));
+            record.smithyActions = Math.max(0, tag.getInt("smithyActions"));
+            record.smithyXp = Math.max(0, tag.getInt("smithyXp"));
+            record.smelterActions = Math.max(0, tag.getInt("smelterActions"));
+            record.smelterXp = Math.max(0, tag.getInt("smelterXp"));
             record.generalXp = Math.max(0, tag.getInt("generalXp"));
             if (tag.contains("focusedProfession")) {
                 Profession parsed = Profession.fromConfigName(tag.getString("focusedProfession"));
@@ -5148,6 +5364,24 @@ public class CivSavedData extends SavedData {
             record.traderActionsUpdatedAtMillis = tag.contains("traderActionsUpdatedAtMillis")
                     ? Math.max(0L, tag.getLong("traderActionsUpdatedAtMillis"))
                     : (record.traderActions > 0 ? loadedAt : 0L);
+            record.shepherdActionsUpdatedAtMillis = tag.contains("shepherdActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("shepherdActionsUpdatedAtMillis"))
+                    : (record.shepherdActions > 0 ? loadedAt : 0L);
+            record.explorerActionsUpdatedAtMillis = tag.contains("explorerActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("explorerActionsUpdatedAtMillis"))
+                    : (record.explorerActions > 0 ? loadedAt : 0L);
+            record.treasureHunterActionsUpdatedAtMillis = tag.contains("treasureHunterActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("treasureHunterActionsUpdatedAtMillis"))
+                    : (record.treasureHunterActions > 0 ? loadedAt : 0L);
+            record.breederActionsUpdatedAtMillis = tag.contains("breederActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("breederActionsUpdatedAtMillis"))
+                    : (record.breederActions > 0 ? loadedAt : 0L);
+            record.smithyActionsUpdatedAtMillis = tag.contains("smithyActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("smithyActionsUpdatedAtMillis"))
+                    : (record.smithyActions > 0 ? loadedAt : 0L);
+            record.smelterActionsUpdatedAtMillis = tag.contains("smelterActionsUpdatedAtMillis")
+                    ? Math.max(0L, tag.getLong("smelterActionsUpdatedAtMillis"))
+                    : (record.smelterActions > 0 ? loadedAt : 0L);
 
             ListTag hookUsageTag = tag.getList("hookWindowUsage", Tag.TAG_COMPOUND);
             for (Tag entry : hookUsageTag) {
@@ -5260,6 +5494,12 @@ public class CivSavedData extends SavedData {
                 case ENCHANTER -> RealCivConfig.professionLevelFromXp(Profession.ENCHANTER, enchanterXp());
                 case BREWER -> RealCivConfig.professionLevelFromXp(Profession.BREWER, brewerXp());
                 case TRADER -> RealCivConfig.professionLevelFromXp(Profession.TRADER, traderXp());
+                case SHEPHERD -> RealCivConfig.professionLevelFromXp(Profession.SHEPHERD, shepherdXp());
+                case EXPLORER -> RealCivConfig.professionLevelFromXp(Profession.EXPLORER, explorerXp());
+                case TREASURE_HUNTER -> RealCivConfig.professionLevelFromXp(Profession.TREASURE_HUNTER, treasureHunterXp());
+                case BREEDER -> RealCivConfig.professionLevelFromXp(Profession.BREEDER, breederXp());
+                case SMITHY -> RealCivConfig.professionLevelFromXp(Profession.SMITHY, smithyXp());
+                case SMELTER -> RealCivConfig.professionLevelFromXp(Profession.SMELTER, smelterXp());
                 case NONE -> 0;
             };
         }

@@ -5,6 +5,7 @@ import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.event.RealCivEvents;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
+import com.realciv.realciv.network.RealCivNetwork;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -23,6 +24,7 @@ public class RealCivMod {
     public RealCivMod(IEventBus modEventBus, ModContainer modContainer) {
         ModBlocks.register(modEventBus);
         ModMenus.register(modEventBus);
+        modEventBus.addListener(RealCivNetwork::registerPayloads);
         modEventBus.addListener(this::addCreativeTabContents);
         modEventBus.addListener(this::onConfigLoading);
         modEventBus.addListener(this::onConfigReloading);

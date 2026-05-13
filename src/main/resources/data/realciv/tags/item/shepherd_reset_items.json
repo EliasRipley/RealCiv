@@ -1,0 +1,9 @@
+{
+  "replace": false,
+  "values": [
+    "#minecraft:wool",
+    "minecraft:string",
+    "minecraft:mutton",
+    "minecraft:cooked_mutton"
+  ]
+}

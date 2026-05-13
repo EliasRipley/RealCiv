@@ -14,6 +14,6 @@ public final class RealCivClientEvents {
 
     @SubscribeEvent
     public static void onRegisterScreens(RegisterMenuScreensEvent event) {
-        event.register(ModMenus.CIV_CONTROL_PANEL.get(), CivControlPanelScreen::new);
+        event.register(ModMenus.HUB_DEPOSIT.get(), HubDepositScreen::new);
     }
 }

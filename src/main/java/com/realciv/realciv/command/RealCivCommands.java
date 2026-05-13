@@ -7,7 +7,9 @@ import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.LandClass;
-import com.realciv.realciv.hub.CommunityHubStockMenu;
+import com.realciv.realciv.hub.HubStockSnapshot;
+import com.realciv.realciv.hub.HubStockSnapshotBuilder;
+import com.realciv.realciv.network.RealCivPayloads;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import com.realciv.realciv.integration.RealCivFTBChunksMirror;
 import com.realciv.realciv.logic.CivPermissionService;
@@ -48,6 +50,7 @@ import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
 import net.minecraft.world.level.block.Block;
 import net.neoforged.neoforge.event.RegisterCommandsEvent;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.fml.loading.FMLPaths;
 import org.jetbrains.annotations.Nullable;
 
@@ -3218,30 +3221,17 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        boolean privileged = source.hasPermission(3) || RealCivUtil.isBypass(player);
-        boolean canManagePolicy = hasCivPermission(
+        boolean canManage = hasCivPermission(
                 source,
                 data,
                 civId,
                 CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
-
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new CommunityHubStockMenu(
-                                containerId,
-                                playerInventory,
-                                player,
-                                data,
-                                civId,
-                                privileged,
-                                canManagePolicy),
-                Component.literal("Community Hub Stock")));
-        player.sendSystemMessage(Component.literal(
-                "Hub stock page opened for " + civDisplay(data, civId)
-                        + ". Left click=stack, Right click=1 item, Shift click=4 stacks."));
-        if (canManagePolicy) {
+        HubStockSnapshot snap = HubStockSnapshotBuilder.build(player, data, civId, canManage, 0);
+        PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenHubStockPayload(snap));
+        player.sendSystemMessage(Component.literal("Opened hub stock screen for " + civDisplay(data, civId) + "."));
+        if (canManage) {
             player.sendSystemMessage(Component.literal(
-                    "Leadership controls enabled in top row: policy mode, shared ratio, and daily allowances."));
+                    "Leadership controls enabled: policy mode, shared ratio, and daily allowances."));
         }
         return 1;
     }

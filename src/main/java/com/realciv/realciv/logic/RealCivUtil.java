@@ -1,8 +1,12 @@
 package com.realciv.realciv.logic;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.CivSavedData;
+import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
+import java.util.UUID;
+import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.AxeItem;
 import net.minecraft.world.item.HoeItem;
 import net.minecraft.world.item.ItemStack;
@@ -12,7 +16,6 @@ import net.minecraft.world.item.SwordItem;
 import net.minecraft.world.item.Tier;
 import net.minecraft.world.item.TieredItem;
 import net.minecraft.world.item.Tiers;
-import net.minecraft.server.level.ServerPlayer;
 import org.jetbrains.annotations.Nullable;
 
 public final class RealCivUtil {
@@ -24,7 +27,7 @@ public final class RealCivUtil {
     }
 
     public static String formatCredits(long cents) {
-        return String.format(Locale.ROOT, "%.2f", cents / 100.0D);
+        return String.format(Locale.ROOT, "%,d", cents / 100) + "." + String.format(Locale.ROOT, "%02d", Math.abs((int) (cents % 100)));
     }
 
     public static String formatPercentFromRatio(double ratio) {
@@ -142,6 +145,71 @@ public final class RealCivUtil {
             case UNKNOWN -> "advanced";
             case NONE -> "";
         };
+    }
+
+    public static String playerDisplayName(@Nullable ServerPlayer viewer, UUID playerId) {
+        if (viewer != null && viewer.getServer() != null) {
+            ServerPlayer online = viewer.getServer().getPlayerList().getPlayer(playerId);
+            if (online != null) return online.getGameProfile().getName();
+        }
+        String raw = playerId.toString();
+        return raw.length() > 8 ? raw.substring(0, 8) : raw;
+    }
+
+    public static String civilizationDisplayName(CivSavedData data, String civId) {
+        if (civId == null) return "Unknown Civilization";
+        CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        return civ == null ? civId : civ.displayName();
+    }
+
+    public static String displayProfession(@Nullable Profession profession) {
+        if (profession == null || profession == Profession.NONE) return "None";
+        return humanizeEnumName(profession.name());
+    }
+
+    public static String humanizeEnumName(@Nullable String serialized) {
+        if (serialized == null || serialized.isBlank()) return "-";
+        String[] words = serialized.split("_");
+        StringBuilder out = new StringBuilder(serialized.length());
+        for (int i = 0; i < words.length; i++) {
+            if (i > 0) out.append(' ');
+            if (words[i].isEmpty()) continue;
+            out.append(Character.toUpperCase(words[i].charAt(0)));
+            if (words[i].length() > 1) out.append(words[i].substring(1).toLowerCase(Locale.ROOT));
+        }
+        return out.toString();
+    }
+
+    public static int xpForProfession(CivSavedData.PlayerRecord record, Profession profession) {
+        return switch (profession) {
+            case FARMER -> record.farmerXp();
+            case MINER -> record.minerXp();
+            case TERRAFORMER -> record.terraformerXp();
+            case LUMBERJACK -> record.lumberjackXp();
+            case FISHER -> record.fisherXp();
+            case HUNTER -> record.hunterXp();
+            case WARRIOR -> record.warriorXp();
+            case EXPLOSIVES_EXPERT -> record.explosivesExpertXp();
+            case CRAFTER -> record.crafterXp();
+            case ENCHANTER -> record.enchanterXp();
+            case BREWER -> record.brewerXp();
+            case TRADER -> record.traderXp();
+            case SHEPHERD -> record.shepherdXp();
+            case EXPLORER -> record.explorerXp();
+            case TREASURE_HUNTER -> record.treasureHunterXp();
+            case BREEDER -> record.breederXp();
+            case SMITHY -> record.smithyXp();
+            case SMELTER -> record.smelterXp();
+            case NONE -> 0;
+        };
+    }
+
+    public static Profession topProfession(CivSavedData.PlayerRecord record) {
+        return java.util.Arrays.stream(Profession.values())
+                .filter(p -> p != Profession.NONE)
+                .max(Comparator.comparingInt((Profession p) -> record.levelFor(p))
+                        .thenComparingInt(p -> xpForProfession(record, p)))
+                .orElse(Profession.NONE);
     }
 
     public enum ToolTier {

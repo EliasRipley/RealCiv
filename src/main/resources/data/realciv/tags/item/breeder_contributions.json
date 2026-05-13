@@ -1,0 +1,17 @@
+{
+  "replace": false,
+  "values": [
+    "minecraft:egg",
+    "minecraft:feather",
+    "minecraft:leather",
+    "minecraft:rabbit_hide",
+    "minecraft:rabbit_foot",
+    "minecraft:milk_bucket",
+    "#minecraft:wool",
+    "#minecraft:meat",
+    "#minecraft:fishes",
+    "minecraft:bone",
+    "minecraft:honeycomb",
+    "minecraft:honey_bottle"
+  ]
+}

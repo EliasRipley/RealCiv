@@ -16,6 +16,12 @@ public enum Profession {
     ENCHANTER,
     BREWER,
     TRADER,
+    SHEPHERD,
+    EXPLORER,
+    TREASURE_HUNTER,
+    BREEDER,
+    SMITHY,
+    SMELTER,
     NONE;
 
     @Nullable
@@ -36,6 +42,12 @@ public enum Profession {
             case "ENCHANTER", "ENCHANTING", "ENCHANTOR" -> ENCHANTER;
             case "BREWER", "ALCHEMIST", "BREWING" -> BREWER;
             case "TRADER", "MERCHANT", "TRADE" -> TRADER;
+            case "SHEPHERD" -> SHEPHERD;
+            case "EXPLORER" -> EXPLORER;
+            case "TREASURE_HUNTER", "TREASUREHUNTER", "TREASURE" -> TREASURE_HUNTER;
+            case "BREEDER", "BREED" -> BREEDER;
+            case "SMITHY", "SMITH" -> SMITHY;
+            case "SMELTER", "SMELT", "FURNACE" -> SMELTER;
             case "NONE", "GENERAL" -> NONE;
             default -> null;
         };

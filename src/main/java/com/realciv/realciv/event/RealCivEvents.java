@@ -1,8 +1,7 @@
 package com.realciv.realciv.event;
 
 import com.realciv.realciv.ModBlocks;
-import com.realciv.realciv.census.CensusMenu;
-import com.realciv.realciv.diplomacy.DiplomacyTableMenu;
+import com.realciv.realciv.census.CensusSnapshotBuilder;
 import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
@@ -16,11 +15,13 @@ import com.realciv.realciv.logic.ProfessionEventHook;
 import com.realciv.realciv.logic.ProfessionEventHookRule;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
+import com.realciv.realciv.diplomacy.DiplomacySnapshotBuilder;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
-import com.realciv.realciv.hub.CommunityHubStockMenu;
+import com.realciv.realciv.hub.CommunityHubDepositMenu;
+import com.realciv.realciv.hub.HubStockSnapshotBuilder;
 import com.realciv.realciv.integration.RealCivFTBChunksMirror;
-import com.realciv.realciv.ledger.ProfessionLedgerMenu;
-import com.realciv.realciv.tax.TaxMenu;
+import com.realciv.realciv.ledger.ProfessionLedgerSnapshotBuilder;
+import com.realciv.realciv.tax.TaxSnapshotBuilder;
 import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.List;
@@ -41,6 +42,7 @@ import net.minecraft.world.InteractionResult;
 import net.minecraft.world.ItemInteractionResult;
 import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.damagesource.DamageSource;
+import net.neoforged.neoforge.network.PacketDistributor;
 import net.minecraft.world.entity.Entity;
 import net.minecraft.world.entity.Mob;
 import net.minecraft.world.entity.TraceableEntity;
@@ -52,8 +54,8 @@ import net.minecraft.world.entity.npc.AbstractVillager;
 import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.MinecartTNT;
-import net.minecraft.world.inventory.ChestMenu;
 import net.minecraft.world.inventory.ResultSlot;
+import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
@@ -113,7 +115,13 @@ public final class RealCivEvents {
             Profession.CRAFTER,
             Profession.ENCHANTER,
             Profession.BREWER,
-            Profession.TRADER);
+            Profession.TRADER,
+            Profession.SHEPHERD,
+            Profession.EXPLORER,
+            Profession.TREASURE_HUNTER,
+            Profession.BREEDER,
+            Profession.SMITHY,
+            Profession.SMELTER);
 
     private RealCivEvents() {
     }
@@ -151,7 +159,11 @@ public final class RealCivEvents {
                         + " | Crafter: " + record.levelFor(Profession.CRAFTER)
                         + " | Enchanter: " + record.levelFor(Profession.ENCHANTER)
                         + " | Brewer: " + record.levelFor(Profession.BREWER)
-                        + " | Trader: " + record.levelFor(Profession.TRADER)));
+                        + " | Trader: " + record.levelFor(Profession.TRADER)
+                        + " | Shepherd: " + record.levelFor(Profession.SHEPHERD)
+                        + " | Breeder: " + record.levelFor(Profession.BREEDER)
+                        + " | Smithy: " + record.levelFor(Profession.SMITHY)
+                        + " | Smelter: " + record.levelFor(Profession.SMELTER)));
         if (RealCivConfig.specializationSingleProfessionLockEnabled()) {
             @Nullable Profession focus = record.focusedProfession();
             if (focus == null) {
@@ -547,6 +559,7 @@ public final class RealCivEvents {
                                 + " plot in civilization '" + lookup.civilizationId() + "'.");
             }
             event.setCanceled(true);
+            player.inventoryMenu.broadcastFullState();
             return;
         }
 
@@ -1195,19 +1208,55 @@ public final class RealCivEvents {
         if (event.getUsePhase() != UseItemOnBlockEvent.UsePhase.ITEM_AFTER_BLOCK) {
             return;
         }
-        if (!isShearTool(event.getItemStack())) {
+
+        ItemStack held = event.getItemStack();
+
+        // Wilderness/ownership pre-placement check for BlockItems
+        if (held.getItem() instanceof BlockItem) {
+            CivSavedData data = CivSavedData.get(player.getServer());
+            long now = currentGameTime(player);
+
+            // Community hub's first placement bypasses wilderness check (handled in onBlockPlace)
+            boolean skipCheck = held.is(ModBlocks.COMMUNITY_HUB_ITEM.get())
+                    && !data.hasStarterTownAreaGranted(data.getOrAssignCivilization(player.getUUID()));
+            if (!skipCheck) {
+                BlockPos checkPos = event.getFace() != null
+                        ? event.getPos().relative(event.getFace())
+                        : event.getPos();
+                if (!canBuildInChunk(player, event.getLevel(), checkPos, data, now)) {
+                    CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                            event.getLevel().dimension().location().toString(),
+                            checkPos.getX() >> 4,
+                            checkPos.getZ() >> 4);
+                    if (lookup == null) {
+                        RealCivMessages.deny(
+                                player,
+                                "You can't place blocks in wilderness. Build in your civilization's COMMUNITY, CIVIC, or PRIVATE land.");
+                    } else {
+                        RealCivMessages.deny(
+                                player,
+                                "You can't build on this " + lookup.plot().landClass().name().toLowerCase(Locale.ROOT)
+                                        + " plot in civilization '" + lookup.civilizationId() + "'.");
+                    }
+                    event.cancelWithResult(ItemInteractionResult.FAIL);
+                    player.inventoryMenu.broadcastFullState();
+                    return;
+                }
+            }
+        }
+
+        if (!isShearTool(held)) {
             return;
         }
 
         BlockState targetState = event.getLevel().getBlockState(event.getPos());
-        // If this path can be represented as a tool modification, we let BlockToolModificationEvent own it.
         if (targetState.getToolModifiedState(event.getUseOnContext(), ItemAbilities.SHEARS_HARVEST, true) != null) {
             return;
         }
         if (!(targetState.getBlock() instanceof IShearable shearable)) {
             return;
         }
-        if (!shearable.isShearable(player, event.getItemStack(), event.getLevel(), event.getPos())) {
+        if (!shearable.isShearable(player, held, event.getLevel(), event.getPos())) {
             return;
         }
 
@@ -1472,8 +1521,6 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(actor.getUUID());
         record.setExplosivesExpertActions(record.explosivesExpertActions() + 1);
         record.addDailyProfessionActions(Profession.EXPLOSIVES_EXPERT, 1);
-        record.addExplosivesExpertXp(RealCivConfig.explosivesExpertXpPerUse());
-        record.addGeneralXp(RealCivConfig.explosivesExpertGeneralXpPerUse());
         data.setDirty();
     }
 
@@ -1693,10 +1740,9 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) -> ChestMenu.sixRows(
-                        containerId,
-                        playerInventory,
-                        new CommunityHubDepositContainer(civId)),
+                (containerId, playerInventory, p) ->
+                        new CommunityHubDepositMenu(
+                                containerId, playerInventory, new CommunityHubDepositContainer(civId)),
                 Component.literal("Community Hub Deposit")));
 
         player.sendSystemMessage(Component.literal(
@@ -1730,30 +1776,14 @@ public final class RealCivEvents {
     private static void openHubStockMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
         registerPendingWarriorHubProgress(player, data, civId);
-        boolean privileged = player.hasPermissions(3) || RealCivUtil.isBypass(player);
         boolean canManagePolicy = CivPermissionService.hasCivPermission(
-                player,
-                data,
-                civId,
-                CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
+                player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
 
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new CommunityHubStockMenu(
-                                containerId,
-                                playerInventory,
-                                player,
-                                data,
-                                civId,
-                                privileged,
-                                canManagePolicy),
-                Component.literal("Community Hub Stock")));
-        player.sendSystemMessage(Component.literal(
-                "Stock/withdraw mode for civilization '" + civId + "'. "
-                        + "Left click: 1 stack, Right click: 1 item, Shift click: 4 stacks."));
+        var snapshot = HubStockSnapshotBuilder.build(player, data, civId, canManagePolicy, 0);
+        PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenHubStockPayload(snapshot));
+        player.sendSystemMessage(Component.literal("Hub stock/withdraw opened for '" + civId + "'."));
         if (canManagePolicy) {
-            player.sendSystemMessage(Component.literal(
-                    "Leadership controls enabled: use the top row to adjust policy mode, shared ratio, and daily allowances."));
+            player.sendSystemMessage(Component.literal("Leadership policy controls enabled."));
         }
 
         event.setCancellationResult(InteractionResult.SUCCESS);
@@ -1764,17 +1794,10 @@ public final class RealCivEvents {
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean canManage = CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)
                 || data.isCivicManager(civId, player.getUUID());
-        String title = "Census: " + civilizationDisplayName(data, civId);
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) -> new CensusMenu(containerId, playerInventory, player, data, civId, canManage),
-                Component.literal(title)));
+        var snapshot = CensusSnapshotBuilder.build(player, data, civId, canManage, 0);
+        PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenCensusPayload(snapshot));
         player.sendSystemMessage(Component.literal(
-                "Census opened for " + civilizationDisplayName(data, civId)
-                        + ". Use left/right click actions inside the menu to manage members, requests, and invites."));
-        if (canManage) {
-            player.sendSystemMessage(Component.literal(
-                    "Tip: /realciv census invite <player> sends invites, and requests can be approved/denied in the menu."));
-        }
+                "Census opened for " + RealCivUtil.civilizationDisplayName(data, civId) + "."));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
@@ -1785,13 +1808,9 @@ public final class RealCivEvents {
             ServerPlayer player,
             CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new TaxMenu(containerId, playerInventory, player, data, civId),
-                Component.literal("Tax Office: " + civilizationDisplayName(data, civId))));
-        player.sendSystemMessage(Component.literal(
-                "Tax Office opened for " + civilizationDisplayName(data, civId)
-                        + ". Use this menu to review dues and prepay upkeep."));
+        var snapshot = TaxSnapshotBuilder.build(player, data, civId);
+        PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenTaxPayload(snapshot));
+        player.sendSystemMessage(Component.literal("Tax Office opened for " + RealCivUtil.civilizationDisplayName(data, civId) + "."));
 
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
@@ -1802,12 +1821,9 @@ public final class RealCivEvents {
             ServerPlayer player,
             CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new ProfessionLedgerMenu(containerId, playerInventory, player, data, civId),
-                Component.literal("Profession Ledger: " + civilizationDisplayName(data, civId))));
-        player.sendSystemMessage(Component.literal(
-                "Profession Ledger opened. Track profession levels, XP, and action usage in one place."));
+        var snapshot = ProfessionLedgerSnapshotBuilder.build(player, data, civId);
+        PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenProfessionLedgerPayload(snapshot));
+        player.sendSystemMessage(Component.literal("Profession Ledger opened."));
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
     }
@@ -1817,12 +1833,9 @@ public final class RealCivEvents {
             ServerPlayer player,
             CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new DiplomacyTableMenu(containerId, playerInventory, player, data, civId),
-                Component.literal("Diplomacy Table: " + civilizationDisplayName(data, civId))));
-        player.sendSystemMessage(Component.literal(
-                "Diplomacy Table opened. Review relations and war casualties with other civilizations."));
+        var snapshot = DiplomacySnapshotBuilder.build(player, data, civId, 0);
+        PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenDiplomacyPayload(snapshot));
+        player.sendSystemMessage(Component.literal("Diplomacy Table opened."));
         event.setCancellationResult(InteractionResult.SUCCESS);
         event.setCanceled(true);
     }
@@ -1898,7 +1911,7 @@ public final class RealCivEvents {
             return;
         }
 
-        String civName = civilizationDisplayName(data, current.civilizationId());
+        String civName = RealCivUtil.civilizationDisplayName(data, current.civilizationId());
         if (current.landClass() == LandClass.PRIVATE) {
             if (current.ownerId() != null && current.ownerId().equals(player.getUUID())) {
                 player.sendSystemMessage(Component.literal(
@@ -1929,14 +1942,6 @@ public final class RealCivEvents {
             return TerritoryState.wilderness();
         }
         return TerritoryState.claimed(lookup.civilizationId(), lookup.plot().landClass(), lookup.plot().ownerId());
-    }
-
-    private static String civilizationDisplayName(CivSavedData data, @Nullable String civId) {
-        if (civId == null) {
-            return "Unknown Civilization";
-        }
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
-        return civ == null ? civId : civ.displayName();
     }
 
     private static String ownerName(ServerPlayer viewer, @Nullable UUID ownerId) {

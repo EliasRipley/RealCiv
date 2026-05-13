@@ -50,19 +50,18 @@ In-Game Civic Blocks
   - Right-click: deposit UI.
   - Sneak + right-click: stock/withdraw UI.
 - Census Block (`realciv:census_block`)
-  - Right-click: opens the Civilization Control Panel (modern policy dashboard).
-  - Sneak + right-click: opens legacy census management UI (members, invites, join requests, manager actions).
-    - Includes governance/economy policy buttons (with civ permission checks).
-    - Includes optional governance approval workflow for council/democratic models, persisted across restarts.
-    - Includes starter template actions for profession hooks and hunter selector caps.
+  - Right-click: opens the Census dashboard (members, invites, join requests, manager actions).
 - Civic Control Console (`realciv:civic_control_console`)
   - Right-click: opens the Civilization Control Panel.
 - Profession Ledger (`realciv:profession_ledger`)
-  - Right-click: opens the Civilization Control Panel for profession/economy policy controls.
+  - Right-click: opens the Profession Ledger dashboard.
 - War Table (`realciv:war_table`)
-  - Right-click: opens the Civilization Control Panel for governance/war policy controls.
+  - Right-click: opens the Diplomacy Table dashboard for relations/war status.
 - Tax Block (`realciv:tax_block`)
-  - Private plot upkeep information and prepay flow.
+  - Right-click: opens the Tax Office dashboard for upkeep and prepay flow.
+- Community Hub (`realciv:community_hub`)
+  - Right-click: deposit inventory window for contribution/reset loops.
+  - Sneak + right-click: opens the Hub Stock dashboard for withdrawals and policy.
 - Land Wand (`realciv:land_wand`)
   - Left-click block: set selection `pos1` (chunk).
   - Right-click block: set selection `pos2` (chunk).

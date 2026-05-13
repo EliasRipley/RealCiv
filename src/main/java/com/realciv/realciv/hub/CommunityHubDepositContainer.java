@@ -28,14 +28,13 @@ public class CommunityHubDepositContainer extends SimpleContainer {
     public void stopOpen(Player player) {
         super.stopOpen(player);
 
+        if (!(player instanceof ServerPlayer serverPlayer) || serverPlayer.getServer() == null) {
+            return;
+        }
         if (processed) {
             return;
         }
         processed = true;
-
-        if (!(player instanceof ServerPlayer serverPlayer) || serverPlayer.getServer() == null) {
-            return;
-        }
 
         CivSavedData data = CivSavedData.get(serverPlayer.getServer());
         int acceptedItemCount = 0;

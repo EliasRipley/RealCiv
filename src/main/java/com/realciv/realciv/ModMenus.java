@@ -1,6 +1,6 @@
 package com.realciv.realciv;
 
-import com.realciv.realciv.panel.CivControlPanelMenu;
+import com.realciv.realciv.hub.CommunityHubDepositMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
@@ -11,9 +11,9 @@ import net.neoforged.neoforge.registries.DeferredRegister;
 public final class ModMenus {
     public static final DeferredRegister<MenuType<?>> MENUS = DeferredRegister.create(Registries.MENU, RealCivMod.MOD_ID);
 
-    public static final DeferredHolder<MenuType<?>, MenuType<CivControlPanelMenu>> CIV_CONTROL_PANEL = MENUS.register(
-            "civ_control_panel",
-            () -> IMenuTypeExtension.create(CivControlPanelMenu::fromBuffer));
+    public static final DeferredHolder<MenuType<?>, MenuType<CommunityHubDepositMenu>> HUB_DEPOSIT = MENUS.register(
+            "hub_deposit",
+            () -> IMenuTypeExtension.create(CommunityHubDepositMenu::fromBuffer));
 
     private ModMenus() {
     }
