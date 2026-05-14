@@ -135,7 +135,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         boolean rightClick = clickType == ClickType.PICKUP && button == 1;
         if (mode == ViewMode.TOWN) {
             if (!(admin || mayor)) {
-                RealCivMessages.deny(viewer, "Only the mayor/admin can manage town (CIVIC) claims.");
+                RealCivMessages.deny(viewer, "Only the mayor/admin can manage CIVIC claims.");
                 return;
             }
             if (rightClick) {
@@ -166,12 +166,12 @@ public class LandClaimMenu extends AbstractContainerMenu {
             return;
         }
         if (existing != null && existing.civilizationId().equals(civId) && existing.plot().landClass() == LandClass.CIVIC) {
-            RealCivMessages.deny(viewer, "That chunk is already a CIVIC town claim.");
+            RealCivMessages.deny(viewer, "That chunk is already CIVIC territory.");
             return;
         }
         int civicChunks = data.countPlotsByClass(civId, LandClass.CIVIC);
         if (civicChunks > 0 && !isWithinOrAdjacentToTown(dimension, chunkX, chunkZ)) {
-            RealCivMessages.deny(viewer, "Town claims must be within or adjacent to existing town land.");
+            RealCivMessages.deny(viewer, "CIVIC claims must be adjacent to existing CIVIC territory.");
             return;
         }
 
@@ -180,8 +180,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
         if (treasury < claimCost) {
             RealCivMessages.deny(
                     viewer,
-                    "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
-                            + ", civ has " + RealCivUtil.formatCredits(treasury) + ".");
+                    "Civ treasury has " + RealCivUtil.formatCredits(treasury)
+                            + ", need " + RealCivUtil.formatCredits(claimCost) + " for this claim.");
             return;
         }
 
@@ -193,12 +193,12 @@ public class LandClaimMenu extends AbstractContainerMenu {
         data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.CIVIC, null, now, 0L);
         data.addAuditLog(
                 civId,
-                viewer.getGameProfile().getName() + " claimed town chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI"
+                viewer.getGameProfile().getName() + " claimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI"
                         + " for " + RealCivUtil.formatCredits(claimCost),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         viewer.sendSystemMessage(Component.literal(
-                "Town chunk claimed [" + chunkX + ", " + chunkZ + "]. Collective contribution karma now: "
+                "CIVIC chunk claimed [" + chunkX + ", " + chunkZ + "]. Civ treasury: "
                         + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
     }
 
@@ -218,13 +218,20 @@ public class LandClaimMenu extends AbstractContainerMenu {
             return;
         }
 
-        data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
+        String civIdRefund = existing.civilizationId();
+        long refundAmount = RealCivConfig.townClaimCostCents();
+        data.addCivTreasuryCents(civIdRefund, refundAmount);
+
+        data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
         data.addAuditLog(
-                existing.civilizationId(),
-                viewer.getGameProfile().getName() + " unclaimed chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI",
+                civIdRefund,
+                viewer.getGameProfile().getName() + " unclaimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury.",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
-        viewer.sendSystemMessage(Component.literal("Unclaimed chunk [" + chunkX + ", " + chunkZ + "]."));
+        viewer.sendSystemMessage(Component.literal(
+                "CIVIC chunk unclaimed [" + chunkX + ", " + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury."));
     }
 
     private void claimOrRenewPrivateChunk(long chunkX, long chunkZ) {
@@ -238,7 +245,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         long paidTicks = days * 24_000L;
 
         if (!isWithinOrAdjacentToTown(dimension, chunkX, chunkZ)) {
-            RealCivMessages.deny(viewer, "Private plots must be within or adjacent to your town's CIVIC claims.");
+            RealCivMessages.deny(viewer, "PRIVATE plots must be adjacent to your civilization's CIVIC territory.");
             return;
         }
 
@@ -253,14 +260,14 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 && lookup.plot().ownerId() != null
                 && !lookup.plot().ownerId().equals(viewer.getUUID())
                 && !admin) {
-            RealCivMessages.deny(viewer, "That private plot is owned by another player.");
+            RealCivMessages.deny(viewer, "That PRIVATE plot is owned by another player.");
             return;
         }
         if (lookup != null
                 && lookup.civilizationId().equals(civId)
                 && lookup.plot().landClass() == LandClass.CIVIC
                 && !admin) {
-            RealCivMessages.deny(viewer, "This chunk is CIVIC land. Ask your mayor to allot it.");
+            RealCivMessages.deny(viewer, "This chunk is CIVIC territory. Ask your mayor to allot it.");
             return;
         }
 
@@ -269,8 +276,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
         if (record.socialCreditCents(civId) < cost) {
             RealCivMessages.deny(
                     viewer,
-                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(cost)
-                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
+                    "You need " + RealCivUtil.formatCredits(cost) + " karma, you have "
+                            + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
             return;
         }
 
@@ -289,12 +296,12 @@ public class LandClaimMenu extends AbstractContainerMenu {
             record.addSocialCreditCents(civId, -cost);
             data.addAuditLog(
                     civId,
-                    viewer.getGameProfile().getName() + " renewed private plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI"
+                    viewer.getGameProfile().getName() + " renewed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI"
                             + " until upkeep tick " + next,
                     RealCivConfig.MAX_AUDIT_LOGS.get());
             data.setDirty();
             viewer.sendSystemMessage(Component.literal(
-                    "Private plot renewed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
+                    "PRIVATE plot renewed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
                             + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
             return;
         }
@@ -303,11 +310,11 @@ public class LandClaimMenu extends AbstractContainerMenu {
         data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, viewer.getUUID(), now, paidTicks);
         data.addAuditLog(
                 civId,
-                viewer.getGameProfile().getName() + " claimed private plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI",
+                viewer.getGameProfile().getName() + " claimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         viewer.sendSystemMessage(Component.literal(
-                "Private chunk claimed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
+                "PRIVATE chunk claimed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
     }
 
@@ -330,17 +337,24 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 && !lookup.plot().ownerId().equals(viewer.getUUID())
                 && !admin
                 && !mayor) {
-            RealCivMessages.deny(viewer, "Only owner/mayor/admin can unclaim this private plot.");
+            RealCivMessages.deny(viewer, "Only owner/mayor/admin can unclaim this PRIVATE plot.");
             return;
         }
 
-        data.clearPlot(lookup.civilizationId(), dimension, chunkX, chunkZ);
+        String civIdRefund = lookup.civilizationId();
+        long refundAmount = RealCivConfig.rentCostCents();
+        data.getOrCreatePlayer(viewer.getUUID()).addSocialCreditCents(civIdRefund, refundAmount);
+
+        data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
         data.addAuditLog(
-                lookup.civilizationId(),
-                viewer.getGameProfile().getName() + " unclaimed private plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI",
+                civIdRefund,
+                viewer.getGameProfile().getName() + " unclaimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " karma.",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
-        viewer.sendSystemMessage(Component.literal("Private plot unclaimed [" + chunkX + ", " + chunkZ + "]."));
+        viewer.sendSystemMessage(Component.literal(
+                "PRIVATE plot unclaimed [" + chunkX + ", " + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " karma."));
     }
 
     private boolean isClaimDimensionAllowed(String dimension) {
@@ -383,7 +397,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         display.setItem(SOUTH_SLOT, named(Items.ARROW, "Pan South"));
         display.setItem(REFRESH_SLOT, named(Items.SPYGLASS, "Refresh"));
 
-        String modeText = mode == ViewMode.TOWN ? "Mode: TOWN (CIVIC)" : "Mode: PRIVATE";
+        String modeText = mode == ViewMode.TOWN ? "Mode: CIVIC" : "Mode: PRIVATE";
         display.setItem(MODE_SLOT, named(mode == ViewMode.TOWN ? Items.BLUE_BANNER : Items.YELLOW_BANNER, modeText));
 
         String civName = civDisplay(civId);
@@ -394,13 +408,13 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 Component.literal(
                         "Land GUI | " + civName
                                 + " | center [" + centerChunkX + "," + centerChunkZ + "]"
-                                + " | credits " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                                + " | collective contribution karma " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
+                                + " | karma " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
+                                + " | civ treasury " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
         display.setItem(INFO_SLOT, info);
 
         ItemStack help = new ItemStack(Items.PAPER);
         String clickHelp = mode == ViewMode.TOWN
-                ? "TOWN mode: L-claim CIVIC, R-unclaim (mayor/admin)"
+                ? "CIVIC mode: L-claim, R-unclaim (mayor/admin)"
                 : "PRIVATE mode: L-claim/renew self, R-unclaim";
         help.set(DataComponents.CUSTOM_NAME, Component.literal(clickHelp + " | Click mode button to switch."));
         display.setItem(HELP_SLOT, help);

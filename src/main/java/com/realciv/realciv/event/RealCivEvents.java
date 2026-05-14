@@ -57,10 +57,12 @@ import net.minecraft.world.entity.vehicle.MinecartTNT;
 import net.minecraft.world.inventory.ResultSlot;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
 import net.minecraft.world.level.block.Blocks;
+import net.minecraft.world.level.block.entity.RandomizableContainerBlockEntity;
 import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.common.ItemAbility;
 import net.neoforged.neoforge.common.ItemAbilities;
@@ -370,6 +372,34 @@ public final class RealCivEvents {
             event.setCanceled(true);
             return;
         }
+        if (event.getLevel().getBlockEntity(event.getPos()) instanceof RandomizableContainerBlockEntity container && container.getLootTable() != null) {
+            if (!canProgressProfession(player, data, Profession.TREASURE_HUNTER, true)) {
+                event.setCancellationResult(InteractionResult.FAIL);
+                event.setCanceled(true);
+                return;
+            }
+            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+            int thLevel = record.levelFor(Profession.TREASURE_HUNTER);
+            int limit = RealCivConfig.treasureHunterLimitForLevel(thLevel);
+            if (!canConsumeDailyActionBudget(player, record, Profession.TREASURE_HUNTER, 1, "open chests")) {
+                event.setCancellationResult(InteractionResult.FAIL);
+                event.setCanceled(true);
+                return;
+            }
+            if (record.treasureHunterActions() >= limit) {
+                RealCivMessages.deny(
+                        player,
+                        "You can't open more treasure chests until you've returned to the Community Hub. "
+                                + "Treasure Hunter limit reached (" + limit + ").");
+                event.setCancellationResult(InteractionResult.FAIL);
+                event.setCanceled(true);
+                return;
+            }
+            record.setTreasureHunterActions(record.treasureHunterActions() + 1);
+            record.addDailyProfessionActions(Profession.TREASURE_HUNTER, 1);
+            data.setDirty();
+            return;
+        }
         if (isAnvilBlock(clickedState) && !tryConsumeConfiguredHookActions(
                 player,
                 data,
@@ -419,6 +449,42 @@ public final class RealCivEvents {
         if (isRegulatedExplosiveItem(event.getItemStack()) && !canUseExplosivesExpertAction(player, data, true)) {
             event.setCancellationResult(InteractionResult.FAIL);
             event.setCanceled(true);
+            return;
+        }
+        if (event.getItemStack().is(Items.FIREWORK_ROCKET) && player.isFallFlying()) {
+            String civId = data.getOrAssignCivilization(player.getUUID());
+            CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                    player.serverLevel().dimension().location().toString(),
+                    player.getBlockX() >> 4,
+                    player.getBlockZ() >> 4);
+            boolean inOwnCivTerritory = lookup != null && civId.equals(lookup.civilizationId());
+            if (!inOwnCivTerritory) {
+                if (!canProgressProfession(player, data, Profession.EXPLORER, true)) {
+                    event.setCancellationResult(InteractionResult.FAIL);
+                    event.setCanceled(true);
+                    return;
+                }
+                CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+                int explorerLevel = record.levelFor(Profession.EXPLORER);
+                int limit = RealCivConfig.explorerLimitForLevel(explorerLevel);
+                if (!canConsumeDailyActionBudget(player, record, Profession.EXPLORER, 1, "explore")) {
+                    event.setCancellationResult(InteractionResult.FAIL);
+                    event.setCanceled(true);
+                    return;
+                }
+                if (record.explorerActions() >= limit) {
+                    RealCivMessages.deny(
+                            player,
+                            "You can't use more fireworks until you've returned to the Community Hub. "
+                                    + "Explorer limit reached (" + limit + ").");
+                    event.setCancellationResult(InteractionResult.FAIL);
+                    event.setCanceled(true);
+                    return;
+                }
+                record.setExplorerActions(record.explorerActions() + 1);
+                record.addDailyProfessionActions(Profession.EXPLORER, 1);
+                data.setDirty();
+            }
             return;
         }
         if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
@@ -692,6 +758,30 @@ public final class RealCivEvents {
             if (breakProfession == BreakProfession.LUMBERJACK) {
                 int levelValue = record.levelFor(Profession.LUMBERJACK);
                 int limit = RealCivConfig.lumberjackLimitForLevel(levelValue);
+                ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+                int blockCap = RealCivConfig.lumberjackBlockActionCapForLevel(blockId, levelValue);
+                if (blockCap > 0) {
+                    int used = record.lumberjackBlockActions(blockId);
+                    if (used + 1 > blockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Lumberjack block cap reached for " + blockId + " (" + used + "/" + blockCap + "). "
+                                        + "Contribute wood at the Community Hub to reset your lumberjack window.");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
+                int dailyBlockCap = RealCivConfig.lumberjackDailyBlockActionCapForLevel(blockId, levelValue);
+                if (dailyBlockCap > 0) {
+                    int dailyUsed = record.lumberjackDailyBlockActions(blockId);
+                    if (dailyUsed + 1 > dailyBlockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Daily lumberjack cap reached for " + blockId + " (" + dailyUsed + "/" + dailyBlockCap + ").");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
                 if (!canConsumeDailyActionBudget(player, record, Profession.LUMBERJACK, actionCost, "chop")) {
                     event.setCanceled(true);
                     return;
@@ -746,6 +836,30 @@ public final class RealCivEvents {
             } else if (breakProfession == BreakProfession.TERRAFORMER) {
                 int levelValue = record.levelFor(Profession.TERRAFORMER);
                 int limit = RealCivConfig.terraformerLimitForLevel(levelValue);
+                ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+                int blockCap = RealCivConfig.terraformerBlockActionCapForLevel(blockId, levelValue);
+                if (blockCap > 0) {
+                    int used = record.terraformerBlockActions(blockId);
+                    if (used + 1 > blockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Terraformer block cap reached for " + blockId + " (" + used + "/" + blockCap + "). "
+                                        + "Contribute earth materials at the Community Hub to reset your terraformer window.");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
+                int dailyBlockCap = RealCivConfig.terraformerDailyBlockActionCapForLevel(blockId, levelValue);
+                if (dailyBlockCap > 0) {
+                    int dailyUsed = record.terraformerDailyBlockActions(blockId);
+                    if (dailyUsed + 1 > dailyBlockCap) {
+                        RealCivMessages.deny(
+                                player,
+                                "Daily terraformer cap reached for " + blockId + " (" + dailyUsed + "/" + dailyBlockCap + ").");
+                        event.setCanceled(true);
+                        return;
+                    }
+                }
                 if (!canConsumeDailyActionBudget(player, record, Profession.TERRAFORMER, actionCost, "terraform")) {
                     event.setCanceled(true);
                     return;
@@ -821,6 +935,9 @@ public final class RealCivEvents {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (breakProfession == BreakProfession.LUMBERJACK) {
             record.setLumberjackActions(record.lumberjackActions() + actionCost);
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            record.addLumberjackBlockActions(blockId, 1);
+            record.addLumberjackDailyBlockActions(blockId, 1);
             record.addDailyProfessionActions(Profession.LUMBERJACK, actionCost);
         } else if (breakProfession == BreakProfession.MINER) {
             record.setMinerActions(record.minerActions() + actionCost);
@@ -830,6 +947,9 @@ public final class RealCivEvents {
             record.addDailyProfessionActions(Profession.MINER, actionCost);
         } else if (breakProfession == BreakProfession.TERRAFORMER) {
             record.setTerraformerActions(record.terraformerActions() + actionCost);
+            ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
+            record.addTerraformerBlockActions(blockId, 1);
+            record.addTerraformerDailyBlockActions(blockId, 1);
             record.addDailyProfessionActions(Profession.TERRAFORMER, actionCost);
         }
         data.setDirty();

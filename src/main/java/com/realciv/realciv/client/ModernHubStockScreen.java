@@ -1,31 +1,43 @@
 package com.realciv.realciv.client;
 
+import com.daqem.uilib.api.client.gui.component.scroll.ScrollOrientation;
+import com.daqem.uilib.client.gui.component.AbstractComponent;
+import com.daqem.uilib.client.gui.component.io.ButtonComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollBarComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollContentComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollPanelComponent;
 import com.realciv.realciv.hub.HubStockSnapshot;
 import com.realciv.realciv.network.RealCivPayloads;
-import dev.ftb.mods.ftblibrary.icon.Icon;
-import dev.ftb.mods.ftblibrary.ui.NordButton;
-import dev.ftb.mods.ftblibrary.ui.Panel;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.Widget;
-import dev.ftb.mods.ftblibrary.ui.WidgetLayout;
-import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Predicate;
 
-public class ModernHubStockScreen extends RealCivPanelScreen {
+public class ModernHubStockScreen extends RealCivUIScreen {
     public static final int ACTION_WITHDRAW_1 = 1;
     public static final int ACTION_WITHDRAW_64 = 2;
     public static final int ACTION_PREV_PAGE = 3;
     public static final int ACTION_NEXT_PAGE = 4;
 
-    private static final int ROW_WIDTH = PANEL_WIDTH - 32;
+    private static final int SCROLL_X = 14;
+    private static final int SCROLL_Y = 52;
+    private static final int SCROLL_W = PANEL_WIDTH - 42;
+    private static final int SCROLL_H = 162;
+    private static final int SCROLL_BAR_X = PANEL_WIDTH - 26;
+    private static final int SCROLL_BAR_W = 6;
+
+    // Stock table columns
+    private static final int COL_ITEM = 4;
+    private static final int COL_STOCK = 110;
+    private static final int COL_CONTRIB = 170;
+    private static final int COL_ALLOW = 250;
+    private static final int COL_DAYS = 310;
+    private static final int[] COLS = {COL_ITEM, COL_STOCK, COL_CONTRIB, COL_ALLOW, COL_DAYS};
+    private static final String[] HEADERS = {"Item", "Stock", "Yours", "Allow/d", "Days"};
 
     private HubStockSnapshot snapshot;
+    private ScrollContentComponent scrollContent;
 
     public ModernHubStockScreen(HubStockSnapshot snapshot) {
         super(Component.literal("Community Hub Stock"),
@@ -35,82 +47,45 @@ public class ModernHubStockScreen extends RealCivPanelScreen {
 
     public void refresh(HubStockSnapshot newSnapshot) {
         this.snapshot = newSnapshot;
-        refreshContent();
+        if (scrollContent != null) {
+            scrollContent.getChildren().clear();
+            populateScrollContent();
+            scrollContent.setY(0);
+        }
     }
 
     @Override
-    public void addWidgets() {
-        setupSearchBox("Search items...");
-        setupContentPanel();
-        refreshContent();
+    protected void addScreenWidgets() {
+        addComponent(new ButtonComponent(panelX + 10, panelY + 36, 18, 14,
+                Component.literal("<"), (btn, screen, mx, my, button) -> { sendAction(ACTION_PREV_PAGE); return true; }));
+        addComponent(new ButtonComponent(panelX + PANEL_WIDTH - 28, panelY + 36, 18, 14,
+                Component.literal(">"), (btn, screen, mx, my, button) -> { sendAction(ACTION_NEXT_PAGE); return true; }));
 
-        add(new NordButton(this, Component.literal("<"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) {
-                sendAction(ACTION_PREV_PAGE);
-            }
-        }.setPosAndSize(10, 40, 18, 16));
+        // Distribution mode header (above scroll area)
+        addComponent(new RowLabel(panelX + 14, panelY + 48,
+                "Distribution mode: " + snapshot.distributionMode(), 0xFFF4F7FA));
 
-        add(new NordButton(this, Component.literal(">"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) {
-                sendAction(ACTION_NEXT_PAGE);
-            }
-        }.setPosAndSize(PANEL_WIDTH - 28, 40, 18, 16));
+        ScrollContentComponent content = new ScrollContentComponent(0, 0, 2, ScrollOrientation.VERTICAL);
+        scrollContent = content;
+        populateScrollContent();
+
+        addComponent(new ScrollPanelComponent(null, panelX + SCROLL_X, panelY + SCROLL_Y, SCROLL_W, SCROLL_H,
+                ScrollOrientation.VERTICAL, content,
+                createScrollBar(SCROLL_BAR_X, 0, SCROLL_BAR_W, SCROLL_H, ScrollOrientation.VERTICAL)));
     }
 
-    @Override
-    protected void populateContentPanel(Panel panel) {
-        String query = (searchBox != null) ? searchBox.getText().toLowerCase() : "";
-        Predicate<String> filter = query.isEmpty()
-            ? s -> true
-            : s -> s.toLowerCase().contains(query);
-
-        // Distribution mode header (not scrollable, rendered at top)
-        // Actually, it's inside the scrollable panel for consistency
-        panel.add(createTextWidget("", 0));
-
-        // Page info
+    private void populateScrollContent() {
         String pageInfo = "Page " + (snapshot.page() + 1) + "/" + snapshot.totalPages();
-        panel.add(createTextWidget(pageInfo, 0xFF9DB0C2));
+        scrollContent.addChild(new RowLabel(0, 0, pageInfo, 0xFF9DB0C2));
+        scrollContent.addChild(new TableHeaderRow(0, 0, HEADERS, COLS));
 
-        List<Integer> filtered = new ArrayList<>();
         for (int i = 0; i < snapshot.entries().size(); i++) {
-            if (filter.test(snapshot.entries().get(i).itemName())) filtered.add(i);
+            scrollContent.addChild(new StockRowComponent(0, 0, i, snapshot.entries().get(i)));
         }
 
-        for (int idx : filtered) {
-            panel.add(new StockRowWidget(panel, idx, snapshot.entries().get(idx)));
+        if (snapshot.entries().isEmpty()) {
+            scrollContent.addChild(new RowLabel(0, 0, "No stock items available.", 0xFF9E9E9E));
         }
-
-        if (filtered.isEmpty() && !query.isEmpty()) {
-            panel.add(createTextWidget("No matching stock items found.", 0xFF9E9E9E));
-        }
-    }
-
-    @Override
-    protected void alignContentPanel(Panel panel) {
-        for (Widget w : panel.getWidgets()) {
-            if (w.width == 0) w.setSize(ROW_WIDTH, ROW_HEIGHT);
-            else if (w.width < 10) w.setSize(ROW_WIDTH, w.height > 0 ? w.height : ROW_HEIGHT);
-        }
-        panel.align(new WidgetLayout.Vertical(2, 2, 4));
-    }
-
-    @Override
-    public void drawBackground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-        super.drawBackground(graphics, theme, x, y, w, h);
-
-        // Distribution mode line (outside scrollable area)
-        var mcFont = Minecraft.getInstance().font;
-        graphics.drawString(mcFont, Component.literal("Distribution mode"), x + 14, y + CONTENT_TOP + 14, 0xFF9BA9B7, false);
-        String distMode = mcFont.plainSubstrByWidth(snapshot.distributionMode(), PANEL_WIDTH - 134);
-        graphics.drawString(mcFont, Component.literal(distMode), x + 134, y + CONTENT_TOP + 14, 0xFFF4F7FA, false);
-    }
-
-    @Override
-    protected void onSearchChanged() {
-        refreshContent();
     }
 
     private void sendAction(int actionId) {
@@ -118,71 +93,63 @@ public class ModernHubStockScreen extends RealCivPanelScreen {
                 RealCivPayloads.SCREEN_HUB_STOCK, actionId));
     }
 
-    private class StockRowWidget extends Widget {
+    private class StockRowComponent extends AbstractComponent<StockRowComponent> {
         private final int origIndex;
         private final HubStockSnapshot.StockRow row;
 
-        StockRowWidget(Panel panel, int origIndex, HubStockSnapshot.StockRow row) {
-            super(panel);
+        StockRowComponent(int x, int y, int origIndex, HubStockSnapshot.StockRow row) {
+            super(null, x, y, CONTENT_WIDTH, ROW_HEIGHT);
             this.origIndex = origIndex;
             this.row = row;
-            setSize(ROW_WIDTH, ROW_HEIGHT);
-        }
-
-        @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            boolean hovered = isMouseOver();
-            var font = Minecraft.getInstance().font;
-
-            if (hovered) {
-                graphics.fill(x - 2, y - 1, x + w + 2, y + h + 1, 0x30FFFFFF);
-            }
-
-            String line = row.itemName() + "  stock:" + row.available() + "  yours:" + row.playerContributed();
-            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(line, ROW_WIDTH)),
-                    x, y, 0xFFF4F7FA, false);
-
-            if (row.dailyAllowance() > 0) {
-                String allowText = "allow:" + row.dailyAllowance() + "/d";
-                graphics.drawString(font, Component.literal(allowText),
-                        x + ROW_WIDTH - 80, y, 0xFFFFD54F, false);
-
-                if (row.available() > 0 && row.dailyAllowance() > 0) {
-                    long daysSupply = row.available() / row.dailyAllowance();
-                    graphics.drawString(font, Component.literal(daysSupply + "d"),
-                            x + ROW_WIDTH - 28, y, 0xFF90CAF9, false);
-                }
-            }
-
-            if (hovered) {
-                String tip = "Left-click: withdraw 64 | Right-click: withdraw 1";
-                if (snapshot.canManage() && row.dailyAllowance() > 0) {
-                    tip += " | Shift+click: adjust allowance";
-                }
-                graphics.drawString(font, Component.literal(font.plainSubstrByWidth(tip, ROW_WIDTH)),
-                        x + 4, y, 0x60FFFFFF, false);
-            }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            boolean shift = Widget.isShiftKeyDown();
-
-            if (shift && snapshot.canManage()) {
-                if (button.isLeft()) {
-                    sendAction(3000 + origIndex);
+            setOnClickEvent((comp, screen, mx, my, button) -> {
+                if (Screen.hasShiftDown()) {
+                    if (snapshot.canManage()) {
+                        sendAction(button == 0 ? 3000 + origIndex : 4000 + origIndex);
+                    }
                 } else {
-                    sendAction(4000 + origIndex);
+                    sendAction(button == 0 ? 2000 + origIndex : 1000 + origIndex);
                 }
                 return true;
+            });
+        }
+
+        @Override
+        public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+            boolean hovered = isTotalHovered(mouseX, mouseY);
+            if (hovered) {
+                graphics.fill(-2, -1, CONTENT_WIDTH + 2, 13, 0x20FFFFFF);
             }
 
-            if (button.isLeft()) {
-                sendAction(2000 + origIndex);
+            var font = Minecraft.getInstance().font;
+            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(row.itemName(), 100)),
+                    COL_ITEM, 0, 0xFFF4F7FA, false);
+            graphics.drawString(font, Component.literal(String.valueOf(row.available())),
+                    COL_STOCK, 0, 0xFFF4F7FA, false);
+            graphics.drawString(font, Component.literal(String.valueOf(row.playerContributed())),
+                    COL_CONTRIB, 0, 0xFFF4F7FA, false);
+
+            if (row.dailyAllowance() > 0) {
+                graphics.drawString(font, Component.literal(String.valueOf(row.dailyAllowance())),
+                        COL_ALLOW, 0, 0xFFFFD54F, false);
+
+                if (row.available() > 0) {
+                    long daysSupply = row.available() / row.dailyAllowance();
+                    graphics.drawString(font, Component.literal(daysSupply + "d"),
+                            COL_DAYS, 0, 0xFF90CAF9, false);
+                }
             } else {
-                sendAction(1000 + origIndex);
+                graphics.drawString(font, Component.literal("\u221E"),
+                        COL_ALLOW, 0, 0xFF78909C, false);
             }
-            return true;
+
+            if (hovered) {
+                String tip = "Left: withdraw 64 | Right: withdraw 1";
+                if (snapshot.canManage() && row.dailyAllowance() > 0) {
+                    tip += " | Shift: adjust allowance";
+                }
+                graphics.drawString(font, Component.literal(font.plainSubstrByWidth(tip, 300)),
+                        COL_ITEM, -10, 0x60FFFFFF, false);
+            }
         }
     }
 }

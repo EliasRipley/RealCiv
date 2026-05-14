@@ -20,6 +20,7 @@ public final class DiplomacySnapshotBuilder {
 
         List<String> others = new ArrayList<>(data.civilizationIdsSorted());
         others.removeIf(id -> id.equals(civId));
+        others.removeIf(id -> id.equals(com.realciv.realciv.config.RealCivConfig.defaultCivilizationId()));
 
         int totalPages = Math.max(1, (others.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);
         page = Math.max(0, Math.min(page, totalPages - 1));

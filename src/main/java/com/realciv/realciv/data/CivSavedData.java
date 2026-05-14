@@ -862,12 +862,15 @@ public class CivSavedData extends SavedData {
             }
             case MINER -> {
                 record.setMinerActions(record.minerActions() - safeRestoredActions);
+                record.clearMinerBlockWindow();
             }
             case TERRAFORMER -> {
                 record.setTerraformerActions(record.terraformerActions() - safeRestoredActions);
+                record.clearTerraformerBlockWindow();
             }
             case LUMBERJACK -> {
                 record.setLumberjackActions(record.lumberjackActions() - safeRestoredActions);
+                record.clearLumberjackBlockWindow();
             }
             case FISHER -> {
                 record.setFisherActions(record.fisherActions() - safeRestoredActions);
@@ -3893,6 +3896,12 @@ public class CivSavedData extends SavedData {
         private final Map<String, Integer> professionDailyActions = new HashMap<>();
         private long minerDailyBlockActionDayIndex = -1L;
         private final Map<String, Integer> minerDailyBlockActions = new HashMap<>();
+        private final Map<String, Integer> lumberjackBlockActions = new HashMap<>();
+        private long lumberjackDailyBlockActionDayIndex = -1L;
+        private final Map<String, Integer> lumberjackDailyBlockActions = new HashMap<>();
+        private final Map<String, Integer> terraformerBlockActions = new HashMap<>();
+        private long terraformerDailyBlockActionDayIndex = -1L;
+        private final Map<String, Integer> terraformerDailyBlockActions = new HashMap<>();
         private long professionProgressDayIndex = -1L;
         private int generalLevelsGainedToday;
         private final Map<String, Integer> professionLevelsGainedToday = new HashMap<>();
@@ -4037,6 +4046,10 @@ public class CivSavedData extends SavedData {
             }
         }
 
+        public void clearMinerBlockWindow() {
+            minerBlockActions.clear();
+        }
+
         public int minerBlockActions(ResourceLocation blockId) {
             if (blockId == null) {
                 return 0;
@@ -4077,6 +4090,98 @@ public class CivSavedData extends SavedData {
                 next = Integer.MAX_VALUE;
             }
             minerDailyBlockActions.put(key, (int) next);
+        }
+
+        public void clearLumberjackBlockWindow() {
+            lumberjackBlockActions.clear();
+        }
+
+        public int lumberjackBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            return Math.max(0, lumberjackBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addLumberjackBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            String key = blockId.toString();
+            int current = Math.max(0, lumberjackBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            lumberjackBlockActions.put(key, (int) next);
+        }
+
+        public int lumberjackDailyBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            resetLumberjackDailyBlockActionWindowIfNeeded();
+            return Math.max(0, lumberjackDailyBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addLumberjackDailyBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            resetLumberjackDailyBlockActionWindowIfNeeded();
+            String key = blockId.toString();
+            int current = Math.max(0, lumberjackDailyBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            lumberjackDailyBlockActions.put(key, (int) next);
+        }
+
+        public void clearTerraformerBlockWindow() {
+            terraformerBlockActions.clear();
+        }
+
+        public int terraformerBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            return Math.max(0, terraformerBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addTerraformerBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            String key = blockId.toString();
+            int current = Math.max(0, terraformerBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            terraformerBlockActions.put(key, (int) next);
+        }
+
+        public int terraformerDailyBlockActions(ResourceLocation blockId) {
+            if (blockId == null) {
+                return 0;
+            }
+            resetTerraformerDailyBlockActionWindowIfNeeded();
+            return Math.max(0, terraformerDailyBlockActions.getOrDefault(blockId.toString(), 0));
+        }
+
+        public void addTerraformerDailyBlockActions(ResourceLocation blockId, int delta) {
+            if (blockId == null || delta <= 0) {
+                return;
+            }
+            resetTerraformerDailyBlockActionWindowIfNeeded();
+            String key = blockId.toString();
+            int current = Math.max(0, terraformerDailyBlockActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            terraformerDailyBlockActions.put(key, (int) next);
         }
 
         public int dailyProfessionActionsUsed(Profession profession) {
@@ -4838,6 +4943,24 @@ public class CivSavedData extends SavedData {
             minerDailyBlockActions.clear();
         }
 
+        private void resetLumberjackDailyBlockActionWindowIfNeeded() {
+            long dayIndex = currentUtcDayIndex();
+            if (lumberjackDailyBlockActionDayIndex == dayIndex) {
+                return;
+            }
+            lumberjackDailyBlockActionDayIndex = dayIndex;
+            lumberjackDailyBlockActions.clear();
+        }
+
+        private void resetTerraformerDailyBlockActionWindowIfNeeded() {
+            long dayIndex = currentUtcDayIndex();
+            if (terraformerDailyBlockActionDayIndex == dayIndex) {
+                return;
+            }
+            terraformerDailyBlockActionDayIndex = dayIndex;
+            terraformerDailyBlockActions.clear();
+        }
+
         private int maxXpForProfessionLevel(int level) {
             if (level < 0) {
                 return 0;
@@ -5109,6 +5232,22 @@ public class CivSavedData extends SavedData {
                 }
             }
             tag.put("minerBlockActions", minerBlockTag);
+            CompoundTag lumberjackBlockTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : lumberjackBlockActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    lumberjackBlockTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("lumberjackBlockActions", lumberjackBlockTag);
+            CompoundTag terraformerBlockTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : terraformerBlockActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    terraformerBlockTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("terraformerBlockActions", terraformerBlockTag);
             tag.putInt("terraformerActions", terraformerActions);
             tag.putLong("terraformerActionsUpdatedAtMillis", terraformerActionsUpdatedAtMillis);
             tag.putInt("terraformerXp", terraformerXp);
@@ -5278,6 +5417,20 @@ public class CivSavedData extends SavedData {
                 int value = Math.max(0, minerBlockTag.getInt(key));
                 if (value > 0) {
                     record.minerBlockActions.put(key, value);
+                }
+            }
+            CompoundTag lumberjackBlockTag = tag.getCompound("lumberjackBlockActions");
+            for (String key : lumberjackBlockTag.getAllKeys()) {
+                int value = Math.max(0, lumberjackBlockTag.getInt(key));
+                if (value > 0) {
+                    record.lumberjackBlockActions.put(key, value);
+                }
+            }
+            CompoundTag terraformerBlockTag = tag.getCompound("terraformerBlockActions");
+            for (String key : terraformerBlockTag.getAllKeys()) {
+                int value = Math.max(0, terraformerBlockTag.getInt(key));
+                if (value > 0) {
+                    record.terraformerBlockActions.put(key, value);
                 }
             }
             record.terraformerActions = Math.max(0, tag.getInt("terraformerActions"));

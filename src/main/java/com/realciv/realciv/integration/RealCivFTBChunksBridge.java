@@ -30,6 +30,7 @@ public final class RealCivFTBChunksBridge {
     public static final String CLAIM_MODE_PRIVATE = "private";
 
     private static final ThreadLocal<Boolean> INTERNAL_UNCLAIM = ThreadLocal.withInitial(() -> false);
+    private static final ThreadLocal<Boolean> CLAIM_HANDLED_INTERNALLY = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Integer> INTERNAL_SYNC_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static boolean registered;
 
@@ -120,7 +121,9 @@ public final class RealCivFTBChunksBridge {
         }
         ClaimDecision decision = validateClaim(source, chunk);
         if (decision.allowed()) {
-            return CompoundEventResult.pass();
+            CLAIM_HANDLED_INTERNALLY.set(true);
+            applyClaim(source, decision);
+            return CompoundEventResult.interruptFalse(ClaimResult.success());
         }
         sendClaimFailure(source, decision);
         return CompoundEventResult.interruptFalse(ClaimResult.customProblem(CLAIM_DENIED_TRANSLATION_KEY));
@@ -143,6 +146,10 @@ public final class RealCivFTBChunksBridge {
 
     private static void afterClaim(CommandSourceStack source, ClaimedChunk chunk) {
         if (isInternalSync()) {
+            return;
+        }
+        if (CLAIM_HANDLED_INTERNALLY.get()) {
+            CLAIM_HANDLED_INTERNALLY.set(false);
             return;
         }
         ClaimDecision decision = validateClaim(source, chunk);
@@ -174,16 +181,49 @@ public final class RealCivFTBChunksBridge {
             return;
         }
 
-        data.clearPlot(lookup.civilizationId(), dimension, chunkX, chunkZ);
-        data.addAuditLog(
-                lookup.civilizationId(),
-                actorName(source) + " unclaimed chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via FTB Chunks map",
-                RealCivConfig.MAX_AUDIT_LOGS.get());
+        LandClass landClass = lookup.plot().landClass();
+        UUID ownerId = lookup.plot().ownerId();
+        String civId = lookup.civilizationId();
+
+        data.clearPlot(civId, dimension, chunkX, chunkZ);
+
+        if (landClass == LandClass.CIVIC) {
+            long refund = RealCivConfig.townClaimCostCents();
+            data.addCivTreasuryCents(civId, refund);
+            data.addAuditLog(
+                    civId,
+                    actorName(source) + " unclaimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ
+                            + "] via FTB Chunks map. Refunded " + RealCivUtil.formatCredits(refund) + " to civ treasury.",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+        } else if (landClass == LandClass.PRIVATE && ownerId != null) {
+            long refund = RealCivConfig.rentCostCents();
+            data.getOrCreatePlayer(ownerId).addSocialCreditCents(civId, refund);
+            data.addAuditLog(
+                    civId,
+                    actorName(source) + " unclaimed PRIVATE chunk " + dimension + "[" + chunkX + "," + chunkZ
+                            + "] via FTB Chunks map. Refunded " + RealCivUtil.formatCredits(refund) + " to player "
+                            + ownerId + ".",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+        } else {
+            data.addAuditLog(
+                    civId,
+                    actorName(source) + " unclaimed chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via FTB Chunks map.",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+        }
+
         data.setDirty();
 
         if (source.getEntity() instanceof ServerPlayer player) {
-            player.sendSystemMessage(Component.literal(
-                    "Chunk unclaimed at [" + chunkX + ", " + chunkZ + "] and synced with RealCiv zoning."));
+            StringBuilder msg = new StringBuilder();
+            msg.append("Chunk unclaimed at [").append(chunkX).append(", ").append(chunkZ).append("].");
+            if (landClass == LandClass.CIVIC) {
+                long refund = RealCivConfig.townClaimCostCents();
+                msg.append(" Refunded ").append(RealCivUtil.formatCredits(refund)).append(" to civ treasury.");
+            } else if (landClass == LandClass.PRIVATE && ownerId != null) {
+                long refund = RealCivConfig.rentCostCents();
+                msg.append(" Refunded ").append(RealCivUtil.formatCredits(refund)).append(" karma to you.");
+            }
+            player.sendSystemMessage(Component.literal(msg.toString()));
         }
     }
 
@@ -218,32 +258,32 @@ public final class RealCivFTBChunksBridge {
 
         if (existing != null && !existing.civilizationId().equals(civId) && !source.hasPermission(3)) {
             return ClaimDecision.denied(
-                    "This chunk is already zoned by civilization '" + existing.civilizationId() + "'.");
+                    "This chunk is already claimed by civilization '" + existing.civilizationId() + "'.");
         }
 
         if (targetClass == LandClass.CIVIC) {
             if (!canManageTownClaims(source, data, civId)) {
-                return ClaimDecision.denied("Only leadership/admin can expand town claims.");
+                return ClaimDecision.denied("Only leadership/admin can expand CIVIC claims.");
             }
 
             int civicChunks = data.countPlotsByClass(civId, LandClass.CIVIC);
             if (civicChunks > 0 && !isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
-                return ClaimDecision.denied("Town claims must be within or adjacent to existing CIVIC territory.");
+                return ClaimDecision.denied("CIVIC claims must be adjacent to existing CIVIC territory.");
             }
 
             long claimCost = nextTownClaimCostCents(civicChunks);
             long treasury = data.civTreasuryCents(civId);
             if (treasury < claimCost) {
                 return ClaimDecision.denied(
-                        "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
-                                + ", civ has " + RealCivUtil.formatCredits(treasury) + ".");
+                        "Civ treasury has " + RealCivUtil.formatCredits(treasury)
+                                + ", need " + RealCivUtil.formatCredits(claimCost) + " for this claim.");
             }
 
             return ClaimDecision.allowed(player, civId, targetClass, dimension, chunkX, chunkZ, now, paidTicks, claimCost);
         }
 
         if (!isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
-            return ClaimDecision.denied("Private land must be within or adjacent to your civilization's CIVIC territory.");
+            return ClaimDecision.denied("PRIVATE plots must be adjacent to your civilization's CIVIC territory.");
         }
 
         if (existing != null
@@ -252,14 +292,14 @@ public final class RealCivFTBChunksBridge {
                 && existing.plot().ownerId() != null
                 && !existing.plot().ownerId().equals(player.getUUID())
                 && !source.hasPermission(3)) {
-            return ClaimDecision.denied("This private plot is already owned by another player.");
+            return ClaimDecision.denied("This PRIVATE plot is already owned by another player.");
         }
         if (existing != null
                 && existing.civilizationId().equals(civId)
                 && existing.plot().landClass() == LandClass.CIVIC
                 && !source.hasPermission(3)) {
             return ClaimDecision.denied(
-                    "This chunk is CIVIC town land. Ask your mayor to allot it as private land.");
+                    "This chunk is CIVIC territory. Ask your mayor to allot it as a PRIVATE plot.");
         }
 
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
@@ -267,8 +307,8 @@ public final class RealCivFTBChunksBridge {
         long claimCost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < claimCost) {
             return ClaimDecision.denied(
-                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
-                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
+                    "You need " + RealCivUtil.formatCredits(claimCost) + " karma, you have "
+                            + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + ".");
         }
 
         return ClaimDecision.allowed(player, civId, targetClass, dimension, chunkX, chunkZ, now, paidTicks, claimCost);
@@ -295,7 +335,7 @@ public final class RealCivFTBChunksBridge {
             return UnclaimDecision.denied("Only players can unclaim land from the FTB map.");
         }
         if (!existing.civilizationId().equals(data.getOrAssignCivilization(player.getUUID()))) {
-            return UnclaimDecision.denied("You cannot unclaim another civilization's zoned chunk.");
+            return UnclaimDecision.denied("You cannot unclaim another civilization's claimed chunk.");
         }
 
         if (existing.plot().landClass() == LandClass.PRIVATE) {
@@ -303,13 +343,13 @@ public final class RealCivFTBChunksBridge {
             if (ownerId != null
                     && !ownerId.equals(player.getUUID())
                     && !canManageLandZoning(source, data, existing.civilizationId())) {
-                return UnclaimDecision.denied("Only owner/leadership/admin can unclaim this private plot.");
+                return UnclaimDecision.denied("Only owner/leadership/admin can unclaim this PRIVATE plot.");
             }
             return UnclaimDecision.permit();
         }
 
         if (!canManageTownClaims(source, data, existing.civilizationId())) {
-            return UnclaimDecision.denied("Only leadership/admin can unclaim civic/public territory.");
+            return UnclaimDecision.denied("Only leadership/admin can unclaim CIVIC territory.");
         }
         return UnclaimDecision.permit();
     }
@@ -353,7 +393,7 @@ public final class RealCivFTBChunksBridge {
 
             player.sendSystemMessage(Component.literal(
                     "CIVIC chunk claimed at [" + decision.chunkX() + ", " + decision.chunkZ() + "]."
-                            + " Collective contribution karma now: "
+                            + " Civ treasury: "
                             + RealCivUtil.formatCredits(data.civTreasuryCents(decision.civId())) + "."));
             return;
         }

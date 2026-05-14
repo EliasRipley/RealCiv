@@ -1,22 +1,19 @@
 package com.realciv.realciv.client;
 
+import com.daqem.uilib.api.client.gui.component.scroll.ScrollOrientation;
+import com.daqem.uilib.client.gui.component.AbstractComponent;
+import com.daqem.uilib.client.gui.component.io.ButtonComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollBarComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollContentComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollPanelComponent;
 import com.realciv.realciv.census.CensusSnapshot;
 import com.realciv.realciv.network.RealCivPayloads;
-import dev.ftb.mods.ftblibrary.icon.Icon;
-import dev.ftb.mods.ftblibrary.ui.Panel;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.Widget;
-import dev.ftb.mods.ftblibrary.ui.WidgetLayout;
-import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
-import java.util.ArrayList;
-import java.util.List;
-import java.util.function.Predicate;
 
-public class ModernCensusScreen extends RealCivPanelScreen {
+public class ModernCensusScreen extends RealCivUIScreen {
     public static final int ACTION_MEMBER_KICK = 100;
     public static final int ACTION_MEMBER_MANAGER = 200;
     public static final int ACTION_REQUEST_APPROVE = 300;
@@ -25,9 +22,24 @@ public class ModernCensusScreen extends RealCivPanelScreen {
     public static final int ACTION_PREV_PAGE = 1;
     public static final int ACTION_NEXT_PAGE = 2;
 
-    private static final int ROW_WIDTH = PANEL_WIDTH - 32;
+    private static final int SCROLL_X = 14;
+    private static final int SCROLL_Y = 48;
+    private static final int SCROLL_W = PANEL_WIDTH - 42;
+    private static final int SCROLL_H = 154;
+    private static final int SCROLL_BAR_X = PANEL_WIDTH - 26;
+    private static final int SCROLL_BAR_W = 6;
+    private static final int BTN_Y = PANEL_HEIGHT - 22;
+
+    // Member table columns
+    private static final int COL_NAME = 4;
+    private static final int COL_ROLE = 130;
+    private static final int COL_PROF = 230;
+    private static final int COL_LVL = 320;
+    private static final int[] MEMBER_COLS = {COL_NAME, COL_ROLE, COL_PROF, COL_LVL};
+    private static final String[] MEMBER_HEADERS = {"Name", "Role", "Profession", "Lv"};
 
     private CensusSnapshot snapshot;
+    private ScrollContentComponent scrollContent;
 
     public ModernCensusScreen(CensusSnapshot snapshot) {
         super(Component.literal("Census Bureau"), "Membership, requests, and invites", 0xFF4CAF50);
@@ -36,87 +48,77 @@ public class ModernCensusScreen extends RealCivPanelScreen {
 
     public void refresh(CensusSnapshot newSnapshot) {
         this.snapshot = newSnapshot;
-        refreshContent();
+        if (scrollContent != null) {
+            scrollContent.getChildren().clear();
+            populateScrollContent();
+            scrollContent.setY(0);
+        }
     }
 
     @Override
-    public void addWidgets() {
-        setupSearchBox("Search members...");
-        setupContentPanel();
-        refreshContent();
+    protected void addScreenWidgets() {
+        addComponent(new ButtonComponent(panelX + 10, panelY + BTN_Y, 50, 16,
+                Component.literal("< Prev"), (btn, screen, mx, my, button) -> { sendAction(ACTION_PREV_PAGE); return true; }));
+        addComponent(new ButtonComponent(panelX + PANEL_WIDTH - 60, panelY + BTN_Y, 50, 16,
+                Component.literal("Next >"), (btn, screen, mx, my, button) -> { sendAction(ACTION_NEXT_PAGE); return true; }));
 
-        add(new NavButton("< Prev", 10, PANEL_HEIGHT - 22, 50, ACTION_PREV_PAGE));
-        add(new NavButton("Next >", PANEL_WIDTH - 60, PANEL_HEIGHT - 22, 50, ACTION_NEXT_PAGE));
+        ScrollContentComponent content = new ScrollContentComponent(0, 0, 2, ScrollOrientation.VERTICAL);
+        scrollContent = content;
+        populateScrollContent();
+
+        addComponent(new ScrollPanelComponent(null, panelX + SCROLL_X, panelY + SCROLL_Y, SCROLL_W, SCROLL_H,
+                ScrollOrientation.VERTICAL, content,
+                createScrollBar(SCROLL_BAR_X, 0, SCROLL_BAR_W, SCROLL_H, ScrollOrientation.VERTICAL)));
     }
 
-    @Override
-    protected void populateContentPanel(Panel panel) {
-        String query = (searchBox != null) ? searchBox.getText().toLowerCase() : "";
-        Predicate<String> filter = query.isEmpty()
-            ? s -> true
-            : s -> s.toLowerCase().contains(query);
+    private void populateScrollContent() {
+        // -- Members section --
+        String memberLabel = "Members (" + snapshot.totalMembers() + ") page "
+                + (snapshot.memberPage() + 1) + "/" + snapshot.memberPageCount();
+        scrollContent.addChild(new SectionLabel(0, 0, memberLabel, 0xFFC6D2DE));
+        scrollContent.addChild(new TableHeaderRow(0, 0, MEMBER_HEADERS, MEMBER_COLS));
 
-        String pageInfo = "Members (" + snapshot.totalMembers() + ") page " + (snapshot.memberPage() + 1) + "/" + snapshot.memberPageCount();
-        panel.add(createTextWidget(pageInfo, 0xFFC6D2DE));
-
-        boolean hasResults = false;
-
+        boolean hasMembers = false;
         for (int i = 0; i < snapshot.members().size(); i++) {
-            CensusSnapshot.MemberRow m = snapshot.members().get(i);
-            if (!filter.test(m.name())) continue;
-            hasResults = true;
-            panel.add(new MemberRowWidget(panel, i, m));
+            hasMembers = true;
+            scrollContent.addChild(new MemberRowComponent(0, 0, i, snapshot.members().get(i)));
         }
 
-        if (hasResults) {
-            panel.add(createTextWidget("", 0)); // spacer
+        if (hasMembers) {
+            scrollContent.addChild(new SpacerRow(0, 0, 4));
         }
 
+        // -- Requests section --
         if (snapshot.totalRequests() > 0) {
-            List<Integer> filteredRequests = new ArrayList<>();
+            scrollContent.addChild(new SectionLabel(0, 0,
+                    "Join requests (" + snapshot.totalRequests() + ")", 0xFFB8E986));
             for (int i = 0; i < snapshot.requests().size(); i++) {
-                if (filter.test(snapshot.requests().get(i).name())) filteredRequests.add(i);
+                scrollContent.addChild(new RequestRowComponent(0, 0, i, snapshot.requests().get(i)));
             }
-            if (!filteredRequests.isEmpty()) {
-                panel.add(createHeaderWidget("Join requests (" + snapshot.totalRequests() + ")", 0xFFB8E986));
-                for (int idx : filteredRequests) {
-                    panel.add(new RequestRowWidget(panel, idx, snapshot.requests().get(idx)));
-                }
-            }
+            scrollContent.addChild(new SpacerRow(0, 0, 4));
         }
 
+        // -- Invites section --
         if (snapshot.totalInvites() > 0) {
-            List<Integer> filteredInvites = new ArrayList<>();
+            scrollContent.addChild(new SectionLabel(0, 0,
+                    "Invites (" + snapshot.totalInvites() + ")", 0xFF90CAF9));
             for (int i = 0; i < snapshot.invites().size(); i++) {
-                if (filter.test(snapshot.invites().get(i).name())) filteredInvites.add(i);
+                scrollContent.addChild(new InviteRowComponent(0, 0, i, snapshot.invites().get(i)));
             }
-            if (!filteredInvites.isEmpty()) {
-                panel.add(createHeaderWidget("Invites (" + snapshot.totalInvites() + ")", 0xFF90CAF9));
-                for (int idx : filteredInvites) {
-                    panel.add(new InviteRowWidget(panel, idx, snapshot.invites().get(idx)));
-                }
-            }
+            scrollContent.addChild(new SpacerRow(0, 0, 4));
         }
 
         if (!snapshot.canManage()) {
-            panel.add(createTextWidget("View only - leadership manages membership.", 0xFF9E9E9E));
+            scrollContent.addChild(new RowLabel(0, 0,
+                    "View only \u2014 leadership manages membership.", 0xFF9E9E9E));
         }
 
-        if (!hasResults && !query.isEmpty()) {
-            panel.add(createTextWidget("No matching members found.", 0xFF9E9E9E));
+        if (!hasMembers) {
+            scrollContent.addChild(new RowLabel(0, 0, "No members found.", 0xFF9E9E9E));
         }
-    }
 
-    @Override
-    protected void alignContentPanel(Panel panel) {
-        for (Widget w : panel.getWidgets()) {
-            if (w.width == 0) {
-                w.setSize(ROW_WIDTH, ROW_HEIGHT);
-            } else if (w.width < 10) {
-                w.setSize(ROW_WIDTH, w.height > 0 ? w.height : ROW_HEIGHT);
-            }
-        }
-        panel.align(new WidgetLayout.Vertical(2, 2, 4));
+        // Spacer to fill remaining scroll area
+        scrollContent.addChild(new SpacerRow(0, 0, 20));
     }
 
     private void sendAction(int actionId) {
@@ -124,121 +126,106 @@ public class ModernCensusScreen extends RealCivPanelScreen {
                 RealCivPayloads.SCREEN_CENSUS, actionId));
     }
 
-    private class NavButton extends dev.ftb.mods.ftblibrary.ui.NordButton {
-        private final int actionId;
+    // -- Member row --
 
-        NavButton(String label, int x, int y, int w, int actionId) {
-            super(ModernCensusScreen.this, Component.literal(label), Icon.empty());
-            this.actionId = actionId;
-            setPosAndSize(x, y, w, 16);
-        }
-
-        @Override
-        public void onClicked(MouseButton button) {
-            sendAction(actionId);
-        }
-    }
-
-    private class MemberRowWidget extends Widget {
+    private class MemberRowComponent extends AbstractComponent<MemberRowComponent> {
         private final int origIndex;
         private final CensusSnapshot.MemberRow member;
 
-        MemberRowWidget(Panel panel, int origIndex, CensusSnapshot.MemberRow member) {
-            super(panel);
+        MemberRowComponent(int x, int y, int origIndex, CensusSnapshot.MemberRow member) {
+            super(null, x, y, CONTENT_WIDTH, ROW_HEIGHT);
             this.origIndex = origIndex;
             this.member = member;
-            setSize(ROW_WIDTH, ROW_HEIGHT);
+            setOnClickEvent((comp, screen, mx, my, button) -> {
+                if (!snapshot.canManage()) return false;
+                sendAction(button == 0 ? ACTION_MEMBER_KICK + origIndex : ACTION_MEMBER_MANAGER + origIndex);
+                return true;
+            });
         }
 
         @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            if (isMouseOver() && snapshot.canManage()) {
-                graphics.fill(x - 2, y - 1, x + w + 2, y + h + 1, 0x30FFFFFF);
+        public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+            boolean hovered = isTotalHovered(mouseX, mouseY) && snapshot.canManage();
+            if (hovered) {
+                graphics.fill(-2, -1, CONTENT_WIDTH + 2, 13, 0x20FFFFFF);
             }
+
             var font = Minecraft.getInstance().font;
-            String line = member.name() + "  |  " + member.role();
-            String profLine = member.profession() + " Lv " + member.level();
-            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(line, ROW_WIDTH - 120)), x, y, 0xFFF4F7FA, false);
-            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(profLine, 100)), x + ROW_WIDTH - 100, y, 0xFF8BC34A, false);
-        }
+            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(member.name(), 96)),
+                    COL_NAME, 0, 0xFFF4F7FA, false);
+            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(member.role(), 72)),
+                    COL_ROLE, 0, 0xFFB0BEC5, false);
+            graphics.drawString(font, Component.literal(font.plainSubstrByWidth(member.profession(), 76)),
+                    COL_PROF, 0, 0xFF8BC34A, false);
+            graphics.drawString(font, Component.literal(String.valueOf(member.level())),
+                    COL_LVL, 0, 0xFF8BC34A, false);
 
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (!snapshot.canManage()) return false;
-            if (button.isLeft()) {
-                sendAction(ACTION_MEMBER_KICK + origIndex);
-            } else {
-                sendAction(ACTION_MEMBER_MANAGER + origIndex);
+            if (hovered) {
+                graphics.drawString(font, Component.literal("Left: kick  |  Right: toggle manager"),
+                        COL_NAME, -10, 0x60FFFFFF, false);
             }
-            return true;
         }
     }
 
-    private class RequestRowWidget extends Widget {
+    // -- Request row --
+
+    private class RequestRowComponent extends AbstractComponent<RequestRowComponent> {
         private final int origIndex;
         private final CensusSnapshot.PendingRow request;
 
-        RequestRowWidget(Panel panel, int origIndex, CensusSnapshot.PendingRow request) {
-            super(panel);
+        RequestRowComponent(int x, int y, int origIndex, CensusSnapshot.PendingRow request) {
+            super(null, x, y, CONTENT_WIDTH, ROW_HEIGHT);
             this.origIndex = origIndex;
             this.request = request;
-            setSize(ROW_WIDTH, ROW_HEIGHT);
+            setOnClickEvent((comp, screen, mx, my, button) -> {
+                if (!snapshot.canManage()) return false;
+                sendAction(button == 0 ? ACTION_REQUEST_APPROVE + origIndex : ACTION_REQUEST_DENY + origIndex);
+                return true;
+            });
         }
 
         @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            boolean hovered = isMouseOver() && snapshot.canManage();
+        public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+            boolean hovered = isTotalHovered(mouseX, mouseY) && snapshot.canManage();
             var font = Minecraft.getInstance().font;
-            graphics.drawString(font, Component.literal(request.name()), x, y, 0xFFE8F5E9, false);
+            graphics.drawString(font, Component.literal(request.name()), COL_NAME, 0, 0xFFE8F5E9, false);
 
             if (hovered) {
-                graphics.fill(x - 2, y - 1, x + w + 2, y + h + 1, 0x30FFFFFF);
-                graphics.drawString(font, Component.literal("Left-click: Approve | Right-click: Deny"),
-                        x + ROW_WIDTH - 180, y, 0xFFFFD54F, false);
+                graphics.fill(-2, -1, CONTENT_WIDTH + 2, 13, 0x20FFFFFF);
+                graphics.drawString(font, Component.literal("Left: approve  |  Right: deny"),
+                        COL_NAME, -10, 0xFFFFD54F, false);
             }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (!snapshot.canManage()) return false;
-            if (button.isLeft()) {
-                sendAction(ACTION_REQUEST_APPROVE + origIndex);
-            } else {
-                sendAction(ACTION_REQUEST_DENY + origIndex);
-            }
-            return true;
         }
     }
 
-    private class InviteRowWidget extends Widget {
+    // -- Invite row --
+
+    private class InviteRowComponent extends AbstractComponent<InviteRowComponent> {
         private final int origIndex;
         private final CensusSnapshot.PendingRow invite;
 
-        InviteRowWidget(Panel panel, int origIndex, CensusSnapshot.PendingRow invite) {
-            super(panel);
+        InviteRowComponent(int x, int y, int origIndex, CensusSnapshot.PendingRow invite) {
+            super(null, x, y, CONTENT_WIDTH, ROW_HEIGHT);
             this.origIndex = origIndex;
             this.invite = invite;
-            setSize(ROW_WIDTH, ROW_HEIGHT);
+            setOnClickEvent((comp, screen, mx, my, button) -> {
+                if (!snapshot.canManage()) return false;
+                sendAction(ACTION_INVITE_REVOKE + origIndex);
+                return true;
+            });
         }
 
         @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            boolean hovered = isMouseOver() && snapshot.canManage();
+        public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
+            boolean hovered = isTotalHovered(mouseX, mouseY) && snapshot.canManage();
             var font = Minecraft.getInstance().font;
-            graphics.drawString(font, Component.literal(invite.name()), x, y, 0xFFE3F2FD, false);
+            graphics.drawString(font, Component.literal(invite.name()), COL_NAME, 0, 0xFFE3F2FD, false);
 
             if (hovered) {
-                graphics.fill(x - 2, y - 1, x + w + 2, y + h + 1, 0x30FFFFFF);
+                graphics.fill(-2, -1, CONTENT_WIDTH + 2, 13, 0x20FFFFFF);
                 graphics.drawString(font, Component.literal("Click to revoke invite"),
-                        x + ROW_WIDTH - 140, y, 0xFFFFD54F, false);
+                        COL_NAME, -10, 0xFFFFD54F, false);
             }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (!snapshot.canManage()) return false;
-            sendAction(ACTION_INVITE_REVOKE + origIndex);
-            return true;
         }
     }
 }

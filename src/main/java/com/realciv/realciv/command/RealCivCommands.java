@@ -1863,11 +1863,11 @@ public final class RealCivCommands {
         long nextPrivateCost = nextPrivateClaimCostCents(ownedPrivate);
         source.sendSuccess(() -> Component.literal(
                 "Town info for " + civDisplay(data, civId)
-                        + " | civic chunks: " + civicChunks
-                        + " | private chunks: " + privateChunks
-                        + " | collective contribution karma: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))
-                        + " | next town claim cost: " + RealCivUtil.formatCredits(nextTownCost)
-                        + " | your next private claim cost: " + RealCivUtil.formatCredits(nextPrivateCost)),
+                        + " | CIVIC chunks: " + civicChunks
+                        + " | PRIVATE chunks: " + privateChunks
+                        + " | civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))
+                        + " | next CIVIC claim cost: " + RealCivUtil.formatCredits(nextTownCost)
+                        + " | your next PRIVATE claim cost: " + RealCivUtil.formatCredits(nextPrivateCost)),
                 false);
         return 1;
     }
@@ -1907,7 +1907,7 @@ public final class RealCivCommands {
                 "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, m=your COMMUNITY zoning, x=other civ claim, .=wilderness"),
                 false);
         source.sendSuccess(() -> Component.literal(
-                "Chunk claiming: mayor uses /realciv town claim, citizens use /realciv plot claim."),
+                "Chunk claiming: mayor uses /realciv town claim (CIVIC), citizens use /realciv plot claim (PRIVATE)."),
                 false);
         return 1;
     }
@@ -1918,7 +1918,7 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
         if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can expand town claims."));
+            source.sendFailure(Component.literal("Only leadership/admin can expand CIVIC claims."));
             return 0;
         }
 
@@ -1939,14 +1939,14 @@ public final class RealCivCommands {
         if (existing != null
                 && existing.civilizationId().equals(civId)
                 && existing.plot().landClass() == LandClass.CIVIC) {
-            source.sendFailure(Component.literal("This chunk is already a town (CIVIC) claim."));
+            source.sendFailure(Component.literal("This chunk is already claimed as CIVIC territory."));
             return 0;
         }
 
         if (data.countPlotsByClass(civId, LandClass.CIVIC) > 0
                 && !isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
             source.sendFailure(Component.literal(
-                    "Town claims must be within or adjacent to existing town land."));
+                    "CIVIC claims must be adjacent to existing CIVIC territory."));
             return 0;
         }
 
@@ -1955,8 +1955,8 @@ public final class RealCivCommands {
         long treasury = data.civTreasuryCents(civId);
         if (treasury < claimCost) {
             source.sendFailure(Component.literal(
-                    "Not enough collective contribution karma. Need " + RealCivUtil.formatCredits(claimCost)
-                            + ", civ has " + RealCivUtil.formatCredits(treasury) + "."));
+                    "Civ treasury has " + RealCivUtil.formatCredits(treasury)
+                            + ", need " + RealCivUtil.formatCredits(claimCost) + " for this claim."));
             return 0;
         }
 
@@ -1968,14 +1968,14 @@ public final class RealCivCommands {
         data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.CIVIC, null, now, 0L);
         data.addAuditLog(
                 civId,
-                actorName(source) + " claimed town chunk " + dimension + "[" + chunkX + "," + chunkZ + "]"
+                actorName(source) + " claimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "]"
                         + " for " + RealCivUtil.formatCredits(claimCost),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
         source.sendSuccess(() -> Component.literal(
-                "Town chunk claimed at [" + chunkX + ", " + chunkZ + "] in " + civDisplay(data, civId)
-                        + ". Collective contribution karma now: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
+                "CIVIC chunk claimed at [" + chunkX + ", " + chunkZ + "] in " + civDisplay(data, civId)
+                        + ". Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
                 true);
         return 1;
     }
@@ -1986,7 +1986,7 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
         if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can unclaim town chunks."));
+            source.sendFailure(Component.literal("Only leadership/admin can unclaim CIVIC territory."));
             return 0;
         }
 
@@ -2004,18 +2004,24 @@ public final class RealCivCommands {
         }
         if (existing.plot().landClass() == LandClass.PRIVATE && !source.hasPermission(3)) {
             source.sendFailure(Component.literal(
-                    "Use /realciv plot unclaim on private plots, or admin override."));
+                    "Use /realciv plot unclaim on PRIVATE plots, or admin override."));
             return 0;
         }
 
-        data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
+        String civIdRefund = existing.civilizationId();
+        long refundAmount = RealCivConfig.townClaimCostCents();
+        data.addCivTreasuryCents(civIdRefund, refundAmount);
+
+        data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
         data.addAuditLog(
-                existing.civilizationId(),
-                actorName(source) + " unclaimed chunk " + dimension + "[" + chunkX + "," + chunkZ + "]",
+                civIdRefund,
+                actorName(source) + " unclaimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury.",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         source.sendSuccess(() -> Component.literal(
-                "Unclaimed chunk [" + chunkX + ", " + chunkZ + "]."), true);
+                "CIVIC chunk unclaimed at [" + chunkX + ", " + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury."), true);
         return 1;
     }
 
@@ -2025,7 +2031,7 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
         if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can allot private town plots."));
+            source.sendFailure(Component.literal("Only leadership/admin can allot PRIVATE plots."));
             return 0;
         }
 
@@ -2054,24 +2060,24 @@ public final class RealCivCommands {
             data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, target.getUUID(), now, paidTicks);
             data.addAuditLog(
                     civId,
-                    actorName(source) + " allotted private plot " + dimension + "[" + chunkX + "," + chunkZ + "]"
+                    actorName(source) + " allotted PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "]"
                             + " to " + target.getGameProfile().getName(),
                     RealCivConfig.MAX_AUDIT_LOGS.get());
             data.setDirty();
             source.sendSuccess(() -> Component.literal(
-                    "Allotted private chunk [" + chunkX + ", " + chunkZ + "] to "
+                    "Allotted PRIVATE chunk [" + chunkX + ", " + chunkZ + "] to "
                             + target.getGameProfile().getName() + "."), true);
             return 1;
         }
 
         if (existing.plot().landClass() == LandClass.PRIVATE && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("This chunk is already private."));
+            source.sendFailure(Component.literal("This chunk is already a PRIVATE plot."));
             return 0;
         }
         data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, target.getUUID(), now, paidTicks);
         data.setDirty();
         source.sendSuccess(() -> Component.literal(
-                "Reassigned private chunk [" + chunkX + ", " + chunkZ + "] to "
+                "Reassigned PRIVATE chunk [" + chunkX + ", " + chunkZ + "] to "
                         + target.getGameProfile().getName() + "."), true);
         return 1;
     }
@@ -2094,7 +2100,7 @@ public final class RealCivCommands {
 
         if (!isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
             source.sendFailure(Component.literal(
-                    "Private land must be within or adjacent to your town's CIVIC claims."));
+                    "PRIVATE plots must be adjacent to your civilization's CIVIC territory."));
             return 0;
         }
 
@@ -2109,7 +2115,7 @@ public final class RealCivCommands {
                 && existing.plot().ownerId() != null
                 && !existing.plot().ownerId().equals(player.getUUID())
                 && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("That private plot is owned by another player."));
+            source.sendFailure(Component.literal("That PRIVATE plot is owned by another player."));
             return 0;
         }
         if (existing != null
@@ -2117,7 +2123,7 @@ public final class RealCivCommands {
                 && existing.plot().landClass() == LandClass.CIVIC
                 && !source.hasPermission(3)) {
             source.sendFailure(Component.literal(
-                    "This chunk is CIVIC town land. Ask your mayor to allot it with /realciv town allot <player>."));
+                    "This chunk is CIVIC territory. Ask your mayor to allot it with /realciv town allot <player>."));
             return 0;
         }
 
@@ -2125,8 +2131,8 @@ public final class RealCivCommands {
         long cost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < cost) {
             source.sendFailure(Component.literal(
-                    "Not enough contribution karma. Need " + RealCivUtil.formatCredits(cost)
-                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
+                    "You need " + RealCivUtil.formatCredits(cost) + " karma, you have "
+                            + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
             return 0;
         }
 
@@ -2138,12 +2144,12 @@ public final class RealCivCommands {
         data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, player.getUUID(), now, paidTicks);
         data.addAuditLog(
                 civId,
-                actorName(source) + " claimed private plot " + dimension + "[" + chunkX + "," + chunkZ + "]",
+                actorName(source) + " claimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "]",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
         source.sendSuccess(() -> Component.literal(
-                "Private chunk claimed at [" + chunkX + ", " + chunkZ + "]. Cost: "
+                "PRIVATE chunk claimed at [" + chunkX + ", " + chunkZ + "]. Cost: "
                         + RealCivUtil.formatCredits(cost)
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))),
                 true);
@@ -2169,25 +2175,33 @@ public final class RealCivCommands {
             return 0;
         }
         if (existing.plot().landClass() != LandClass.PRIVATE) {
-            source.sendFailure(Component.literal("This is not a private plot."));
+            source.sendFailure(Component.literal("This is not a PRIVATE plot."));
             return 0;
         }
         if (existing.plot().ownerId() != null
                 && !existing.plot().ownerId().equals(player.getUUID())
                 && !hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)
                 && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("Only owner/leadership/admin can unclaim this private plot."));
+            source.sendFailure(Component.literal("Only owner/leadership/admin can unclaim this PRIVATE plot."));
             return 0;
         }
 
-        data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
+        String civIdRefund = existing.civilizationId();
+        long refundAmount = RealCivConfig.rentCostCents();
+        CivSavedData.PlayerRecord refundRecord = data.getOrCreatePlayer(player.getUUID());
+        refundRecord.addSocialCreditCents(civIdRefund, refundAmount);
+
+        data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
         data.addAuditLog(
-                existing.civilizationId(),
-                actorName(source) + " unclaimed private plot " + dimension + "[" + chunkX + "," + chunkZ + "]",
+                civIdRefund,
+                actorName(source) + " unclaimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " karma to "
+                        + player.getGameProfile().getName() + ".",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
         source.sendSuccess(() -> Component.literal(
-                "Private plot unclaimed at [" + chunkX + ", " + chunkZ + "]."), true);
+                "PRIVATE plot unclaimed at [" + chunkX + ", " + chunkZ + "]."
+                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " karma."), true);
         return 1;
     }
 
@@ -2209,14 +2223,14 @@ public final class RealCivCommands {
 
         if (!isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
             source.sendFailure(Component.literal(
-                    "Private land must be within or adjacent to your town's CIVIC claims."));
+                    "PRIVATE plots must be adjacent to your civilization's CIVIC territory."));
             return 0;
         }
 
         @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (lookup != null && !lookup.civilizationId().equals(civId) && !source.hasPermission(3)) {
             source.sendFailure(Component.literal(
-                    "This chunk is zoned under civilization '" + lookup.civilizationId() + "' and cannot be rented here."));
+                    "This chunk is claimed by civilization '" + lookup.civilizationId() + "' and cannot be rented here."));
             return 0;
         }
 
@@ -2224,9 +2238,8 @@ public final class RealCivCommands {
         long rentCost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < rentCost) {
             source.sendFailure(Component.literal(
-                    "Not enough contribution karma for " + civDisplay(data, civId) + ". Need "
-                            + RealCivUtil.formatCredits(rentCost)
-                            + ", you have " + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
+                    "You need " + RealCivUtil.formatCredits(rentCost) + " karma for this plot, you have "
+                            + RealCivUtil.formatCredits(record.socialCreditCents(civId)) + "."));
             return 0;
         }
 
@@ -2234,14 +2247,14 @@ public final class RealCivCommands {
             CivSavedData.PlotRecord plot = lookup.plot();
             if (plot.landClass() == LandClass.CIVIC && !source.hasPermission(3)) {
                 source.sendFailure(Component.literal(
-                        "This chunk is CIVIC town land. Ask your mayor to allot it with /realciv town allot <player>."));
+                        "This chunk is CIVIC territory. Ask your mayor to allot it with /realciv town allot <player>."));
                 return 0;
             }
             if (plot.landClass() == LandClass.PRIVATE
                     && plot.ownerId() != null
                     && !plot.ownerId().equals(player.getUUID())
                     && !source.hasPermission(3)) {
-                source.sendFailure(Component.literal("This private plot is owned by another player."));
+                source.sendFailure(Component.literal("This PRIVATE plot is owned by another player."));
                 return 0;
             }
             if (plot.landClass() == LandClass.PRIVATE && player.getUUID().equals(plot.ownerId())) {
@@ -2252,7 +2265,7 @@ public final class RealCivCommands {
                 record.addSocialCreditCents(civId, -rentCost);
                 data.addAuditLog(
                         civId,
-                        actorName(source) + " renewed private plot " + dimension + "[" + chunkX + "," + chunkZ + "]"
+                        actorName(source) + " renewed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "]"
                                 + " until upkeep tick " + next,
                         RealCivConfig.MAX_AUDIT_LOGS.get());
                 data.setDirty();
@@ -2275,7 +2288,7 @@ public final class RealCivCommands {
         data.setDirty();
 
         source.sendSuccess(() -> Component.literal(
-                "Private plot rented in " + civDisplay(data, civId)
+                "PRIVATE plot rented in " + civDisplay(data, civId)
                         + " at [" + chunkX + ", " + chunkZ + "] for " + days + " day(s). "
                         + "Cost: " + RealCivUtil.formatCredits(rentCost)
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))),

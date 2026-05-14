@@ -1,21 +1,22 @@
 package com.realciv.realciv.client;
 
+import com.daqem.uilib.api.client.gui.component.scroll.ScrollOrientation;
+import com.daqem.uilib.client.gui.component.AbstractComponent;
+import com.daqem.uilib.client.gui.component.io.ButtonComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollBarComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollContentComponent;
+import com.daqem.uilib.client.gui.component.scroll.ScrollPanelComponent;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.network.RealCivPayloads;
 import com.realciv.realciv.panel.CivControlPanelSnapshot;
-import dev.ftb.mods.ftblibrary.icon.Icon;
-import dev.ftb.mods.ftblibrary.ui.NordButton;
-import dev.ftb.mods.ftblibrary.ui.Panel;
-import dev.ftb.mods.ftblibrary.ui.Theme;
-import dev.ftb.mods.ftblibrary.ui.Widget;
-import dev.ftb.mods.ftblibrary.ui.WidgetLayout;
-import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
+import java.util.ArrayList;
+import java.util.List;
 
-public class ModernCivControlPanelScreen extends RealCivPanelScreen {
+public class ModernCivControlPanelScreen extends RealCivUIScreen {
     public static final int ACTION_GOVERNANCE_CYCLE = 1;
     public static final int ACTION_DISTRIBUTION_TOGGLE = 2;
     public static final int ACTION_FRIENDLY_FIRE_TOGGLE = 3;
@@ -32,16 +33,31 @@ public class ModernCivControlPanelScreen extends RealCivPanelScreen {
     public static final int ACTION_VOTE_CANDIDATE_5 = 14;
     public static final int ACTION_ROLES_CREATE = 15;
 
-    private static final int ROW_WIDTH = PANEL_WIDTH - 32;
+    private static final int SCROLL_X = 14;
+    private static final int SCROLL_Y = 56;
+    private static final int SCROLL_W = PANEL_WIDTH - 42;
+    private static final int SCROLL_H = 128;
+    private static final int SCROLL_BAR_X = PANEL_WIDTH - 26;
+    private static final int SCROLL_BAR_W = 6;
     private static final int TAB_START_X = 10;
-    private static final int TAB_Y = 38;
-    private static final int TAB_WIDTH = 74;
-    private static final int TAB_SPACING = 78;
-    private static final int BOTTOM_BTN_Y = PANEL_HEIGHT - 22;
-    private static final int VOTE_BTN_Y = BOTTOM_BTN_Y - 18;
+    private static final int TAB_Y = 36;
+    private static final int TAB_W = 90;
+    private static final int TAB_GAP = 95;
+    private static final int TAB_H = 16;
+    private static final int BTN_Y = PANEL_HEIGHT - 22;
+    private static final int VOTE_Y = BTN_Y - 18;
+
+    private static final String[][] TAB_DEFS = {
+        {"Overview", "OVERVIEW"},
+        {"Governance", "GOVERNANCE"},
+        {"Economy", "ECONOMY"},
+        {"Roles", "ROLES"}
+    };
 
     private CivControlPanelSnapshot snapshot;
     private String selectedTab = "OVERVIEW";
+    private ScrollContentComponent scrollContent;
+    private final List<AbstractComponent<?>> dynamicBtns = new ArrayList<>();
 
     public ModernCivControlPanelScreen(CivControlPanelSnapshot snapshot) {
         super(Component.literal("Civic Control Console"), "Governance, roles, and civ management", 0xFF448AFF);
@@ -50,284 +66,254 @@ public class ModernCivControlPanelScreen extends RealCivPanelScreen {
 
     public void refresh(CivControlPanelSnapshot newSnapshot) {
         this.snapshot = newSnapshot;
-        refreshContent();
+        if (scrollContent != null) {
+            scrollContent.getChildren().clear();
+            scrollContent.setY(0);
+            populateScrollContent();
+        }
+        rebuildDynamicButtons();
     }
 
     @Override
-    public void addWidgets() {
-        String[][] tabsDef = {{"Overview", "OVERVIEW"}, {"Governance", "GOVERNANCE"}, {"Economy", "ECONOMY"}, {"Roles", "ROLES"}};
-        int tx = TAB_START_X;
-        for (String[] tabDef : tabsDef) {
+    protected void addScreenWidgets() {
+        int tx = panelX + TAB_START_X;
+        for (String[] tabDef : TAB_DEFS) {
             String tabId = tabDef[1];
             String tabLabel = tabDef[0];
             boolean active = tabId.equals(selectedTab);
-            int tc = active ? 0xFFFFFFFF : 0xFF78909C;
-            add(new NordButton(this, Component.literal(tabLabel), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) {
-                    if (!selectedTab.equals(tabId)) {
-                        selectedTab = tabId;
-                        refreshWidgets();
-                    }
+            ButtonComponent btn = new ButtonComponent(tx, panelY + TAB_Y, TAB_W, TAB_H,
+                    Component.literal(tabLabel), (b, screen, mx, my, button) -> {
+                if (!selectedTab.equals(tabId)) {
+                    selectedTab = tabId;
+                    refreshTabContent();
                 }
-            }.setPosAndSize(tx, TAB_Y, TAB_WIDTH, 18));
-            tx += TAB_SPACING;
+                return true;
+            });
+            addComponent(btn);
+            tx += TAB_GAP;
         }
 
-        setupContentPanel();
-        refreshContent();
+        rebuildDynamicButtons();
 
+        ScrollContentComponent content = new ScrollContentComponent(0, 0, 2, ScrollOrientation.VERTICAL);
+        scrollContent = content;
+        populateScrollContent();
+
+        addComponent(new ScrollPanelComponent(null, panelX + SCROLL_X, panelY + SCROLL_Y, SCROLL_W, SCROLL_H,
+                ScrollOrientation.VERTICAL, content,
+                createScrollBar(SCROLL_BAR_X, 0, SCROLL_BAR_W, SCROLL_H, ScrollOrientation.VERTICAL)));
+    }
+
+    private void refreshTabContent() {
+        if (scrollContent != null) {
+            scrollContent.getChildren().clear();
+            scrollContent.setY(0);
+            populateScrollContent();
+        }
+        rebuildDynamicButtons();
+    }
+
+    private void rebuildDynamicButtons() {
+        for (AbstractComponent<?> btn : dynamicBtns) {
+            removeComponent(btn);
+        }
+        dynamicBtns.clear();
+
+        addBottomButtons();
+        addVoteButtons();
+    }
+
+    private void addBottomButtons() {
         switch (selectedTab) {
             case "GOVERNANCE" -> addGovernanceButtons();
             case "ROLES" -> addRolesButtons();
             default -> addDefaultButtons();
         }
+    }
 
-        int voteBtnX = PANEL_WIDTH - 160;
-        if (snapshot.leadershipCandidateCount() > 0 && "GOVERNANCE".equals(selectedTab)) {
-            for (int i = 0; i < Math.min(5, snapshot.leadershipCandidateCount()); i++) {
-                int ci = i;
-                add(new NordButton(this, Component.literal("V" + (i + 1)), Icon.empty()) {
-                    @Override
-                    public void onClicked(MouseButton button) {
-                        sendAction(ACTION_VOTE_CANDIDATE_1 + ci);
-                    }
-                }.setPosAndSize(voteBtnX + i * 31, VOTE_BTN_Y, 29, 16));
-            }
+    private void addVoteButtons() {
+        if (!"GOVERNANCE".equals(selectedTab)) return;
+        if (snapshot.leadershipCandidateCount() <= 0) return;
+
+        int x = panelX + PANEL_WIDTH - 160;
+        for (int i = 0; i < Math.min(5, snapshot.leadershipCandidateCount()); i++) {
+            int ci = i;
+            ButtonComponent btn = new ButtonComponent(x + i * 31, panelY + VOTE_Y, 29, 16,
+                    Component.literal("V" + (i + 1)), (b, screen, mx, my, button) -> {
+                sendAction(ACTION_VOTE_CANDIDATE_1 + ci);
+                return true;
+            });
+            addComponent(btn);
+            dynamicBtns.add(btn);
         }
     }
 
     private void addDefaultButtons() {
-        add(new NordButton(this, Component.literal("Policy"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_DISTRIBUTION_TOGGLE); }
-        }.setPosAndSize(10, BOTTOM_BTN_Y, 60, 16));
-
-        add(new NordButton(this, Component.literal("Friendly PvP"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_FRIENDLY_FIRE_TOGGLE); }
-        }.setPosAndSize(74, BOTTOM_BTN_Y, 60, 16));
-
-        add(new NordButton(this, Component.literal("Approve"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_PROPOSAL_YES); }
-        }.setPosAndSize(138, BOTTOM_BTN_Y, 50, 16));
-
-        add(new NordButton(this, Component.literal("Reject"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_PROPOSAL_NO); }
-        }.setPosAndSize(192, BOTTOM_BTN_Y, 50, 16));
+        dynamicBtns.add(addBtn(panelX + 10, panelY + BTN_Y, 60, 16, "Policy", ACTION_DISTRIBUTION_TOGGLE));
+        dynamicBtns.add(addBtn(panelX + 74, panelY + BTN_Y, 60, 16, "Friendly PvP", ACTION_FRIENDLY_FIRE_TOGGLE));
+        dynamicBtns.add(addBtn(panelX + 138, panelY + BTN_Y, 50, 16, "Approve", ACTION_PROPOSAL_YES));
+        dynamicBtns.add(addBtn(panelX + 192, panelY + BTN_Y, 50, 16, "Reject", ACTION_PROPOSAL_NO));
     }
 
     private void addGovernanceButtons() {
-        add(new NordButton(this, Component.literal("Model"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_GOVERNANCE_CYCLE); }
-        }.setPosAndSize(10, BOTTOM_BTN_Y, 60, 16));
-
-        add(new NordButton(this, Component.literal("Approve"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_PROPOSAL_YES); }
-        }.setPosAndSize(74, BOTTOM_BTN_Y, 50, 16));
-
-        add(new NordButton(this, Component.literal("Reject"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_PROPOSAL_NO); }
-        }.setPosAndSize(128, BOTTOM_BTN_Y, 50, 16));
+        dynamicBtns.add(addBtn(panelX + 10, panelY + BTN_Y, 60, 16, "Model", ACTION_GOVERNANCE_CYCLE));
+        dynamicBtns.add(addBtn(panelX + 74, panelY + BTN_Y, 50, 16, "Approve", ACTION_PROPOSAL_YES));
+        dynamicBtns.add(addBtn(panelX + 128, panelY + BTN_Y, 50, 16, "Reject", ACTION_PROPOSAL_NO));
 
         boolean hasElection = "Election".equals(snapshot.leadershipContestType());
         boolean hasCoup = "Coup".equals(snapshot.leadershipContestType());
 
         if (!hasElection && !hasCoup) {
-            add(new NordButton(this, Component.literal("Elect"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_START_ELECTION); }
-            }.setPosAndSize(182, BOTTOM_BTN_Y, 50, 16));
-            add(new NordButton(this, Component.literal("Coup"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_START_COUP); }
-            }.setPosAndSize(236, BOTTOM_BTN_Y, 40, 16));
+            dynamicBtns.add(addBtn(panelX + 182, panelY + BTN_Y, 50, 16, "Elect", ACTION_START_ELECTION));
+            dynamicBtns.add(addBtn(panelX + 236, panelY + BTN_Y, 40, 16, "Coup", ACTION_START_COUP));
         }
         if (hasElection) {
-            add(new NordButton(this, Component.literal("Join"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_JOIN_ELECTION); }
-            }.setPosAndSize(182, BOTTOM_BTN_Y, 50, 16));
-            add(new NordButton(this, Component.literal("Coup"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_START_COUP); }
-            }.setPosAndSize(236, BOTTOM_BTN_Y, 50, 16));
+            dynamicBtns.add(addBtn(panelX + 182, panelY + BTN_Y, 50, 16, "Join", ACTION_JOIN_ELECTION));
+            dynamicBtns.add(addBtn(panelX + 236, panelY + BTN_Y, 50, 16, "Coup", ACTION_START_COUP));
         }
         if (hasCoup) {
-            add(new NordButton(this, Component.literal("Join"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_APPROVE_COUP); }
-            }.setPosAndSize(182, BOTTOM_BTN_Y, 50, 16));
-            add(new NordButton(this, Component.literal("Elect"), Icon.empty()) {
-                @Override
-                public void onClicked(MouseButton button) { sendAction(ACTION_START_ELECTION); }
-            }.setPosAndSize(236, BOTTOM_BTN_Y, 50, 16));
+            dynamicBtns.add(addBtn(panelX + 182, panelY + BTN_Y, 50, 16, "Join", ACTION_APPROVE_COUP));
+            dynamicBtns.add(addBtn(panelX + 236, panelY + BTN_Y, 50, 16, "Elect", ACTION_START_ELECTION));
         }
     }
 
     private void addRolesButtons() {
-        add(new NordButton(this, Component.literal("Policy"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_DISTRIBUTION_TOGGLE); }
-        }.setPosAndSize(10, BOTTOM_BTN_Y, 60, 16));
-
-        add(new NordButton(this, Component.literal("Friendly PvP"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_FRIENDLY_FIRE_TOGGLE); }
-        }.setPosAndSize(74, BOTTOM_BTN_Y, 60, 16));
-
-        add(new NordButton(this, Component.literal("Create Role"), Icon.empty()) {
-            @Override
-            public void onClicked(MouseButton button) { sendAction(ACTION_ROLES_CREATE); }
-        }.setPosAndSize(138, BOTTOM_BTN_Y, 60, 16));
+        dynamicBtns.add(addBtn(panelX + 10, panelY + BTN_Y, 60, 16, "Policy", ACTION_DISTRIBUTION_TOGGLE));
+        dynamicBtns.add(addBtn(panelX + 74, panelY + BTN_Y, 60, 16, "Friendly PvP", ACTION_FRIENDLY_FIRE_TOGGLE));
+        dynamicBtns.add(addBtn(panelX + 138, panelY + BTN_Y, 60, 16, "Create Role", ACTION_ROLES_CREATE));
     }
 
-    @Override
-    protected void populateContentPanel(Panel panel) {
+    private ButtonComponent addBtn(int x, int y, int w, int h, String label, int actionId) {
+        ButtonComponent btn = new ButtonComponent(x, y, w, h, Component.literal(label),
+                (b, screen, mx, my, button) -> { sendAction(actionId); return true; });
+        addComponent(btn);
+        return btn;
+    }
+
+    // -- Scroll content population --
+
+    private void populateScrollContent() {
         switch (selectedTab) {
-            case "OVERVIEW" -> populateOverview(panel);
-            case "ECONOMY" -> populateEconomy(panel);
-            case "GOVERNANCE" -> populateGovernance(panel);
-            case "ROLES" -> populateRoles(panel);
+            case "OVERVIEW" -> populateOverview();
+            case "ECONOMY" -> populateEconomy();
+            case "GOVERNANCE" -> populateGovernance();
+            case "ROLES" -> populateRoles();
         }
     }
 
-    private void populateOverview(Panel panel) {
-        panel.add(new InfoRowWidget(panel, "Leader", snapshot.leaderTitle()));
-        panel.add(new InfoRowWidget(panel, "Model", snapshot.governanceModel()));
-        panel.add(new InfoRowWidget(panel, "Members", String.valueOf(snapshot.memberCount())));
-        panel.add(new InfoRowWidget(panel, "Managers", String.valueOf(snapshot.managerCount())));
-        panel.add(new InfoRowWidget(panel, "Custom roles", String.valueOf(snapshot.customRoleCount())));
-        panel.add(new InfoRowWidget(panel, "Join requests", String.valueOf(snapshot.joinRequestCount())));
-        panel.add(new InfoRowWidget(panel, "Open invites", String.valueOf(snapshot.inviteCount())));
-        panel.add(new InfoRowWidget(panel, "Friendly fire", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled"));
-        panel.add(new InfoRowWidget(panel, "Proposal", snapshot.pendingProposalSummary()));
-        panel.add(new InfoRowWidget(panel, "Votes", snapshot.pendingProposalRequiredYesVotes() <= 0 ? "-"
-                : snapshot.pendingProposalYesVotes() + "/" + snapshot.pendingProposalRequiredYesVotes() + " yes"));
+    private void populateOverview() {
+        addInfo("Leader", snapshot.leaderTitle());
+        addInfo("Model", snapshot.governanceModel());
+        addInfo("Members", String.valueOf(snapshot.memberCount()));
+        addInfo("Managers", String.valueOf(snapshot.managerCount()));
+        addInfo("Custom roles", String.valueOf(snapshot.customRoleCount()));
+        addInfo("Join requests", String.valueOf(snapshot.joinRequestCount()));
+        addInfo("Open invites", String.valueOf(snapshot.inviteCount()));
+        addInfo("Friendly fire", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
+
+        scrollContent.addChild(new SpacerRow(0, 0, 4));
+        scrollContent.addChild(new SectionLabel(0, 0, "Proposal", 0xFF9DB0C2));
+        addInfo("Summary", snapshot.pendingProposalSummary());
+        String votes = snapshot.pendingProposalRequiredYesVotes() <= 0 ? "-"
+                : snapshot.pendingProposalYesVotes() + "/" + snapshot.pendingProposalRequiredYesVotes() + " yes";
+        addInfo("Votes", votes);
     }
 
-    private void populateEconomy(Panel panel) {
-        panel.add(new InfoRowWidget(panel, "Civ treasury", RealCivUtil.formatCredits(snapshot.civTreasuryCents())));
-        panel.add(new InfoRowWidget(panel, "Your karma", RealCivUtil.formatCredits(snapshot.playerContributionKarmaCents())));
-        panel.add(new InfoRowWidget(panel, "Total contributions", String.valueOf(snapshot.playerContributedItemsTotal())));
-        panel.add(new InfoRowWidget(panel, "Hub stock types", String.valueOf(snapshot.hubStockEntryCount())));
-        panel.add(new InfoRowWidget(panel, "Distribution", snapshot.hubDistributionMode()));
-        panel.add(new InfoRowWidget(panel, "Daily allowances", String.valueOf(snapshot.hubDailyAllowanceCount())));
-        panel.add(new InfoRowWidget(panel, "Karma cap/day", snapshot.maxContributionKarmaGainPerDayCents() <= 0
-                ? "Unlimited" : RealCivUtil.formatCredits(snapshot.maxContributionKarmaGainPerDayCents())));
+    private void populateEconomy() {
+        addInfo("Civ treasury", RealCivUtil.formatCredits(snapshot.civTreasuryCents()));
+        addInfo("Your karma", RealCivUtil.formatCredits(snapshot.playerContributionKarmaCents()));
+        addInfo("Total contributions", String.valueOf(snapshot.playerContributedItemsTotal()));
+        addInfo("Hub stock types", String.valueOf(snapshot.hubStockEntryCount()));
+        addInfo("Distribution mode", snapshot.hubDistributionMode());
+        addInfo("Daily allowances", String.valueOf(snapshot.hubDailyAllowanceCount()));
+        String cap = snapshot.maxContributionKarmaGainPerDayCents() <= 0
+                ? "Unlimited" : RealCivUtil.formatCredits(snapshot.maxContributionKarmaGainPerDayCents());
+        addInfo("Karma cap/day", cap);
     }
 
-    private void populateGovernance(Panel panel) {
-        panel.add(new InfoRowWidget(panel, "Leader", snapshot.leaderTitle()));
-        panel.add(new InfoRowWidget(panel, "Model", snapshot.governanceModel()));
-        panel.add(new InfoRowWidget(panel, "Workflow", snapshot.governanceApprovalWorkflowEnabled() ? "Enabled" : "Disabled"));
-        panel.add(new InfoRowWidget(panel, "You are", snapshot.playerRole()));
+    private void populateGovernance() {
+        addInfo("Leader", snapshot.leaderTitle());
+        addInfo("Model", snapshot.governanceModel());
+        addInfo("Workflow", snapshot.governanceApprovalWorkflowEnabled() ? "Enabled" : "Disabled");
+        addInfo("You are", snapshot.playerRole());
 
-        panel.add(createTextWidget("", 0));
+        scrollContent.addChild(new SpacerRow(0, 0, 4));
 
         boolean hasContest = !"None".equals(snapshot.leadershipContestType());
         if (hasContest) {
-            panel.add(createHeaderWidget("Active Contest: " + snapshot.leadershipContestType(), 0xFFFFD54F));
-            panel.add(new InfoRowWidget(panel, "Status", snapshot.leadershipContestSummary()));
+            scrollContent.addChild(new SectionLabel(0, 0,
+                    "Active Contest: " + snapshot.leadershipContestType(), 0xFFFFD54F));
+            addInfo("Status", snapshot.leadershipContestSummary());
 
             if ("Election".equals(snapshot.leadershipContestType())) {
-                panel.add(new InfoRowWidget(panel, "Votes cast", String.valueOf(snapshot.leadershipElectionVoteCount())));
-                panel.add(new InfoRowWidget(panel, "Candidates", String.valueOf(snapshot.leadershipCandidateCount())));
+                addInfo("Votes cast", String.valueOf(snapshot.leadershipElectionVoteCount()));
+                addInfo("Candidates", String.valueOf(snapshot.leadershipCandidateCount()));
 
                 for (int i = 0; i < Math.min(5, snapshot.leadershipCandidateEntries().size()); i++) {
                     String entry = snapshot.leadershipCandidateEntries().get(i);
                     int split = entry.indexOf('|');
                     String val = split >= 0 && split + 1 < entry.length() ? entry.substring(split + 1) : entry;
-                    panel.add(new InfoRowWidget(panel, "Candidate #" + (i + 1), val));
+                    addInfo("Candidate #" + (i + 1), val);
                 }
 
                 if (snapshot.leadershipCandidateCount() > 0) {
-                    panel.add(createTextWidget("Use V1-V5 buttons below to vote", 0xFF78909C));
+                    scrollContent.addChild(new RowLabel(0, 0,
+                            "Use V1-V5 buttons below to vote", 0xFF78909C));
                 }
             } else if ("Coup".equals(snapshot.leadershipContestType())) {
-                panel.add(new InfoRowWidget(panel, "Coup leader", snapshot.leadershipCoupLeaderName()));
-                panel.add(new InfoRowWidget(panel, "Approvals",
-                        snapshot.leadershipCoupRequiredApprovals() <= 0 ? "-"
-                                : snapshot.leadershipCoupApprovalCount() + "/" + snapshot.leadershipCoupRequiredApprovals()));
+                addInfo("Coup leader", snapshot.leadershipCoupLeaderName());
+                String approvals = snapshot.leadershipCoupRequiredApprovals() <= 0 ? "-"
+                        : snapshot.leadershipCoupApprovalCount() + "/" + snapshot.leadershipCoupRequiredApprovals();
+                addInfo("Approvals", approvals);
             }
         } else {
-            panel.add(new InfoRowWidget(panel, "Contest", "None"));
-            panel.add(createTextWidget("Start an election or coup to change leadership.", 0xFF78909C));
+            addInfo("Contest", "None");
+            scrollContent.addChild(new RowLabel(0, 0,
+                    "Start an election or coup to change leadership.", 0xFF78909C));
         }
     }
 
-    private void populateRoles(Panel panel) {
-        panel.add(new InfoRowWidget(panel, "Custom roles", String.valueOf(snapshot.customRoleCount())));
-        panel.add(new InfoRowWidget(panel, "Managers", String.valueOf(snapshot.managerCount())));
-        panel.add(new InfoRowWidget(panel, "Leader title", snapshot.leaderTitle()));
-        panel.add(new InfoRowWidget(panel, "Distribution", snapshot.hubDistributionMode()));
-        panel.add(new InfoRowWidget(panel, "Friendly PvP", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled"));
+    private void populateRoles() {
+        addInfo("Custom roles", String.valueOf(snapshot.customRoleCount()));
+        addInfo("Managers", String.valueOf(snapshot.managerCount()));
+        addInfo("Leader title", snapshot.leaderTitle());
+        addInfo("Distribution", snapshot.hubDistributionMode());
+        addInfo("Friendly PvP", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
 
-        panel.add(createTextWidget("", 0));
+        scrollContent.addChild(new SpacerRow(0, 0, 4));
 
         if (snapshot.canManageGovernance()) {
-            panel.add(createTextWidget("Available permissions for roles:", 0xFFC6D2DE));
+            scrollContent.addChild(new SectionLabel(0, 0, "Available permissions for roles", 0xFFC6D2DE));
 
             String[][] perms = {
-                    {"manage_diplomacy", "Manage diplomacy"},
-                    {"manage_census", "Manage membership"},
-                    {"manage_hub_distribution", "Manage hub policy"},
-                    {"manage_upkeep", "Manage tax/upkeep"},
-                    {"manage_friendly_fire", "Toggle PvP"},
-                    {"manage_leadership", "Manage leadership"},
-                    {"manage_land_zoning", "Manage land zones"},
-                    {"police_members", "Police members"}
+                {"manage_diplomacy", "Manage diplomacy"},
+                {"manage_census", "Manage membership"},
+                {"manage_hub_distribution", "Manage hub policy"},
+                {"manage_upkeep", "Manage tax/upkeep"},
+                {"manage_friendly_fire", "Toggle PvP"},
+                {"manage_leadership", "Manage leadership"},
+                {"manage_land_zoning", "Manage land zones"},
+                {"police_members", "Police members"}
             };
             for (String[] p : perms) {
-                panel.add(createTextWidget("  " + p[1], 0xFF9BA9B7));
+                scrollContent.addChild(new RowLabel(0, 0, "  \u2022 " + p[1], 0xFF9BA9B7));
             }
 
-            panel.add(createTextWidget("", 0));
-            panel.add(createTextWidget("Use 'Create Role' button below to add a new role.", 0xFF78909C));
+            scrollContent.addChild(new SpacerRow(0, 0, 4));
+            scrollContent.addChild(new RowLabel(0, 0,
+                    "Use 'Create Role' button below to add a new role.", 0xFF78909C));
         } else {
-            panel.add(createTextWidget("Role management is available to leadership.", 0xFF78909C));
+            scrollContent.addChild(new RowLabel(0, 0,
+                    "Role management is available to leadership.", 0xFF78909C));
         }
     }
 
-    @Override
-    protected void alignContentPanel(Panel panel) {
-        for (Widget w : panel.getWidgets()) {
-            if (w.width == 0) w.setSize(ROW_WIDTH, ROW_HEIGHT);
-            else if (w.width < 10) w.setSize(ROW_WIDTH, w.height > 0 ? w.height : ROW_HEIGHT);
-        }
-        panel.align(new WidgetLayout.Vertical(2, 2, 4));
+    private void addInfo(String label, String value) {
+        scrollContent.addChild(new LabelValueRow(0, 0, label, value, 0xFFF4F7FA));
     }
 
     private void sendAction(int actionId) {
         PacketDistributor.sendToServer(new RealCivPayloads.RealCivActionPayload(
                 RealCivPayloads.SCREEN_CONTROL_PANEL, actionId));
-    }
-
-    private static class InfoRowWidget extends Widget {
-        private final String label;
-        private final String value;
-
-        InfoRowWidget(Panel panel, String label, String value) {
-            super(panel);
-            this.label = label;
-            this.value = value;
-            setSize(ROW_WIDTH, ROW_HEIGHT);
-        }
-
-        @Override
-        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            var font = Minecraft.getInstance().font;
-            graphics.drawString(font, Component.literal(label), x, y, 0xFF9BA9B7, false);
-            String trimmed = font.plainSubstrByWidth(value, ROW_WIDTH - 120);
-            graphics.drawString(font, Component.literal(trimmed), x + 120, y, 0xFFF4F7FA, false);
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) { return false; }
     }
 }

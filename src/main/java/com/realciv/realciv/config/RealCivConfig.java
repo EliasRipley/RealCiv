@@ -355,6 +355,46 @@ public final class RealCivConfig {
                     () -> "",
                     RealCivConfig::isString);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LUMBERJACK_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional lumberjack per-resource window caps by lumberjack level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:oak_log|4,8,12")
+            .defineListAllowEmpty(
+                    "profession.lumberjackBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> LUMBERJACK_DAILY_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional lumberjack per-resource daily caps by lumberjack level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:oak_log|16,32,64")
+            .defineListAllowEmpty(
+                    "profession.lumberjackDailyBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TERRAFORMER_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional terraformer per-block window caps by terraformer level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:dirt|10,20,30")
+            .defineListAllowEmpty(
+                    "profession.terraformerBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> TERRAFORMER_DAILY_BLOCK_ACTION_CAPS = BUILDER
+            .comment("Optional terraformer per-block daily caps by terraformer level.")
+            .comment("Format: block_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:dirt|40,80,120")
+            .defineListAllowEmpty(
+                    "profession.terraformerDailyBlockActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_EVENT_HOOK_RULES = BUILDER
             .comment("Optional event-driven profession action hooks.")
             .comment("Legacy format: hook|profession|actions_per_trigger|optional custom deny message")
@@ -749,28 +789,11 @@ public final class RealCivConfig {
 
     public static final ModConfigSpec.ConfigValue<List<? extends String>> BREAK_ACTION_COST_OVERRIDES = BUILDER
             .comment("Optional per-block action costs for block-break limits. Format: block_id|cost")
+            .comment("Default is 1 action per block broken. Set >1 to make a block cost more actions.")
             .comment("Example: minecraft:coal_ore|2 means breaking one coal ore uses 2 profession actions.")
             .defineListAllowEmpty(
                     "profession.breakActionCostOverrides",
-                    List.of(
-                            "minecraft:cobblestone|2",
-                            "minecraft:stone|2",
-                            "minecraft:cobbled_deepslate|2",
-                            "minecraft:deepslate|2",
-                            "minecraft:dirt|2",
-                            "minecraft:grass_block|2",
-                            "minecraft:coarse_dirt|2",
-                            "minecraft:rooted_dirt|2",
-                            "minecraft:sand|2",
-                            "minecraft:red_sand|2",
-                            "minecraft:gravel|2",
-                            "minecraft:snow_block|2",
-                            "minecraft:mud|2",
-                            "minecraft:coal_ore|2",
-                            "minecraft:deepslate_coal_ore|2",
-                            "minecraft:diamond_ore|3",
-                            "minecraft:deepslate_diamond_ore|3",
-                            "minecraft:ancient_debris|4"),
+                    List.of(),
                     () -> "",
                     RealCivConfig::isString);
 
@@ -1093,6 +1116,22 @@ public final class RealCivConfig {
 
     public static int minerDailyBlockActionCapForLevel(ResourceLocation blockId, int minerLevel) {
         return parseBlockLevelCap(MINER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, minerLevel);
+    }
+
+    public static int lumberjackBlockActionCapForLevel(ResourceLocation blockId, int level) {
+        return parseBlockLevelCap(LUMBERJACK_BLOCK_ACTION_CAPS.get(), blockId, level);
+    }
+
+    public static int lumberjackDailyBlockActionCapForLevel(ResourceLocation blockId, int level) {
+        return parseBlockLevelCap(LUMBERJACK_DAILY_BLOCK_ACTION_CAPS.get(), blockId, level);
+    }
+
+    public static int terraformerBlockActionCapForLevel(ResourceLocation blockId, int level) {
+        return parseBlockLevelCap(TERRAFORMER_BLOCK_ACTION_CAPS.get(), blockId, level);
+    }
+
+    public static int terraformerDailyBlockActionCapForLevel(ResourceLocation blockId, int level) {
+        return parseBlockLevelCap(TERRAFORMER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, level);
     }
 
     public static int warriorLimitForLevel(int warriorLevel) {

@@ -28,6 +28,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
+import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -60,10 +61,18 @@ public final class RealCivNetwork {
         registrar.playToClient(RealCivPayloads.OpenHubStockPayload.TYPE, RealCivPayloads.OpenHubStockPayload.STREAM_CODEC, RealCivNetwork::handleOpenHubStock);
 
         registrar.playToServer(RealCivPayloads.RealCivActionPayload.TYPE, RealCivPayloads.RealCivActionPayload.STREAM_CODEC, RealCivNetwork::handleAction);
+        registrar.playToServer(RealCivPayloads.SetTaxItemPayload.TYPE, RealCivPayloads.SetTaxItemPayload.STREAM_CODEC, RealCivNetwork::handleSetTaxItem);
     }
 
     private static void handleOpenTax(RealCivPayloads.OpenTaxPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernTaxScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            Screen current = Minecraft.getInstance().screen;
+            if (current instanceof ModernTaxScreen taxScreen) {
+                taxScreen.refresh(payload.snapshot());
+            } else {
+                new ModernTaxScreen(payload.snapshot()).openGui();
+            }
+        });
     }
 
     private static void handleOpenDiplomacy(RealCivPayloads.OpenDiplomacyPayload payload, IPayloadContext context) {
@@ -123,6 +132,9 @@ public final class RealCivNetwork {
             case ModernTaxScreen.ACTION_RATE_UP -> { if (canManage) adjustRate(player, data, civId, 0.10D); }
             case ModernTaxScreen.ACTION_MODE_TOGGLE -> { if (canManage) toggleMode(player, data, civId); }
             case ModernTaxScreen.ACTION_ITEM_CYCLE -> { if (canManage) cycleItem(player, data, civId); }
+            case ModernTaxScreen.ACTION_SET_TAX_ITEM -> {
+                // Handled via SetTaxItemPayload instead — no inventory interaction
+            }
             case ModernTaxScreen.ACTION_ITEM_COUNT_DOWN -> { if (canManage) adjustItemCount(player, data, civId, -1); }
             case ModernTaxScreen.ACTION_ITEM_COUNT_UP -> { if (canManage) adjustItemCount(player, data, civId, 1); }
             case ModernTaxScreen.ACTION_PREV_PAGE -> {
@@ -140,6 +152,22 @@ public final class RealCivNetwork {
             }
         }
         sendTaxScreen(player, data, civId);
+    }
+
+    private static void handleSetTaxItem(RealCivPayloads.SetTaxItemPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) return;
+            String civId = resolveCivId(player);
+            if (civId == null) return;
+            CivSavedData data = CivSavedData.get(player.getServer());
+            if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_UPKEEP)) return;
+
+            ResourceLocation itemId = ResourceLocation.parse(payload.itemId());
+            if (BuiltInRegistries.ITEM.containsKey(itemId)) {
+                data.setTaxItemRule(civId, itemId, data.taxItemCountPerPlot(civId), player.getGameProfile().getName());
+                sendTaxScreen(player, data, civId);
+            }
+        });
     }
 
     private static void payTax(ServerPlayer player, CivSavedData data, String civId, int cycles) {

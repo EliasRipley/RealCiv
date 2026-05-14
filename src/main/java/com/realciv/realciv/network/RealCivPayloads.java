@@ -123,4 +123,18 @@ public final class RealCivPayloads {
             return TYPE;
         }
     }
+
+    public record SetTaxItemPayload(String itemId) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetTaxItemPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_tax_item"));
+
+        public static final StreamCodec<ByteBuf, SetTaxItemPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, SetTaxItemPayload::itemId,
+                SetTaxItemPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
 }

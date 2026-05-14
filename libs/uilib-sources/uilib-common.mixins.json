@@ -1,0 +1,14 @@
+{
+  "required": true,
+  "package": "com.daqem.uilib.client.mixin",
+  "compatibilityLevel": "JAVA_17",
+  "minVersion": "0.8",
+  "client": [
+    "ScreenAccessor"
+  ],
+  "mixins": [
+  ],
+  "injectors": {
+    "defaultRequire": 1
+  }
+}
