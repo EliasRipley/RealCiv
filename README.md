@@ -494,3 +494,8 @@ FTB Chunks Integration Notes
 - Claim mirroring now performs real FTB claims (not check-only validation), so mirrored claims appear correctly on map/minimap/chunk-map views.
 - `/realciv land gui` (and Land Wand right-click in air) tries the FTB map first, then opens the RealCiv fallback map if FTB team context is unavailable.
 
+License
+-------
+
+All Rights Reserved. Copyright (c) 2024-2026 Elias Ripley. See `LICENSE` for details.
+
