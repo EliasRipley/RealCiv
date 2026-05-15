@@ -11,7 +11,6 @@ import com.realciv.realciv.logic.TagResetRule;
 import com.realciv.realciv.logic.TagRewardRule;
 import java.util.ArrayList;
 import java.util.HashMap;
-import java.util.HashSet;
 import java.util.List;
 import java.util.Locale;
 import java.util.Map;
@@ -22,12 +21,12 @@ import org.jetbrains.annotations.Nullable;
 
 public final class RealCivConfig {
     private static final ModConfigSpec.Builder BUILDER = new ModConfigSpec.Builder();
-    private static final List<Integer> LEGACY_LUMBERJACK_LIMITS = List.of(32, 64, 96, 160, 256, 384);
-    private static final List<Integer> CURRENT_LUMBERJACK_LIMITS = List.of(8, 16, 32, 64, 96, 128);
-    private static final String LEGACY_DEFAULT_CIV_ID = "commonwealth";
-    private static final String LEGACY_DEFAULT_CIV_NAME = "Commonwealth";
+    static final List<Integer> LEGACY_LUMBERJACK_LIMITS = List.of(32, 64, 96, 160, 256, 384);
+    static final List<Integer> CURRENT_LUMBERJACK_LIMITS = List.of(8, 16, 32, 64, 96, 128);
+    static final String LEGACY_DEFAULT_CIV_ID = "commonwealth";
+    static final String LEGACY_DEFAULT_CIV_NAME = "Commonwealth";
     @Nullable
-    private static List<ProfessionEventHookRule> cachedProfessionEventHookRules;
+    static List<ProfessionEventHookRule> cachedProfessionEventHookRules;
 
     public static final ModConfigSpec.ConfigValue<List<? extends Integer>> FARMER_LIMITS = BUILDER
             .comment("Farmer action limits by farmer level index (level 0 = first value).")
@@ -1186,250 +1185,115 @@ public final class RealCivConfig {
     }
 
     public static boolean governanceApprovalWorkflowEnabled() {
-        return GOVERNANCE_APPROVAL_WORKFLOW_ENABLED.get();
+        return CivConfig.governanceApprovalWorkflowEnabled();
     }
 
     public static long governanceElectionDurationMillis() {
-        return 60_000L * Math.max(1, GOVERNANCE_ELECTION_DURATION_MINUTES.get());
+        return CivConfig.governanceElectionDurationMillis();
     }
 
     public static long governanceCoupDurationMillis() {
-        return 60_000L * Math.max(1, GOVERNANCE_COUP_DURATION_MINUTES.get());
+        return CivConfig.governanceCoupDurationMillis();
     }
 
     public static int governanceCoupMinMembers() {
-        return Math.max(2, GOVERNANCE_COUP_MIN_MEMBERS.get());
+        return CivConfig.governanceCoupMinMembers();
     }
 
     public static double civTreasuryDepositRatio() {
-        return Math.max(0.0D, Math.min(1.0D, CIV_TREASURY_DEPOSIT_PERCENT.get() / 100.0D));
+        return HubConfig.civTreasuryDepositRatio();
     }
 
     public static long upkeepIntervalTicks() {
-        return 24_000L * LAND_UPKEEP_INTERVAL_DAYS.get();
+        return LandConfig.upkeepIntervalTicks();
     }
 
     public static long upkeepGraceTicks() {
-        return 24_000L * LAND_UPKEEP_GRACE_DAYS.get();
+        return LandConfig.upkeepGraceTicks();
     }
 
     public static boolean blockUnclaimedBuilding() {
-        return LAND_BLOCK_UNCLAIMED_BUILDING.get();
+        return LandConfig.blockUnclaimedBuilding();
     }
 
     public static boolean canClaimDimension(@Nullable String dimensionIdRaw) {
-        String dimensionId = normalizeDimensionId(dimensionIdRaw);
-        if (dimensionId == null) {
-            return false;
-        }
-        ClaimDimensionPolicy policy = claimDimensionPolicy();
-        if (policy == ClaimDimensionPolicy.ALLOW_ALL) {
-            return true;
-        }
-        Set<String> configured = claimDimensionSet();
-        if (policy == ClaimDimensionPolicy.ALLOWLIST) {
-            return configured.contains(dimensionId);
-        }
-        return !configured.contains(dimensionId);
+        return LandConfig.canClaimDimension(dimensionIdRaw);
     }
 
     public static String claimDimensionPolicyLabel() {
-        return switch (claimDimensionPolicy()) {
-            case ALLOW_ALL -> "allow_all";
-            case ALLOWLIST -> "allowlist";
-            case DENYLIST -> "denylist";
-        };
+        return LandConfig.claimDimensionPolicyLabel();
     }
 
     public static Set<String> claimDimensionSet() {
-        Set<String> out = new HashSet<>();
-        for (String raw : LAND_CLAIM_DIMENSIONS.get()) {
-            String normalized = normalizeDimensionId(raw);
-            if (normalized != null) {
-                out.add(normalized);
-            }
-        }
-        return Set.copyOf(out);
+        return LandConfig.claimDimensionSet();
     }
 
     public static int landWandVisualizeRadiusChunks() {
-        return Math.max(1, LAND_WAND_VISUALIZE_RADIUS_CHUNKS.get());
+        return LandConfig.landWandVisualizeRadiusChunks();
     }
 
     public static int landWandMaxSelectionChunks() {
-        return Math.max(1, LAND_WAND_MAX_SELECTION_CHUNKS.get());
+        return LandConfig.landWandMaxSelectionChunks();
     }
 
     public static String ftbMayorDefaultClaimMode() {
-        String raw = LAND_FTB_MAYOR_DEFAULT_CLAIM_MODE.get();
-        if (raw == null) {
-            return "civic";
-        }
-        String mode = raw.trim().toLowerCase(java.util.Locale.ROOT);
-        if ("private".equals(mode)) {
-            return "private";
-        }
-        return "civic";
+        return LandConfig.ftbMayorDefaultClaimMode();
     }
 
     public static String defaultCivilizationId() {
-        String value = DEFAULT_CIVILIZATION_ID.get();
-        if (value == null || value.isBlank()) {
-            return "unaligned";
-        }
-        return value.trim().toLowerCase(java.util.Locale.ROOT);
+        return CivConfig.defaultCivilizationId();
     }
 
     public static String defaultCivilizationName() {
-        String value = DEFAULT_CIVILIZATION_NAME.get();
-        if (value == null || value.isBlank()) {
-            return "Unaligned";
-        }
-        return value.trim();
+        return CivConfig.defaultCivilizationName();
     }
 
     public static boolean adminBypassRestrictions() {
-        return ADMIN_BYPASS_RESTRICTIONS.get();
+        return CivConfig.adminBypassRestrictions();
     }
 
     public static boolean requireFounderApproval() {
-        return REQUIRE_FOUNDER_APPROVAL.get();
+        return CivConfig.requireFounderApproval();
     }
 
     public static int maxExplosivesExpertsPerCivilization() {
-        return Math.max(0, MAX_EXPLOSIVES_EXPERTS_PER_CIV.get());
+        return CivConfig.maxExplosivesExpertsPerCivilization();
     }
 
     public static int maxRedstonersPerCivilization() {
-        return Math.max(0, MAX_REDSTONERS_PER_CIV.get());
+        return CivConfig.maxRedstonersPerCivilization();
     }
 
     public static boolean blockNonPlayerExplosionDamageInClaims() {
-        return EXPLOSIVES_BLOCK_NON_PLAYER_DAMAGE_IN_CLAIMS.get();
+        return CivConfig.blockNonPlayerExplosionDamageInClaims();
     }
 
     public static Set<ResourceLocation> regulatedRedstoneBlocks() {
-        return ToolConfig.regulatedRedstoneBlocks();
+        return CivConfig.regulatedRedstoneBlocks();
     }
 
     public static Set<ResourceLocation> regulatedExplosiveItems() {
-        return ToolConfig.regulatedExplosiveItems();
+        return CivConfig.regulatedExplosiveItems();
     }
 
     public static boolean carryCapPickupEnabled() {
-        return CARRY_CAP_PICKUP_ENABLED.get();
+        return CivConfig.carryCapPickupEnabled();
     }
 
     public static boolean carryCapCraftEnabled() {
-        return CARRY_CAP_CRAFT_ENABLED.get();
+        return CivConfig.carryCapCraftEnabled();
     }
 
     public static Map<Profession, Double> carryCapProfessionMultipliers() {
-        Map<Profession, Double> multipliers = new HashMap<>();
-        multipliers.put(Profession.FARMER, 1.0D);
-        multipliers.put(Profession.MINER, 1.0D);
-        multipliers.put(Profession.TERRAFORMER, 1.0D);
-        multipliers.put(Profession.LUMBERJACK, 1.0D);
-        multipliers.put(Profession.FISHER, 1.0D);
-        multipliers.put(Profession.HUNTER, 1.0D);
-        multipliers.put(Profession.WARRIOR, 1.0D);
-        multipliers.put(Profession.EXPLOSIVES_EXPERT, 1.0D);
-        multipliers.put(Profession.CRAFTER, 1.0D);
-        multipliers.put(Profession.ENCHANTER, 1.0D);
-        multipliers.put(Profession.BREWER, 1.0D);
-        multipliers.put(Profession.TRADER, 1.0D);
-
-        for (String raw : CARRY_CAP_PROFESSION_MULTIPLIERS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 2) {
-                continue;
-            }
-
-            Profession profession = Profession.fromConfigName(parts[0].trim());
-            if (profession == null || profession == Profession.NONE) {
-                continue;
-            }
-
-            Double parsed = tryParseDouble(parts[1].trim());
-            if (parsed == null) {
-                continue;
-            }
-            multipliers.put(profession, Math.max(0.0D, parsed));
-        }
-
-        return multipliers;
+        return CivConfig.carryCapProfessionMultipliers();
     }
 
     public static Map<ResourceLocation, Integer> carryCapItemMaxOverrides() {
-        Map<ResourceLocation, Integer> overrides = new HashMap<>();
-        for (String raw : CARRY_CAP_ITEM_MAX_OVERRIDES.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 2) {
-                continue;
-            }
-
-            ResourceLocation itemId;
-            try {
-                itemId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                continue;
-            }
-
-            Integer maxCount = tryParseInt(parts[1].trim());
-            if (maxCount == null) {
-                continue;
-            }
-            overrides.put(itemId, Math.max(0, maxCount));
-        }
-        return overrides;
+        return CivConfig.carryCapItemMaxOverrides();
     }
 
     public static Map<ResourceLocation, Integer> breakActionCostOverrides() {
-        Map<ResourceLocation, Integer> overrides = new HashMap<>();
-        for (String raw : BREAK_ACTION_COST_OVERRIDES.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 2) {
-                continue;
-            }
-
-            ResourceLocation blockId;
-            try {
-                blockId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                continue;
-            }
-
-            Integer cost = tryParseInt(parts[1].trim());
-            if (cost == null) {
-                continue;
-            }
-            overrides.put(blockId, Math.max(1, cost));
-        }
-        return overrides;
+        return CivConfig.breakActionCostOverrides();
     }
 
     public static Map<Profession, Map<RealCivUtil.ToolTier, Integer>> professionToolTierRequirements() {
@@ -1437,299 +1301,15 @@ public final class RealCivConfig {
     }
 
     public static List<ProfessionEventHookRule> professionEventHookRules() {
-        @Nullable List<ProfessionEventHookRule> cached = cachedProfessionEventHookRules;
-        if (cached != null) {
-            return cached;
-        }
-
-        ArrayList<ProfessionEventHookRule> rules = new ArrayList<>();
-        for (String raw : PROFESSION_EVENT_HOOK_RULES.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length < 3) {
-                RealCivMod.LOGGER.warn(
-                        "Skipping profession.eventHookRules entry with invalid field count (expected at least 3): {}",
-                        line);
-                continue;
-            }
-
-            ProfessionEventHook hook = ProfessionEventHook.fromConfigName(parts[0].trim());
-            if (hook == null) {
-                RealCivMod.LOGGER.warn(
-                        "Skipping profession.eventHookRules entry with invalid hook '{}': {}",
-                        parts[0],
-                        line);
-                continue;
-            }
-
-            Profession profession = Profession.fromConfigName(parts[1].trim());
-            if (profession == null || profession == Profession.NONE) {
-                RealCivMod.LOGGER.warn(
-                        "Skipping profession.eventHookRules entry with invalid profession '{}': {}",
-                        parts[1],
-                        line);
-                continue;
-            }
-
-            Integer actionCost = tryParseInt(parts[2].trim());
-            if (actionCost == null || actionCost < 0) {
-                RealCivMod.LOGGER.warn(
-                        "Skipping profession.eventHookRules entry with invalid actions_per_trigger '{}': {}",
-                        parts[2],
-                        line);
-                continue;
-            }
-
-            int minProfessionLevel = 0;
-            int minGeneralLevel = 0;
-            long minMembershipMillis = 0L;
-            int windowSeconds = 0;
-            int maxTriggersPerWindow = 0;
-            int professionXpPerTrigger = 0;
-            int generalXpPerTrigger = 0;
-            @Nullable String statPrefix = null;
-            @Nullable String denyMessage = null;
-
-            for (int index = 3; index < parts.length; index++) {
-                String token = parts[index].trim();
-                if (token.isEmpty()) {
-                    continue;
-                }
-                int equalsIndex = token.indexOf('=');
-                if (equalsIndex <= 0) {
-                    // Backward-compatible free-form deny message segment.
-                    if (denyMessage == null) {
-                        denyMessage = token;
-                    } else {
-                        denyMessage = denyMessage + "|" + token;
-                    }
-                    continue;
-                }
-
-                String key = token.substring(0, equalsIndex).trim().toLowerCase(Locale.ROOT);
-                String value = token.substring(equalsIndex + 1).trim();
-                if (value.isEmpty()) {
-                    RealCivMod.LOGGER.warn(
-                            "Ignoring empty option value '{}' in profession.eventHookRules entry: {}",
-                            key,
-                            line);
-                    continue;
-                }
-
-                if ("deny".equals(key) || "deny_message".equals(key)) {
-                    denyMessage = value;
-                    continue;
-                }
-                if ("stat_prefix".equals(key)) {
-                    statPrefix = value;
-                    continue;
-                }
-
-                if ("min_profession_level".equals(key)
-                        || "min_level".equals(key)
-                        || "required_profession_level".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    minProfessionLevel = parsed;
-                    continue;
-                }
-                if ("min_general_level".equals(key) || "required_general_level".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    minGeneralLevel = parsed;
-                    continue;
-                }
-                if ("min_membership_hours".equals(key) || "required_membership_hours".equals(key)) {
-                    Double parsed = tryParseDouble(value);
-                    if (parsed == null || parsed < 0.0D) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    minMembershipMillis = Math.max(0L, (long) Math.round(parsed * 3_600_000.0D));
-                    continue;
-                }
-                if ("window_seconds".equals(key) || "window_s".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    windowSeconds = parsed;
-                    continue;
-                }
-                if ("window_minutes".equals(key) || "window_m".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    windowSeconds = parsed > (Integer.MAX_VALUE / 60)
-                            ? Integer.MAX_VALUE
-                            : Math.max(0, parsed * 60);
-                    continue;
-                }
-                if ("window_hours".equals(key) || "window_h".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    windowSeconds = parsed > (Integer.MAX_VALUE / 3_600)
-                            ? Integer.MAX_VALUE
-                            : Math.max(0, parsed * 3_600);
-                    continue;
-                }
-                if ("max_triggers".equals(key)
-                        || "window_max_triggers".equals(key)
-                        || "window_budget".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    maxTriggersPerWindow = parsed;
-                    continue;
-                }
-                if ("profession_xp".equals(key) || "profession_xp_per_trigger".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    professionXpPerTrigger = parsed;
-                    continue;
-                }
-                if ("general_xp".equals(key) || "general_xp_per_trigger".equals(key)) {
-                    Integer parsed = tryParseInt(value);
-                    if (parsed == null || parsed < 0) {
-                        RealCivMod.LOGGER.warn(
-                                "Ignoring invalid {}='{}' in profession.eventHookRules entry: {}",
-                                key,
-                                value,
-                                line);
-                        continue;
-                    }
-                    generalXpPerTrigger = parsed;
-                    continue;
-                }
-
-                RealCivMod.LOGGER.warn(
-                        "Ignoring unknown profession.eventHookRules option '{}' in entry: {}",
-                        key,
-                        line);
-            }
-
-            rules.add(new ProfessionEventHookRule(
-                    hook,
-                    profession,
-                    actionCost,
-                    minProfessionLevel,
-                    minGeneralLevel,
-                    minMembershipMillis,
-                    windowSeconds,
-                    maxTriggersPerWindow,
-                    professionXpPerTrigger,
-                    generalXpPerTrigger,
-                    statPrefix,
-                    denyMessage));
-        }
-        List<ProfessionEventHookRule> parsed = List.copyOf(rules);
-        cachedProfessionEventHookRules = parsed;
-        return parsed;
+        return CivConfig.professionEventHookRules();
     }
 
     public static boolean migrateLegacyCommonConfigIfNeeded() {
-        boolean changed = false;
-        List<Integer> current = sanitizeIntegerList(LUMBERJACK_LIMITS.get());
-        if (current.equals(LEGACY_LUMBERJACK_LIMITS)) {
-            LUMBERJACK_LIMITS.set(CURRENT_LUMBERJACK_LIMITS);
-            RealCivMod.LOGGER.info(
-                    "Migrated legacy lumberjack limits {} -> {} for RealCiv common config.",
-                    LEGACY_LUMBERJACK_LIMITS,
-                    CURRENT_LUMBERJACK_LIMITS);
-            changed = true;
-        }
-
-        String configuredCivId = DEFAULT_CIVILIZATION_ID.get();
-        if (configuredCivId != null && configuredCivId.equalsIgnoreCase(LEGACY_DEFAULT_CIV_ID)) {
-            DEFAULT_CIVILIZATION_ID.set("unaligned");
-            RealCivMod.LOGGER.info("Migrated legacy default civilization id '{}' -> 'unaligned'.", configuredCivId);
-            changed = true;
-        }
-
-        String configuredCivName = DEFAULT_CIVILIZATION_NAME.get();
-        if (configuredCivName != null && configuredCivName.trim().equals(LEGACY_DEFAULT_CIV_NAME)) {
-            DEFAULT_CIVILIZATION_NAME.set("Unaligned");
-            RealCivMod.LOGGER.info("Migrated legacy default civilization name '{}' -> 'Unaligned'.", configuredCivName);
-            changed = true;
-        }
-
-        if (LAND_BLOCK_UNCLAIMED_BUILDING.get() && changed) {
-            LAND_BLOCK_UNCLAIMED_BUILDING.set(false);
-            RealCivMod.LOGGER.info("Migrated legacy land.blockUnclaimedBuilding true -> false.");
-        }
-
-        if (changed) {
-            SPEC.save();
-        }
-        return changed;
-    }
-
-    private static List<Integer> sanitizeIntegerList(List<? extends Integer> raw) {
-        List<Integer> values = new ArrayList<>(raw.size());
-        for (Integer value : raw) {
-            values.add(value == null ? 0 : value);
-        }
-        return values;
+        return CivConfig.migrateLegacyCommonConfigIfNeeded();
     }
 
     public static double defaultPersonalWithdrawRatio() {
-        return Math.max(0.0D, Math.min(1.0D, DEFAULT_PERSONAL_WITHDRAW_PERCENT.get() / 100.0D));
+        return HubConfig.defaultPersonalWithdrawRatio();
     }
 
     public static double deathActionRefundRatio() {
@@ -1745,24 +1325,19 @@ public final class RealCivConfig {
     }
 
     public static boolean useProfessionRuleFiles() {
-        return HUB_USE_PROFESSION_RULE_FILES.get();
+        return HubConfig.useProfessionRuleFiles();
     }
 
     public static String hubProfessionRuleDirectory() {
-        String configured = HUB_PROFESSION_RULE_DIRECTORY.get();
-        if (configured == null || configured.isBlank()) {
-            return "realciv/hub";
-        }
-        return configured.trim();
+        return HubConfig.hubProfessionRuleDirectory();
     }
 
     public static void invalidateExternalRuleFileCache() {
-        ProfessionRuleFileLoader.invalidateCache();
-        cachedProfessionEventHookRules = null;
+        HubConfig.invalidateExternalRuleFileCache();
     }
 
     public static double upkeepCostCents() {
-        return Math.max(0.0D, LAND_UPKEEP_COST.get());
+        return LandConfig.upkeepCostCents();
     }
 
     public static int professionLevelFromXp(@Nullable Profession profession, int xp) {
@@ -1786,287 +1361,53 @@ public final class RealCivConfig {
     }
 
     public static long maxContributionKarmaGainPerDayCents() {
-        double cents = MAX_CONTRIBUTION_KARMA_GAIN_PER_DAY.get();
-        if (cents <= 0.0D) return 0L;
-        return (long) Math.round(cents);
+        return HubConfig.maxContributionKarmaGainPerDayCents();
     }
 
     public static long townClaimCostCents() {
-        return (long) Math.round(Math.max(0.0D, LAND_TOWN_CLAIM_COST.get()));
+        return LandConfig.townClaimCostCents();
     }
 
     public static long townClaimCostAddedPerOwnedCents() {
-        return (long) Math.round(Math.max(0.0D, LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED.get()));
+        return LandConfig.townClaimCostAddedPerOwnedCents();
     }
 
     public static long rentCostCents() {
-        return (long) Math.round(Math.max(0.0D, LAND_RENT_COST.get()));
+        return LandConfig.rentCostCents();
     }
 
     public static long rentCostAddedPerOwnedPrivateCents() {
-        return (long) Math.round(Math.max(0.0D, LAND_RENT_COST_ADDED_PER_OWNED_PRIVATE.get()));
+        return LandConfig.rentCostAddedPerOwnedPrivateCents();
     }
 
     public static double hubWithdrawCreditPenaltyRatio() {
-        return Math.max(0.0D, Math.min(10.0D, HUB_WITHDRAW_CREDIT_PENALTY_PERCENT.get() / 100.0D));
+        return HubConfig.hubWithdrawCreditPenaltyRatio();
     }
 
     public static int hubStarterAreaBlocks() {
-        return Math.max(1, LAND_HUB_STARTER_AREA_BLOCKS.get());
+        return LandConfig.hubStarterAreaBlocks();
     }
 
     public static Map<ResourceLocation, RewardRule> rewardRules() {
-        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
-        if (external != null) {
-            Map<ResourceLocation, RewardRule> rules = new HashMap<>();
-            for (Map.Entry<ResourceLocation, ProfessionRuleFileLoader.ParsedRewardEntry> entry : external.exactRewardEntries().entrySet()) {
-                ProfessionRuleFileLoader.ParsedRewardEntry parsed = entry.getValue();
-                rules.put(
-                        entry.getKey(),
-                        new RewardRule(
-                                entry.getKey(),
-                                parsed.profession(),
-                                RealCivUtil.creditsToCents(parsed.creditsPerItem()),
-                                parsed.professionXpPerItem(),
-                                parsed.generalXpPerItem()));
-            }
-            return rules;
-        }
-        return parseLegacyRewardRules(HUB_REWARD_RULES.get());
+        return HubConfig.rewardRules();
     }
 
     public static List<TagRewardRule> tagRewardRules() {
-        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
-        if (external != null) {
-            return external.tagRewardRules();
-        }
-        return parseLegacyTagRewardRules(HUB_TAG_REWARD_RULES.get());
+        return HubConfig.tagRewardRules();
     }
 
     public static Map<ResourceLocation, ItemResetRule> itemResetRules() {
-        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
-        if (external != null) {
-            return external.itemResetRules();
-        }
-        return Map.of();
+        return HubConfig.itemResetRules();
     }
 
     public static List<TagResetRule> tagResetRules() {
-        @Nullable ProfessionRuleFileLoader.LoadedHubRules external = externalHubRulesOrNull();
-        if (external != null) {
-            return external.tagResetRules();
-        }
-        return parseLegacyTagResetRules(HUB_TAG_RESET_RULES.get());
+        return HubConfig.tagResetRules();
     }
+
+
 
     @Nullable
-    private static ProfessionRuleFileLoader.LoadedHubRules externalHubRulesOrNull() {
-        if (!useProfessionRuleFiles()) {
-            return null;
-        }
-        return ProfessionRuleFileLoader.loadFromConfiguredFiles(
-                hubProfessionRuleDirectory(),
-                HUB_REWARD_RULES.get(),
-                HUB_TAG_REWARD_RULES.get(),
-                HUB_TAG_RESET_RULES.get());
-    }
-
-    private static Map<ResourceLocation, RewardRule> parseLegacyRewardRules(List<? extends String> lines) {
-        Map<ResourceLocation, RewardRule> rules = new HashMap<>();
-        for (String raw : lines) {
-            if (raw == null) {
-                continue;
-            }
-
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 5) {
-                RealCivMod.LOGGER.warn("Skipping invalid hub reward rule (expected 5 fields): {}", line);
-                continue;
-            }
-
-            ResourceLocation itemId;
-            try {
-                itemId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                RealCivMod.LOGGER.warn("Skipping reward rule with invalid item id '{}': {}", parts[0], line);
-                continue;
-            }
-
-            Profession profession = Profession.fromConfigName(parts[1].trim());
-            if (profession == null) {
-                RealCivMod.LOGGER.warn("Skipping reward rule with invalid profession '{}': {}", parts[1], line);
-                continue;
-            }
-
-            Double credits = tryParseDouble(parts[2].trim());
-            Integer professionXp = tryParseInt(parts[3].trim());
-            Integer generalXp = tryParseInt(parts[4].trim());
-            if (credits == null || professionXp == null || generalXp == null) {
-                RealCivMod.LOGGER.warn("Skipping reward rule with invalid numeric values: {}", line);
-                continue;
-            }
-
-            rules.put(
-                    itemId,
-                    new RewardRule(
-                            itemId,
-                            profession,
-                            RealCivUtil.creditsToCents(Math.max(0.0D, credits)),
-                            Math.max(0, professionXp),
-                            Math.max(0, generalXp)));
-        }
-        return rules;
-    }
-
-    private static List<TagRewardRule> parseLegacyTagRewardRules(List<? extends String> lines) {
-        ArrayList<TagRewardRule> rules = new ArrayList<>();
-        for (String raw : lines) {
-            if (raw == null) {
-                continue;
-            }
-
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 6) {
-                RealCivMod.LOGGER.warn("Skipping invalid hub tag reward rule (expected 6 fields): {}", line);
-                continue;
-            }
-
-            TagRewardRule.SelectorType selectorType = TagRewardRule.SelectorType.fromConfig(parts[0].trim());
-            if (selectorType == null) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reward rule with invalid selector '{}': {}", parts[0], line);
-                continue;
-            }
-
-            ResourceLocation tagId;
-            try {
-                tagId = ResourceLocation.parse(parts[1].trim());
-            } catch (Exception ex) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reward rule with invalid tag id '{}': {}", parts[1], line);
-                continue;
-            }
-
-            Profession profession = Profession.fromConfigName(parts[2].trim());
-            if (profession == null) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reward rule with invalid profession '{}': {}", parts[2], line);
-                continue;
-            }
-
-            Double credits = tryParseDouble(parts[3].trim());
-            Integer professionXp = tryParseInt(parts[4].trim());
-            Integer generalXp = tryParseInt(parts[5].trim());
-            if (credits == null || professionXp == null || generalXp == null) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reward rule with invalid numeric values: {}", line);
-                continue;
-            }
-
-            rules.add(new TagRewardRule(
-                    selectorType,
-                    tagId,
-                    profession,
-                    RealCivUtil.creditsToCents(Math.max(0.0D, credits)),
-                    Math.max(0, professionXp),
-                    Math.max(0, generalXp)));
-        }
-        return List.copyOf(rules);
-    }
-
-    private static List<TagResetRule> parseLegacyTagResetRules(List<? extends String> lines) {
-        ArrayList<TagResetRule> rules = new ArrayList<>();
-        for (String raw : lines) {
-            if (raw == null) {
-                continue;
-            }
-
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-
-            String[] parts = line.split("\\|");
-            if (parts.length != 4) {
-                RealCivMod.LOGGER.warn("Skipping invalid hub tag reset rule (expected 4 fields): {}", line);
-                continue;
-            }
-
-            TagRewardRule.SelectorType selectorType = TagRewardRule.SelectorType.fromConfig(parts[0].trim());
-            if (selectorType == null) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid selector '{}': {}", parts[0], line);
-                continue;
-            }
-
-            ResourceLocation tagId;
-            try {
-                tagId = ResourceLocation.parse(parts[1].trim());
-            } catch (Exception ex) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid tag id '{}': {}", parts[1], line);
-                continue;
-            }
-
-            Profession profession = Profession.fromConfigName(parts[2].trim());
-            if (profession == null || profession == Profession.NONE) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid profession '{}': {}", parts[2], line);
-                continue;
-            }
-
-            Double actionsPerItem = tryParseDouble(parts[3].trim());
-            if (actionsPerItem == null) {
-                RealCivMod.LOGGER.warn("Skipping hub tag reset rule with invalid actions_per_item '{}': {}", parts[3], line);
-                continue;
-            }
-
-            rules.add(new TagResetRule(
-                    selectorType,
-                    tagId,
-                    profession,
-                    Math.max(0.0D, actionsPerItem)));
-        }
-        return List.copyOf(rules);
-    }
-
-    @Nullable
-    private static ClaimDimensionPolicy claimDimensionPolicy() {
-        String raw = LAND_CLAIM_DIMENSION_POLICY.get();
-        if (raw == null) {
-            return ClaimDimensionPolicy.DENYLIST;
-        }
-        return switch (raw.trim().toLowerCase(Locale.ROOT)) {
-            case "allow_all", "all", "allowall" -> ClaimDimensionPolicy.ALLOW_ALL;
-            case "allowlist", "allow_list", "whitelist" -> ClaimDimensionPolicy.ALLOWLIST;
-            case "denylist", "deny_list", "blacklist" -> ClaimDimensionPolicy.DENYLIST;
-            default -> ClaimDimensionPolicy.DENYLIST;
-        };
-    }
-
-    @Nullable
-    private static String normalizeDimensionId(@Nullable String raw) {
-        if (raw == null) {
-            return null;
-        }
-        String normalized = raw.trim().toLowerCase(Locale.ROOT);
-        if (normalized.isEmpty()) {
-            return null;
-        }
-        return normalized;
-    }
-
-    private enum ClaimDimensionPolicy {
-        ALLOW_ALL,
-        ALLOWLIST,
-        DENYLIST
-    }
-
-    @Nullable
-    private static Integer tryParseInt(String value) {
+    static Integer tryParseInt(String value) {
         try {
             return Integer.parseInt(value);
         } catch (NumberFormatException ignored) {
@@ -2075,7 +1416,7 @@ public final class RealCivConfig {
     }
 
     @Nullable
-    private static Double tryParseDouble(String value) {
+    static Double tryParseDouble(String value) {
         try {
             return Double.parseDouble(value);
         } catch (NumberFormatException ignored) {
