@@ -1,7 +1,7 @@
 package com.realciv.realciv.panel;
 
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import java.util.List;
 import java.util.UUID;
 import net.minecraft.server.level.ServerPlayer;
@@ -21,8 +21,8 @@ public final class CivGovernanceWorkflowService {
             return Decision.applyNow("Leader/admin override; change applied immediately.", action);
         }
 
-        CivSavedData.GovernanceModel model = data.governanceModel(civId);
-        if (model == CivSavedData.GovernanceModel.AUTOCRATIC) {
+        GovernanceModel model = data.governanceModel(civId);
+        if (model == GovernanceModel.AUTOCRATIC) {
             return Decision.applyNow("Autocratic governance keeps direct leadership execution.", action);
         }
 
@@ -121,7 +121,7 @@ public final class CivGovernanceWorkflowService {
     }
 
     private static boolean isEligibleVoter(
-            CivSavedData.GovernanceModel model,
+            GovernanceModel model,
             CivSavedData data,
             String civId,
             UUID playerId) {
@@ -134,12 +134,12 @@ public final class CivGovernanceWorkflowService {
         };
     }
 
-    private static int requiredYesVotes(CivSavedData.GovernanceModel model, CivSavedData data, String civId) {
+    private static int requiredYesVotes(GovernanceModel model, CivSavedData data, String civId) {
         int eligible = eligibleVoterCount(model, data, civId);
         return GovernanceMath.requiredYesVotes(model.serializedName(), eligible);
     }
 
-    private static int eligibleVoterCount(CivSavedData.GovernanceModel model, CivSavedData data, String civId) {
+    private static int eligibleVoterCount(GovernanceModel model, CivSavedData data, String civId) {
         List<UUID> members = data.civilizationMembersSorted(civId);
         if (members.isEmpty()) {
             return 0;

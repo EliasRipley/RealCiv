@@ -1,6 +1,6 @@
 package com.realciv.realciv.diplomacy;
 
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.logic.CivPermissionService;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +31,7 @@ public final class DiplomacySnapshotBuilder {
         for (int idx = start; idx < end; idx++) {
             String otherId = others.get(idx);
             String state = data.diplomacyState(civId, otherId).displayName();
-            CivSavedData.WarCasualtyView cv = data.warCasualtiesBetween(civId, otherId);
+            WarCasualtyView cv = data.warCasualtiesBetween(civId, otherId);
             @Nullable CivSavedData.CivilizationRecord otherCiv = data.getCivilization(otherId);
             String otherName = otherCiv == null ? otherId : otherCiv.displayName();
             rows.add(new DiplomacySnapshot.RelationRow(otherId, otherName, state,

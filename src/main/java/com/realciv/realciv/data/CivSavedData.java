@@ -2573,110 +2573,6 @@ public class CivSavedData extends SavedData {
         return clearPlot(RealCivConfig.defaultCivilizationId(), dimension, chunkX, chunkZ);
     }
 
-    public record PlotLookup(String civilizationId, PlotRecord plot) {
-    }
-
-    public record HubLocation(String dimension, int x, int y, int z) {
-    }
-
-    public enum DiplomacyState {
-        ALLY,
-        NEUTRAL,
-        WAR;
-
-        @Nullable
-        public static DiplomacyState fromSerializedName(String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            return switch (raw.trim().toUpperCase(java.util.Locale.ROOT)) {
-                case "ALLY", "ALLIES" -> ALLY;
-                case "NEUTRAL", "NONE" -> NEUTRAL;
-                case "WAR", "HOSTILE", "HOSTILES" -> WAR;
-                default -> null;
-            };
-        }
-
-        public String serializedName() {
-            return name().toLowerCase(java.util.Locale.ROOT);
-        }
-
-        public String displayName() {
-            return switch (this) {
-                case ALLY -> "ALLY";
-                case NEUTRAL -> "NEUTRAL";
-                case WAR -> "WAR";
-            };
-        }
-    }
-
-    public enum GovernanceModel {
-        AUTOCRATIC,
-        COUNCIL,
-        DEMOCRATIC;
-
-        @Nullable
-        public static GovernanceModel fromSerializedName(@Nullable String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-                case "AUTOCRATIC", "AUTOCRACY", "AUTO" -> AUTOCRATIC;
-                case "COUNCIL", "OLIGARCHY" -> COUNCIL;
-                case "DEMOCRATIC", "DEMOCRACY", "DEMO" -> DEMOCRATIC;
-                default -> null;
-            };
-        }
-
-        public String serializedName() {
-            return name().toLowerCase(Locale.ROOT);
-        }
-    }
-
-    public enum HubDistributionMode {
-        CONTRIBUTION_RATIO,
-        SHARED_STOCK_RATIO,
-        DAILY_ALLOWANCE;
-
-        @Nullable
-        public static HubDistributionMode fromSerializedName(@Nullable String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-                case "CONTRIBUTION_RATIO", "RATIO", "CONTRIBUTION", "DEFAULT" -> CONTRIBUTION_RATIO;
-                case "SHARED_STOCK_RATIO", "SHARED", "GLOBAL", "ALL_GOODS", "STOCK_RATIO" -> SHARED_STOCK_RATIO;
-                case "DAILY_ALLOWANCE", "ALLOWANCE", "DAILY" -> DAILY_ALLOWANCE;
-                default -> null;
-            };
-        }
-
-        public String serializedName() {
-            return name().toLowerCase(Locale.ROOT);
-        }
-    }
-
-    public enum TaxPaymentMode {
-        KARMA,
-        ITEM;
-
-        @Nullable
-        public static TaxPaymentMode fromSerializedName(@Nullable String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-                case "KARMA", "CREDIT", "CREDITS", "COMMUNITY_KARMA" -> KARMA;
-                case "ITEM", "ITEMS", "GOODS" -> ITEM;
-                default -> null;
-            };
-        }
-
-        public String serializedName() {
-            return name().toLowerCase(Locale.ROOT);
-        }
-    }
-
     public static final class GovernanceProposalRecord {
         private final String actionType;
         private final String payload;
@@ -2852,27 +2748,6 @@ public class CivSavedData extends SavedData {
                 }
             }
             return out;
-        }
-    }
-
-    public enum LeadershipContestType {
-        ELECTION,
-        COUP;
-
-        @Nullable
-        public static LeadershipContestType fromSerializedName(@Nullable String raw) {
-            if (raw == null || raw.isBlank()) {
-                return null;
-            }
-            return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-                case "ELECTION" -> ELECTION;
-                case "COUP" -> COUP;
-                default -> null;
-            };
-        }
-
-        public String serializedName() {
-            return name().toLowerCase(Locale.ROOT);
         }
     }
 
@@ -3074,39 +2949,6 @@ public class CivSavedData extends SavedData {
             }
             return out;
         }
-    }
-
-    public record LeadershipContestDecision(boolean changed, String message) {
-        public static LeadershipContestDecision changed(String message) {
-            return new LeadershipContestDecision(true, message);
-        }
-
-        public static LeadershipContestDecision denied(String message) {
-            return new LeadershipContestDecision(false, message);
-        }
-    }
-
-    public record CivRoleView(
-            String roleId,
-            String displayName,
-            Set<String> permissions,
-            List<UUID> members) {
-    }
-
-    public record DiplomacyView(String otherCivilizationId, DiplomacyState state) {
-    }
-
-    public record WarCasualtyView(long yourCasualties, long otherCasualties) {
-    }
-
-    public record DeleteCivilizationResult(
-            String deletedId,
-            String deletedDisplayName,
-            int reassignedMembers,
-            int migratedAccounts,
-            int transferredStockEntries,
-            long transferredStockItems,
-            int removedPlots) {
     }
 
     private record DiplomacyPair(String firstCivId, String secondCivId) {

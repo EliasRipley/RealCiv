@@ -1,7 +1,7 @@
 package com.realciv.realciv.panel;
 
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
@@ -66,7 +66,7 @@ public final class CivControlPanelSnapshotBuilder {
         if (leadershipContest != null) {
             leadershipContestEndsAtMillis = Math.max(0L, leadershipContest.expiresAtMillis());
             Set<UUID> memberSet = new HashSet<>(members);
-            if (leadershipContest.contestType() == CivSavedData.LeadershipContestType.ELECTION) {
+            if (leadershipContest.contestType() == LeadershipContestType.ELECTION) {
                 leadershipContestType = "Election";
                 Map<UUID, Integer> votesByCandidate = new HashMap<>();
                 int validVotes = 0;

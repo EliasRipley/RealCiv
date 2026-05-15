@@ -4,7 +4,7 @@ import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.census.CensusSnapshotBuilder;
 import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CarryCapService;
 import com.realciv.realciv.logic.CivPermissionService;
@@ -455,7 +455,7 @@ public final class RealCivEvents {
         }
         if (event.getItemStack().is(Items.FIREWORK_ROCKET) && player.isFallFlying()) {
             String civId = data.getOrAssignCivilization(player.getUUID());
-            CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+            PlotLookup lookup = data.getPlotAnyCivilization(
                     player.serverLevel().dimension().location().toString(),
                     player.getBlockX() >> 4,
                     player.getBlockZ() >> 4);
@@ -576,7 +576,7 @@ public final class RealCivEvents {
 
         boolean firstTownHubPlacement = false;
         if (placingCommunityHub) {
-            @Nullable CivSavedData.HubLocation existingHub = data.getHubLocation(civId);
+            @Nullable HubLocation existingHub = data.getHubLocation(civId);
             if (existingHub != null
                     && (!existingHub.dimension().equals(level.dimension().location().toString())
                     || existingHub.x() != event.getPos().getX()
@@ -612,7 +612,7 @@ public final class RealCivEvents {
         }
 
         if (!firstTownHubPlacement && !canBuildInChunk(player, level, event.getPos(), data, now)) {
-            CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+            PlotLookup lookup = data.getPlotAnyCivilization(
                     level.dimension().location().toString(),
                     event.getPos().getX() >> 4,
                     event.getPos().getZ() >> 4);
@@ -707,7 +707,7 @@ public final class RealCivEvents {
         }
 
         if (!authorizedHubMove && !canBreakInChunk(player, level, pos, data, now)) {
-            CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+            PlotLookup lookup = data.getPlotAnyCivilization(
                     dimension,
                     pos.getX() >> 4,
                     pos.getZ() >> 4);
@@ -901,7 +901,7 @@ public final class RealCivEvents {
                 if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
                     ownerCiv = data.findCivilizationIdByHubPosition(dimension, pos.getX(), pos.getY(), pos.getZ());
                 } else {
-                    @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                    @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
                             dimension,
                             pos.getX() >> 4,
                             pos.getZ() >> 4);
@@ -1346,7 +1346,7 @@ public final class RealCivEvents {
                         ? event.getPos().relative(event.getFace())
                         : event.getPos();
                 if (!canBuildInChunk(player, event.getLevel(), checkPos, data, now)) {
-                    CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+                    PlotLookup lookup = data.getPlotAnyCivilization(
                             event.getLevel().dimension().location().toString(),
                             checkPos.getX() >> 4,
                             checkPos.getZ() >> 4);
@@ -1720,7 +1720,7 @@ public final class RealCivEvents {
         java.util.Iterator<BlockPos> iterator = event.getAffectedBlocks().iterator();
         while (iterator.hasNext()) {
             BlockPos pos = iterator.next();
-            @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+            @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
                     level.dimension().location().toString(),
                     pos.getX() >> 4,
                     pos.getZ() >> 4);
@@ -1745,7 +1745,7 @@ public final class RealCivEvents {
                 continue;
             }
 
-            if (data.diplomacyState(actorCiv, targetCiv) != CivSavedData.DiplomacyState.WAR) {
+            if (data.diplomacyState(actorCiv, targetCiv) != DiplomacyState.WAR) {
                 iterator.remove();
             }
         }
@@ -1768,11 +1768,11 @@ public final class RealCivEvents {
             return false;
         }
 
-        CivSavedData.DiplomacyState relation = data.diplomacyState(attackerCiv, targetCiv);
-        if (relation == CivSavedData.DiplomacyState.WAR) {
+        DiplomacyState relation = data.diplomacyState(attackerCiv, targetCiv);
+        if (relation == DiplomacyState.WAR) {
             return true;
         }
-        if (relation == CivSavedData.DiplomacyState.ALLY) {
+        if (relation == DiplomacyState.ALLY) {
             RealCivMessages.deny(
                     attacker,
                     "You cannot attack allied civilization members. "
@@ -1788,14 +1788,14 @@ public final class RealCivEvents {
 
     private static boolean shouldCountWarriorProgress(String attackerCiv, String targetCiv, CivSavedData data) {
         return !attackerCiv.equals(targetCiv)
-                && data.diplomacyState(attackerCiv, targetCiv) == CivSavedData.DiplomacyState.WAR;
+                && data.diplomacyState(attackerCiv, targetCiv) == DiplomacyState.WAR;
     }
 
     private static boolean isWarriorHomeDefenseExempt(String defenderCivId, ServerPlayer enemy, CivSavedData data) {
         if (!RealCivConfig.warriorHomeDefenseNoActionCost()) {
             return false;
         }
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
                 enemy.serverLevel().dimension().location().toString(),
                 enemy.getBlockX() >> 4,
                 enemy.getBlockZ() >> 4);
@@ -2071,7 +2071,7 @@ public final class RealCivEvents {
 
         for (long chunkZ = minChunkZ; chunkZ <= maxChunkZ; chunkZ++) {
             for (long chunkX = minChunkX; chunkX <= maxChunkX; chunkX++) {
-                @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+                @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
                 if (lookup != null && !lookup.civilizationId().equals(civId)) {
                     RealCivMessages.deny(
                             player,
@@ -2139,7 +2139,7 @@ public final class RealCivEvents {
         String dimension = player.serverLevel().dimension().location().toString();
         long chunkX = player.chunkPosition().x;
         long chunkZ = player.chunkPosition().z;
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (lookup == null) {
             return TerritoryState.wilderness();
         }
@@ -2163,7 +2163,7 @@ public final class RealCivEvents {
             return true;
         }
 
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
                 level.dimension().location().toString(),
                 pos.getX() >> 4,
                 pos.getZ() >> 4);
@@ -2178,7 +2178,7 @@ public final class RealCivEvents {
             return true;
         }
 
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
                 level.dimension().location().toString(),
                 pos.getX() >> 4,
                 pos.getZ() >> 4);

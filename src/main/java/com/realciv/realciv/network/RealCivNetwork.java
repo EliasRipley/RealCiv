@@ -10,7 +10,7 @@ import com.realciv.realciv.client.ModernHubStockScreen;
 import com.realciv.realciv.client.ModernProfessionLedgerScreen;
 import com.realciv.realciv.client.ModernTaxScreen;
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.diplomacy.DiplomacySnapshot;
 import com.realciv.realciv.diplomacy.DiplomacySnapshotBuilder;
 import com.realciv.realciv.hub.HubStockSnapshot;
@@ -176,13 +176,13 @@ public final class RealCivNetwork {
             RealCivMessages.deny(player, "You do not own private plots.");
             return;
         }
-        CivSavedData.TaxPaymentMode mode = data.taxPaymentMode(civId);
-        long cost = mode == CivSavedData.TaxPaymentMode.KARMA
+        TaxPaymentMode mode = data.taxPaymentMode(civId);
+        long cost = mode == TaxPaymentMode.KARMA
                 ? data.upkeepCostPerPlotCents(civId) * ownedPlots * cycles
                 : data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots * cycles;
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
-        if (mode == CivSavedData.TaxPaymentMode.KARMA) {
+        if (mode == TaxPaymentMode.KARMA) {
             long balance = record.socialCreditCents(civId);
             if (balance < cost) {
                 RealCivMessages.deny(player, "Insufficient karma. Need " + cost + ", have " + balance + ".");
@@ -216,8 +216,8 @@ public final class RealCivNetwork {
     }
 
     private static void toggleMode(ServerPlayer player, CivSavedData data, String civId) {
-        CivSavedData.TaxPaymentMode next = data.taxPaymentMode(civId) == CivSavedData.TaxPaymentMode.KARMA
-                ? CivSavedData.TaxPaymentMode.ITEM : CivSavedData.TaxPaymentMode.KARMA;
+        TaxPaymentMode next = data.taxPaymentMode(civId) == TaxPaymentMode.KARMA
+                ? TaxPaymentMode.ITEM : TaxPaymentMode.KARMA;
         if (data.setTaxPaymentMode(civId, next, player.getGameProfile().getName())) {
             player.sendSystemMessage(Component.literal("Mode: " + next.serializedName()));
         }
@@ -288,11 +288,11 @@ public final class RealCivNetwork {
             DiplomacySnapshot s = DiplomacySnapshotBuilder.build(player, data, civId, page);
             if (index >= 0 && index < s.relations().size()) {
                 String otherId = s.relations().get(index).otherCivId();
-                CivSavedData.DiplomacyState current = data.diplomacyState(civId, otherId);
-                CivSavedData.DiplomacyState next = switch (current) {
-                    case NEUTRAL -> CivSavedData.DiplomacyState.ALLY;
-                    case ALLY -> CivSavedData.DiplomacyState.WAR;
-                    case WAR -> CivSavedData.DiplomacyState.NEUTRAL;
+                DiplomacyState current = data.diplomacyState(civId, otherId);
+                DiplomacyState next = switch (current) {
+                    case NEUTRAL -> DiplomacyState.ALLY;
+                    case ALLY -> DiplomacyState.WAR;
+                    case WAR -> DiplomacyState.NEUTRAL;
                 };
                 data.setDiplomacyState(civId, otherId, next, player.getGameProfile().getName());
                 player.sendSystemMessage(Component.literal("Diplomacy with " + otherId + " is now " + next.displayName()));
@@ -373,22 +373,22 @@ public final class RealCivNetwork {
         switch (actionId) {
             case ModernCivControlPanelScreen.ACTION_GOVERNANCE_CYCLE -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
-                CivSavedData.GovernanceModel current = data.governanceModel(civId);
-                CivSavedData.GovernanceModel next = switch (current) {
-                    case AUTOCRATIC -> CivSavedData.GovernanceModel.COUNCIL;
-                    case COUNCIL -> CivSavedData.GovernanceModel.DEMOCRATIC;
-                    case DEMOCRATIC -> CivSavedData.GovernanceModel.AUTOCRATIC;
+                GovernanceModel current = data.governanceModel(civId);
+                GovernanceModel next = switch (current) {
+                    case AUTOCRATIC -> GovernanceModel.COUNCIL;
+                    case COUNCIL -> GovernanceModel.DEMOCRATIC;
+                    case DEMOCRATIC -> GovernanceModel.AUTOCRATIC;
                 };
                 data.setGovernanceModel(civId, next, name);
                 player.sendSystemMessage(Component.literal("Governance: " + next.serializedName()));
             }
             case ModernCivControlPanelScreen.ACTION_DISTRIBUTION_TOGGLE -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) return;
-                CivSavedData.HubDistributionMode current = data.hubDistributionMode(civId);
-                CivSavedData.HubDistributionMode next = switch (current) {
-                    case CONTRIBUTION_RATIO -> CivSavedData.HubDistributionMode.SHARED_STOCK_RATIO;
-                    case SHARED_STOCK_RATIO -> CivSavedData.HubDistributionMode.DAILY_ALLOWANCE;
-                    case DAILY_ALLOWANCE -> CivSavedData.HubDistributionMode.CONTRIBUTION_RATIO;
+                HubDistributionMode current = data.hubDistributionMode(civId);
+                HubDistributionMode next = switch (current) {
+                    case CONTRIBUTION_RATIO -> HubDistributionMode.SHARED_STOCK_RATIO;
+                    case SHARED_STOCK_RATIO -> HubDistributionMode.DAILY_ALLOWANCE;
+                    case DAILY_ALLOWANCE -> HubDistributionMode.CONTRIBUTION_RATIO;
                 };
                 data.setHubDistributionMode(civId, next, name);
                 player.sendSystemMessage(Component.literal("Distribution: " + next.serializedName()));
@@ -458,11 +458,11 @@ public final class RealCivNetwork {
     private static void applyAction(ServerPlayer player, CivSavedData data, String civId, CivGovernanceWorkflowService.PanelAction action) {
         switch (action.type()) {
             case "governance_model" -> {
-                var model = CivSavedData.GovernanceModel.fromSerializedName(action.payload());
+                var model = GovernanceModel.fromSerializedName(action.payload());
                 if (model != null) data.setGovernanceModel(civId, model, player.getGameProfile().getName());
             }
             case "distribution_mode" -> {
-                var mode = CivSavedData.HubDistributionMode.fromSerializedName(action.payload());
+                var mode = HubDistributionMode.fromSerializedName(action.payload());
                 if (mode != null) data.setHubDistributionMode(civId, mode, player.getGameProfile().getName());
             }
             case "friendly_fire" -> data.setAllowIntraCivPvp(civId, Boolean.parseBoolean(action.payload()), player.getGameProfile().getName());

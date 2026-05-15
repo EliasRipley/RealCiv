@@ -1,7 +1,7 @@
 package com.realciv.realciv.logic;
 
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import java.util.Map;
 import java.util.Objects;
@@ -71,15 +71,15 @@ public final class LandWandService {
         int radius = Math.max(0, radiusChunks);
         for (long chunkX = centerX - radius; chunkX <= centerX + radius; chunkX++) {
             for (long chunkZ = centerZ - radius; chunkZ <= centerZ + radius; chunkZ++) {
-                @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+                @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
                 if (lookup == null) {
                     continue;
                 }
 
-                @Nullable CivSavedData.PlotLookup north = data.getPlotAnyCivilization(dimension, chunkX, chunkZ - 1);
-                @Nullable CivSavedData.PlotLookup south = data.getPlotAnyCivilization(dimension, chunkX, chunkZ + 1);
-                @Nullable CivSavedData.PlotLookup west = data.getPlotAnyCivilization(dimension, chunkX - 1, chunkZ);
-                @Nullable CivSavedData.PlotLookup east = data.getPlotAnyCivilization(dimension, chunkX + 1, chunkZ);
+                @Nullable PlotLookup north = data.getPlotAnyCivilization(dimension, chunkX, chunkZ - 1);
+                @Nullable PlotLookup south = data.getPlotAnyCivilization(dimension, chunkX, chunkZ + 1);
+                @Nullable PlotLookup west = data.getPlotAnyCivilization(dimension, chunkX - 1, chunkZ);
+                @Nullable PlotLookup east = data.getPlotAnyCivilization(dimension, chunkX + 1, chunkZ);
 
                 ParticleOptions particle = particleFor(lookup.plot().landClass());
                 if (!sameBoundaryGroup(lookup, north)) {
@@ -235,7 +235,7 @@ public final class LandWandService {
         }
     }
 
-    private static boolean sameBoundaryGroup(@Nullable CivSavedData.PlotLookup left, @Nullable CivSavedData.PlotLookup right) {
+    private static boolean sameBoundaryGroup(@Nullable PlotLookup left, @Nullable PlotLookup right) {
         if (left == null || right == null) {
             return false;
         }

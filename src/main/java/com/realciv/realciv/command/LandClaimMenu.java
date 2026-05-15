@@ -1,7 +1,7 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
@@ -160,7 +160,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         }
         long now = viewer.serverLevel().getServer().overworld().getGameTime();
 
-        @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (existing != null && !existing.civilizationId().equals(civId) && !admin) {
             RealCivMessages.deny(viewer, "This chunk belongs to another civilization.");
             return;
@@ -204,7 +204,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
 
     private void unclaimTownChunk(long chunkX, long chunkZ) {
         String dimension = viewer.serverLevel().dimension().location().toString();
-        @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (existing == null) {
             RealCivMessages.deny(viewer, "That chunk is not claimed.");
             return;
@@ -249,7 +249,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
             return;
         }
 
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (lookup != null && !lookup.civilizationId().equals(civId) && !admin) {
             RealCivMessages.deny(viewer, "That chunk belongs to another civilization.");
             return;
@@ -320,7 +320,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
 
     private void unclaimPrivateChunk(long chunkX, long chunkZ) {
         String dimension = viewer.serverLevel().dimension().location().toString();
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (lookup == null) {
             RealCivMessages.deny(viewer, "That chunk is not claimed.");
             return;
@@ -423,7 +423,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
     }
 
     private ItemStack mapItemForChunk(String dimension, long chunkX, long chunkZ) {
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         boolean atPlayer = chunkX == viewer.chunkPosition().x && chunkZ == viewer.chunkPosition().z;
 
         ItemStack stack;

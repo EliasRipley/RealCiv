@@ -2,7 +2,7 @@ package com.realciv.realciv.integration;
 
 import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
@@ -176,7 +176,7 @@ public final class RealCivFTBChunksBridge {
         String dimension = chunk.getPos().dimension().location().toString();
         long chunkX = chunk.getPos().x();
         long chunkZ = chunk.getPos().z();
-        @Nullable CivSavedData.PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
         if (lookup == null) {
             return;
         }
@@ -254,7 +254,7 @@ public final class RealCivFTBChunksBridge {
                 data.getOrCreatePlayer(player.getUUID()).ftbClaimModeOverride());
         LandClass targetClass = CLAIM_MODE_PRIVATE.equals(mode) ? LandClass.PRIVATE : LandClass.CIVIC;
         long paidTicks = targetClass == LandClass.PRIVATE ? Math.max(1L, RealCivConfig.LAND_RENT_DAYS.get()) * 24_000L : 0L;
-        @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
 
         if (existing != null && !existing.civilizationId().equals(civId) && !source.hasPermission(3)) {
             return ClaimDecision.denied(
@@ -323,7 +323,7 @@ public final class RealCivFTBChunksBridge {
         String dimension = chunk.getPos().dimension().location().toString();
         long chunkX = chunk.getPos().x();
         long chunkZ = chunk.getPos().z();
-        @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
+        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
 
         if (existing == null) {
             return UnclaimDecision.permit();
@@ -361,7 +361,7 @@ public final class RealCivFTBChunksBridge {
 
         ServerPlayer player = decision.player();
         CivSavedData data = CivSavedData.get(source.getServer());
-        @Nullable CivSavedData.PlotLookup existing = data.getPlotAnyCivilization(
+        @Nullable PlotLookup existing = data.getPlotAnyCivilization(
                 decision.dimension(),
                 decision.chunkX(),
                 decision.chunkZ());
