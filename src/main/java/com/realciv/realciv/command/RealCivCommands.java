@@ -695,63 +695,63 @@ public final class RealCivCommands {
                                                         DoubleArgumentType.getDouble(ctx, "amount")))))))
                 .then(Commands.literal("mayor")
                         .then(Commands.literal("show")
-                                .executes(ctx -> mayorShow(ctx.getSource(), null))
+                                .executes(ctx -> MayorCommands.mayorShow(ctx.getSource(), null))
                                 .then(Commands.argument("civ", StringArgumentType.string())
-                                        .executes(ctx -> mayorShow(
+                                        .executes(ctx -> MayorCommands.mayorShow(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "civ")))))
                         .then(Commands.literal("set")
                                 .requires(source -> source.hasPermission(3))
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> mayorSet(
+                                        .executes(ctx -> MayorCommands.mayorSet(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player"),
                                                 null))
                                         .then(Commands.argument("civ", StringArgumentType.string())
-                                                .executes(ctx -> mayorSet(
+                                                .executes(ctx -> MayorCommands.mayorSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         StringArgumentType.getString(ctx, "civ"))))))
                         .then(Commands.literal("clear")
                                 .requires(source -> source.hasPermission(3))
-                                .executes(ctx -> mayorClear(ctx.getSource(), null))
+                                .executes(ctx -> MayorCommands.mayorClear(ctx.getSource(), null))
                                 .then(Commands.argument("civ", StringArgumentType.string())
-                                        .executes(ctx -> mayorClear(
+                                        .executes(ctx -> MayorCommands.mayorClear(
                                                 ctx.getSource(),
                                                 StringArgumentType.getString(ctx, "civ")))))
                         .then(Commands.literal("withdrawrate")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> mayorWithdrawRateShow(
+                                        .executes(ctx -> MayorCommands.mayorWithdrawRateShow(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player"))))
                                 .then(Commands.literal("set")
                                         .then(Commands.argument("player", EntityArgument.player())
                                                 .then(Commands.argument("percent", DoubleArgumentType.doubleArg(0.0D, 100.0D))
-                                                        .executes(ctx -> mayorWithdrawRateSet(
+                                                        .executes(ctx -> MayorCommands.mayorWithdrawRateSet(
                                                                 ctx.getSource(),
                                                                 EntityArgument.getPlayer(ctx, "player"),
                                                                 DoubleArgumentType.getDouble(ctx, "percent"))))))
                                 .then(Commands.literal("clear")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> mayorWithdrawRateClear(
+                                                .executes(ctx -> MayorCommands.mayorWithdrawRateClear(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"))))))
                         .then(Commands.literal("approval")
                                 .requires(source -> source.hasPermission(3))
                                 .then(Commands.literal("add")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> mayorApprovalSet(
+                                                .executes(ctx -> MayorCommands.mayorApprovalSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         true))))
                                 .then(Commands.literal("remove")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> mayorApprovalSet(
+                                                .executes(ctx -> MayorCommands.mayorApprovalSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         false))))
                                 .then(Commands.literal("list")
-                                        .executes(ctx -> mayorApprovalList(ctx.getSource())))))));
+                                        .executes(ctx -> MayorCommands.mayorApprovalList(ctx.getSource())))))));
     }
 
     private static int civInfo(CommandSourceStack source, ServerPlayer target) {
@@ -1671,155 +1671,7 @@ public final class RealCivCommands {
 
 
 
-    private static int mayorSet(CommandSourceStack source, ServerPlayer player, @Nullable String civRaw) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = resolveMayorCivId(source, data, civRaw);
-        data.setMayor(civId, player.getUUID(), actorName(source));
-        grantMayorStarterHub(player);
-        String title = data.leaderTitle(civId);
-        source.sendSuccess(
-                () -> Component.literal(title + " for " + civDisplay(data, civId)
-                        + " set to " + player.getGameProfile().getName() + "."),
-                true);
-        return 1;
-    }
 
-    private static int mayorClear(CommandSourceStack source, @Nullable String civRaw) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = resolveMayorCivId(source, data, civRaw);
-        data.setMayor(civId, null, actorName(source));
-        String title = data.leaderTitle(civId);
-        source.sendSuccess(() -> Component.literal(
-                title + " assignment cleared for " + civDisplay(data, civId) + "."), true);
-        return 1;
-    }
-
-    private static int mayorShow(CommandSourceStack source, @Nullable String civRaw) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = resolveMayorCivId(source, data, civRaw);
-        String title = data.leaderTitle(civId);
-        UUID mayor = data.getMayorId(civId);
-        if (mayor == null) {
-            source.sendSuccess(() -> Component.literal(
-                    "No " + title.toLowerCase(Locale.ROOT) + " is assigned for " + civDisplay(data, civId) + "."), false);
-            return 1;
-        }
-
-        ServerPlayer online = source.getServer().getPlayerList().getPlayer(mayor);
-        String name = online == null ? mayor.toString() : online.getGameProfile().getName();
-        source.sendSuccess(() -> Component.literal(
-                "Current " + title.toLowerCase(Locale.ROOT) + " for " + civDisplay(data, civId) + ": " + name), false);
-        return 1;
-    }
-
-    private static int mayorWithdrawRateShow(CommandSourceStack source, ServerPlayer player) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = civOfSource(source, data);
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
-            source.sendFailure(Component.literal("Only leadership/admin can view per-player withdraw rates."));
-            return 0;
-        }
-
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        String rateText = RealCivUtil.formatPercentFromRatio(record.effectivePersonalWithdrawRatio(civId));
-        String mode = record.personalWithdrawRatioOverride(civId) == null ? "default" : "override";
-        source.sendSuccess(() -> Component.literal(
-                "Withdrawal rate for " + player.getGameProfile().getName()
-                        + " in " + civDisplay(data, civId) + ": " + rateText + " (" + mode + ")"),
-                false);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
-            source.sendSuccess(() -> Component.literal(
-                    "Note: hub distribution mode is daily_allowance, so withdraw rate does not currently apply."),
-                    false);
-        }
-        return 1;
-    }
-
-    private static int mayorWithdrawRateSet(CommandSourceStack source, ServerPlayer player, double percent) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = civOfSource(source, data);
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
-            source.sendFailure(Component.literal("Only leadership/admin can set per-player withdraw rates."));
-            return 0;
-        }
-
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        double ratio = Math.max(0.0D, Math.min(1.0D, percent / 100.0D));
-        record.setPersonalWithdrawRatioOverride(civId, ratio);
-        data.addAuditLog(
-                civId,
-                actorName(source) + " set personal withdraw rate for " + player.getGameProfile().getName()
-                        + " to " + RealCivUtil.formatPercentFromRatio(ratio),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-
-        source.sendSuccess(() -> Component.literal(
-                "Set withdrawal rate for " + player.getGameProfile().getName()
-                        + " in " + civDisplay(data, civId)
-                        + " to " + RealCivUtil.formatPercentFromRatio(ratio) + "."), true);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
-            source.sendSuccess(() -> Component.literal(
-                    "Current hub mode is daily_allowance; this rate will apply if switched back to contribution_ratio."),
-                    false);
-        }
-        return 1;
-    }
-
-    private static int mayorWithdrawRateClear(CommandSourceStack source, ServerPlayer player) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = civOfSource(source, data);
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES)) {
-            source.sendFailure(Component.literal("Only leadership/admin can clear per-player withdraw rates."));
-            return 0;
-        }
-
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        record.setPersonalWithdrawRatioOverride(civId, null);
-        data.addAuditLog(
-                civId,
-                actorName(source) + " cleared personal withdraw rate override for "
-                        + player.getGameProfile().getName(),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-
-        source.sendSuccess(() -> Component.literal(
-                "Cleared withdrawal rate override for " + player.getGameProfile().getName()
-                        + " in " + civDisplay(data, civId) + "."), true);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
-            source.sendSuccess(() -> Component.literal(
-                    "Current hub mode is daily_allowance; withdraw rates are inactive until contribution_ratio mode is used."),
-                    false);
-        }
-        return 1;
-    }
-
-    private static int mayorApprovalSet(CommandSourceStack source, ServerPlayer player, boolean approved) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        data.setFounderApproved(player.getUUID(), approved, actorName(source));
-        source.sendSuccess(() -> Component.literal(
-                (approved ? "Approved " : "Revoked approval for ")
-                        + player.getGameProfile().getName()
-                        + (approved ? " to found a civilization." : " as civilization founder.")),
-                true);
-        return 1;
-    }
-
-    private static int mayorApprovalList(CommandSourceStack source) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        List<UUID> approved = data.founderApprovalsSorted();
-        if (approved.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No founder approvals are currently set."), false);
-            return 1;
-        }
-
-        source.sendSuccess(() -> Component.literal("Founder approvals:"), false);
-        for (UUID id : approved) {
-            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
-            String label = online != null ? online.getGameProfile().getName() + " (" + id + ")" : id.toString();
-            source.sendSuccess(() -> Component.literal("- " + label), false);
-        }
-        return 1;
-    }
 
     public static long nextTownClaimCostCents(int civicChunksOwned) {
         long base = RealCivConfig.townClaimCostCents();
