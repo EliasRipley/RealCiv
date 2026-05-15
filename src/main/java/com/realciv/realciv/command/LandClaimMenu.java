@@ -240,7 +240,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
             return;
         }
         long now = viewer.serverLevel().getServer().overworld().getGameTime();
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
         int days = Math.max(1, RealCivConfig.LAND_RENT_DAYS.get());
         long paidTicks = days * 24_000L;
 
@@ -401,7 +401,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         display.setItem(MODE_SLOT, named(mode == ViewMode.TOWN ? Items.BLUE_BANNER : Items.YELLOW_BANNER, modeText));
 
         String civName = civDisplay(civId);
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
         ItemStack info = new ItemStack(Items.BOOK);
         info.set(
                 DataComponents.CUSTOM_NAME,

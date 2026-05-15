@@ -180,7 +180,7 @@ public final class RealCivNetwork {
         long cost = mode == TaxPaymentMode.KARMA
                 ? data.upkeepCostPerPlotCents(civId) * ownedPlots * cycles
                 : data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots * cycles;
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         if (mode == TaxPaymentMode.KARMA) {
             long balance = record.socialCreditCents(civId);

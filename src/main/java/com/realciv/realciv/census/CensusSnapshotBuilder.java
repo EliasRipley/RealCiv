@@ -1,6 +1,7 @@
 package com.realciv.realciv.census;
 
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.logic.RealCivUtil;
 import java.util.ArrayList;
 import java.util.List;
@@ -31,7 +32,7 @@ public final class CensusSnapshotBuilder {
         List<CensusSnapshot.MemberRow> rows = new ArrayList<>();
         for (int i = start; i < end; i++) {
             UUID id = members.get(i);
-            CivSavedData.PlayerRecord pr = data.getOrCreatePlayer(id);
+            PlayerRecord pr = data.getOrCreatePlayer(id);
             var top = RealCivUtil.topProfession(pr);
             rows.add(new CensusSnapshot.MemberRow(
                     RealCivUtil.playerDisplayName(viewer, id),

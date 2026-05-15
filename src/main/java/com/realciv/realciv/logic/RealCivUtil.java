@@ -3,6 +3,7 @@ package com.realciv.realciv.logic;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import java.util.Comparator;
 import java.util.List;
 import java.util.Locale;
@@ -181,7 +182,7 @@ public final class RealCivUtil {
         return out.toString();
     }
 
-    public static int xpForProfession(CivSavedData.PlayerRecord record, Profession profession) {
+    public static int xpForProfession(PlayerRecord record, Profession profession) {
         return switch (profession) {
             case FARMER -> record.farmerXp();
             case MINER -> record.minerXp();
@@ -205,7 +206,7 @@ public final class RealCivUtil {
         };
     }
 
-    public static Profession topProfession(CivSavedData.PlayerRecord record) {
+    public static Profession topProfession(PlayerRecord record) {
         return java.util.Arrays.stream(Profession.values())
                 .filter(p -> p != Profession.NONE)
                 .max(Comparator.comparingInt((Profession p) -> record.levelFor(p))

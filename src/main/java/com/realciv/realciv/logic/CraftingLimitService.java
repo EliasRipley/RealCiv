@@ -2,6 +2,7 @@ package com.realciv.realciv.logic;
 
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
@@ -20,7 +21,7 @@ public final class CraftingLimitService {
         if (!CarryCapService.canAcquireForCraft(player, data, resultStack, Math.max(1, resultStack.getCount()))) {
             return false;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (RealCivConfig.specializationSingleProfessionLockEnabled()
                 && !record.canProgressProfession(Profession.CRAFTER)) {
             return false;
@@ -58,7 +59,7 @@ public final class CraftingLimitService {
             return;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int resultCount = resultStack != null && !resultStack.isEmpty() ? Math.max(1, resultStack.getCount()) : 1;
 

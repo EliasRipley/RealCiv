@@ -2,6 +2,7 @@ package com.realciv.realciv.hub;
 
 import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import java.util.ArrayList;
 import java.util.List;
 import java.util.Map;
@@ -21,7 +22,7 @@ public final class HubStockSnapshotBuilder {
         @Nullable CivilizationRecord civ = data.getCivilization(civId);
         String civName = civ == null ? civId : civ.displayName();
         String distMode = data.hubDistributionMode(civId).serializedName();
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         List<Map.Entry<String, Long>> stockEntries = data.getHubStockEntriesSorted(civId);
         int totalPages = Math.max(1, (stockEntries.size() + ROWS_PER_PAGE - 1) / ROWS_PER_PAGE);

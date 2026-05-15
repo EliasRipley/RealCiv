@@ -2,6 +2,7 @@ package com.realciv.realciv.logic;
 
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -96,7 +97,7 @@ public final class CarryCapService {
         return new CapCheck(projected <= maxAllowed, false, profession, itemId, current, projected, maxAllowed);
     }
 
-    private static int baseLimitForProfession(CivSavedData.PlayerRecord record, Profession profession) {
+    private static int baseLimitForProfession(PlayerRecord record, Profession profession) {
         return switch (profession) {
             case FARMER -> RealCivConfig.farmerLimitForLevel(record.levelFor(Profession.FARMER));
             case MINER -> RealCivConfig.minerLimitForLevel(record.levelFor(Profession.MINER));

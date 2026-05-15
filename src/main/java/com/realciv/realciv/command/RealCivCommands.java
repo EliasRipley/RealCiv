@@ -792,7 +792,7 @@ public final class RealCivCommands {
     private static int showProfile(CommandSourceStack source, ServerPlayer target) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
 
         int farmerLevel = record.levelFor(Profession.FARMER);
         int minerLevel = record.levelFor(Profession.MINER);
@@ -890,7 +890,7 @@ public final class RealCivCommands {
             source.sendFailure(Component.literal("Only leadership/admin can view another player's profession focus."));
             return 0;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
         @Nullable Profession focus = record.focusedProfession();
         source.sendSuccess(() -> Component.literal(
                 "Profession focus for " + target.getGameProfile().getName() + ": "
@@ -2087,7 +2087,7 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         String dimension = player.serverLevel().dimension().location().toString();
         if (!ensureClaimDimensionAllowed(source, dimension)) {
@@ -2188,7 +2188,7 @@ public final class RealCivCommands {
 
         String civIdRefund = existing.civilizationId();
         long refundAmount = RealCivConfig.rentCostCents();
-        CivSavedData.PlayerRecord refundRecord = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord refundRecord = data.getOrCreatePlayer(player.getUUID());
         refundRecord.addSocialCreditCents(civIdRefund, refundAmount);
 
         data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
@@ -2210,7 +2210,7 @@ public final class RealCivCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         String dimension = player.serverLevel().dimension().location().toString();
         if (!ensureClaimDimensionAllowed(source, dimension)) {
@@ -2522,7 +2522,7 @@ public final class RealCivCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean mayorOrAdmin = hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         String storedMode = RealCivFTBChunksBridge.normalizeClaimModeOrAuto(record.ftbClaimModeOverride());
         String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(mayorOrAdmin, record.ftbClaimModeOverride());
 
@@ -2562,7 +2562,7 @@ public final class RealCivCommands {
             return 0;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (RealCivFTBChunksBridge.CLAIM_MODE_AUTO.equals(parsed)) {
             record.setFtbClaimModeOverride(null);
         } else {
@@ -3072,7 +3072,7 @@ public final class RealCivCommands {
     private static void showTaxStatus(CommandSourceStack source, ServerPlayer target) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
         TaxPaymentMode paymentMode = data.taxPaymentMode(civId);
         ResourceLocation taxItemId = data.taxItemId(civId);
 
@@ -3120,7 +3120,7 @@ public final class RealCivCommands {
         long cycleItemCost = data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots;
         long totalCost = cycleCost * safeCycles;
         long totalItemCost = cycleItemCost * safeCycles;
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (paymentMode == TaxPaymentMode.KARMA) {
             if (record.socialCreditCents(civId) < totalCost) {
                 source.sendFailure(Component.literal(
@@ -3277,7 +3277,7 @@ public final class RealCivCommands {
             }
         }
 
-        CivSavedData.PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
+        PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
         HubDistributionMode distributionMode = data.hubDistributionMode(civId);
         long activeModeLimit = 0L;
         if (!canBypassQuota) {
@@ -3503,7 +3503,7 @@ public final class RealCivCommands {
     private static int showHubQuota(CommandSourceStack source, ServerPlayer target, int page) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
         HubDistributionMode mode = data.hubDistributionMode(civId);
 
         if (mode == HubDistributionMode.DAILY_ALLOWANCE) {
@@ -4014,7 +4014,7 @@ public final class RealCivCommands {
     private static int creditAdd(CommandSourceStack source, ServerPlayer player, double amount) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         long cents = RealCivUtil.creditsToCents(amount);
         long applied = record.addSocialCreditCents(civId, cents);
@@ -4043,7 +4043,7 @@ public final class RealCivCommands {
     private static int creditSet(CommandSourceStack source, ServerPlayer player, double amount) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         long cents = RealCivUtil.creditsToCents(amount);
         record.setSocialCreditCents(civId, cents);
@@ -4111,7 +4111,7 @@ public final class RealCivCommands {
             return 0;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         String rateText = RealCivUtil.formatPercentFromRatio(record.effectivePersonalWithdrawRatio(civId));
         String mode = record.personalWithdrawRatioOverride(civId) == null ? "default" : "override";
         source.sendSuccess(() -> Component.literal(
@@ -4134,7 +4134,7 @@ public final class RealCivCommands {
             return 0;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         double ratio = Math.max(0.0D, Math.min(1.0D, percent / 100.0D));
         record.setPersonalWithdrawRatioOverride(civId, ratio);
         data.addAuditLog(
@@ -4164,7 +4164,7 @@ public final class RealCivCommands {
             return 0;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         record.setPersonalWithdrawRatioOverride(civId, null);
         data.addAuditLog(
                 civId,

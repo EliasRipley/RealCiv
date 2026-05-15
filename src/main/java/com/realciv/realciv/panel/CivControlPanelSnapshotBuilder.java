@@ -19,7 +19,7 @@ public final class CivControlPanelSnapshotBuilder {
     private CivControlPanelSnapshotBuilder() {}
 
     public static CivControlPanelSnapshot build(ServerPlayer player, CivSavedData data, String civId) {
-        CivSavedData.PlayerRecord playerRecord = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord playerRecord = data.getOrCreatePlayer(player.getUUID());
         List<UUID> members = data.civilizationMembersSorted(civId);
         int managerCount = 0;
         for (UUID memberId : members) {
@@ -172,7 +172,7 @@ public final class CivControlPanelSnapshotBuilder {
         return "Citizen";
     }
 
-    private static long totalContributions(CivSavedData.PlayerRecord record, String civId) {
+    private static long totalContributions(PlayerRecord record, String civId) {
         long sum = 0L;
         for (long value : record.contributions(civId).values()) {
             sum += Math.max(0L, value);

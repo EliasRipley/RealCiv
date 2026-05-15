@@ -140,7 +140,7 @@ public final class RealCivEvents {
         data.processUpkeep(now);
 
         String civId = data.getOrAssignCivilization(player.getUUID());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (record.firstSeenAtMillis() <= 0L) {
             record.ensureFirstSeenAtMillis(System.currentTimeMillis());
             data.setDirty();
@@ -221,7 +221,7 @@ public final class RealCivEvents {
         }
 
         CivSavedData data = CivSavedData.get(player.getServer());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int totalRefund = 0;
         for (Profession profession : ACTION_TRACKED_PROFESSIONS) {
             int current = record.actionsForProfession(profession);
@@ -281,7 +281,7 @@ public final class RealCivEvents {
         if (RealCivConfig.staleActionResetEnabled()) {
             long nowMillis = System.currentTimeMillis();
             for (ServerPlayer player : event.getServer().getPlayerList().getPlayers()) {
-                CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+                PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
                 applyStaleActionTimeoutReset(player, data, record, nowMillis);
             }
         }
@@ -380,7 +380,7 @@ public final class RealCivEvents {
                 event.setCanceled(true);
                 return;
             }
-            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+            PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             int thLevel = record.levelFor(Profession.TREASURE_HUNTER);
             int limit = RealCivConfig.treasureHunterLimitForLevel(thLevel);
             if (!canConsumeDailyActionBudget(player, record, Profession.TREASURE_HUNTER, 1, "open chests")) {
@@ -414,7 +414,7 @@ public final class RealCivEvents {
         }
 
         if (clickedState.is(Blocks.CRAFTING_TABLE) && !RealCivUtil.isBypass(player)) {
-            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+            PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             int crafterLevel = record.levelFor(Profession.CRAFTER);
             int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
             if (record.crafterActions() >= limit) {
@@ -466,7 +466,7 @@ public final class RealCivEvents {
                     event.setCanceled(true);
                     return;
                 }
-                CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+                PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
                 int explorerLevel = record.levelFor(Profession.EXPLORER);
                 int limit = RealCivConfig.explorerLimitForLevel(explorerLevel);
                 if (!canConsumeDailyActionBudget(player, record, Profession.EXPLORER, 1, "explore")) {
@@ -636,7 +636,7 @@ public final class RealCivEvents {
                 event.setCanceled(true);
                 return;
             }
-            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+            PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             int farmerLevel = record.levelFor(Profession.FARMER);
             int limit = RealCivConfig.farmerLimitForLevel(farmerLevel);
 
@@ -756,7 +756,7 @@ public final class RealCivEvents {
             }
             int actionCost = actionCostForState(state);
 
-            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+            PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
             if (breakProfession == BreakProfession.LUMBERJACK) {
                 int levelValue = record.levelFor(Profession.LUMBERJACK);
                 int limit = RealCivConfig.lumberjackLimitForLevel(levelValue);
@@ -934,7 +934,7 @@ public final class RealCivEvents {
         int actionCost = actionCostForState(state);
 
         CivSavedData data = CivSavedData.get(player.getServer());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (breakProfession == BreakProfession.LUMBERJACK) {
             record.setLumberjackActions(record.lumberjackActions() + actionCost);
             ResourceLocation blockId = BuiltInRegistries.BLOCK.getKey(state.getBlock());
@@ -994,7 +994,7 @@ public final class RealCivEvents {
             if (defendingHomeLand) {
                 return;
             }
-            CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
+            PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
             if (!canConsumeDailyActionBudget(attacker, record, Profession.WARRIOR, 1, "fight")) {
                 event.setCanceled(true);
                 return;
@@ -1016,7 +1016,7 @@ public final class RealCivEvents {
             return;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(attacker.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
         if (isHunterMobCapReached(attacker, record, (Mob) event.getTarget(), hunterLevel)) {
@@ -1066,7 +1066,7 @@ public final class RealCivEvents {
             }
 
             boolean defendingHomeLand = isWarriorHomeDefenseExempt(killerCiv, victim, data);
-            CivSavedData.PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
+            PlayerRecord killerRecord = data.getOrCreatePlayer(killer.getUUID());
             if (!defendingHomeLand) {
                 if (!canConsumeDailyActionBudget(killer, killerRecord, Profession.WARRIOR, 1, "fight")) {
                     event.setCanceled(true);
@@ -1121,7 +1121,7 @@ public final class RealCivEvents {
             }
             return;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(killer.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(killer.getUUID());
         int hunterLevel = record.levelFor(Profession.HUNTER);
         int limit = RealCivConfig.hunterLimitForLevel(hunterLevel);
         if (isHunterMobCapReached(killer, record, mob, hunterLevel)) {
@@ -1450,7 +1450,7 @@ public final class RealCivEvents {
             return;
         }
         CivSavedData data = CivSavedData.get(player.getServer());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         ItemStack right = event.getRight();
         ItemStack left = event.getLeft();
@@ -1652,7 +1652,7 @@ public final class RealCivEvents {
             event.setCanceled(true);
             return;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int fisherLevel = record.levelFor(Profession.FISHER);
         int limit = RealCivConfig.fisherLimitForLevel(fisherLevel);
         if (!canConsumeDailyActionBudget(player, record, Profession.FISHER, fishCaught, "fish")) {
@@ -1699,7 +1699,7 @@ public final class RealCivEvents {
             return;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(actor.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(actor.getUUID());
         record.setExplosivesExpertActions(record.explosivesExpertActions() + 1);
         record.addDailyProfessionActions(Profession.EXPLOSIVES_EXPERT, 1);
         data.setDirty();
@@ -1811,7 +1811,7 @@ public final class RealCivEvents {
 
     private static boolean isHunterMobCapReached(
             ServerPlayer player,
-            CivSavedData.PlayerRecord record,
+            PlayerRecord record,
             Mob mob,
             int hunterLevel) {
         ResourceLocation mobId = BuiltInRegistries.ENTITY_TYPE.getKey(mob.getType());
@@ -1842,7 +1842,7 @@ public final class RealCivEvents {
         if (!RealCivConfig.warriorRequireHubRegistration() || RealCivUtil.isBypass(player)) {
             return;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int pendingKills = record.pendingWarriorHubRegistrations();
         if (pendingKills <= 0) {
             return;
@@ -1883,7 +1883,7 @@ public final class RealCivEvents {
         }
 
         CivSavedData data = CivSavedData.get(player.getServer());
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int crafterLevel = record.levelFor(Profession.CRAFTER);
         int craftedCount = resolveCraftedCount(event, crafted);
         int current = record.crafterActions();
@@ -1939,7 +1939,7 @@ public final class RealCivEvents {
     private static void openHubDepositMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
         registerPendingWarriorHubProgress(player, data, civId);
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
         player.openMenu(new SimpleMenuProvider(
                 (containerId, playerInventory, p) ->
@@ -2279,7 +2279,7 @@ public final class RealCivEvents {
             return true;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         long nowMillis = System.currentTimeMillis();
         Map<Profession, PendingHookCharge> pendingByProfession = new HashMap<>();
         Map<Profession, Integer> pendingProfessionXpByProfession = new HashMap<>();
@@ -2682,7 +2682,7 @@ public final class RealCivEvents {
         if (!RealCivConfig.specializationSingleProfessionLockEnabled()) {
             return true;
         }
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         @Nullable Profession focused = record.focusedProfession();
         if (focused == null) {
             if (sendMessage) {
@@ -2762,7 +2762,7 @@ public final class RealCivEvents {
             return false;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int level = record.levelFor(Profession.EXPLOSIVES_EXPERT);
         int limit = RealCivConfig.explosivesExpertLimitForLevel(level);
         if (record.explosivesExpertActions() >= limit) {
@@ -2785,7 +2785,7 @@ public final class RealCivEvents {
             return false;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         if (RealCivConfig.professionToolLevelGatesEnabled()) {
             @Nullable Profession requiredProfession = RealCivUtil.professionForTieredTool(itemStack);
             if (requiredProfession != null && requiredProfession != Profession.NONE) {
@@ -2825,7 +2825,7 @@ public final class RealCivEvents {
 
     private static boolean canConsumeDailyActionBudget(
             ServerPlayer player,
-            CivSavedData.PlayerRecord record,
+            PlayerRecord record,
             Profession profession,
             int actionCost,
             String activityVerb) {
@@ -2834,7 +2834,7 @@ public final class RealCivEvents {
 
     private static boolean canConsumeDailyActionBudget(
             ServerPlayer player,
-            CivSavedData.PlayerRecord record,
+            PlayerRecord record,
             Profession profession,
             int actionCost,
             String activityVerb,
@@ -2959,7 +2959,7 @@ public final class RealCivEvents {
     private static void applyStaleActionTimeoutReset(
             ServerPlayer player,
             CivSavedData data,
-            CivSavedData.PlayerRecord record,
+            PlayerRecord record,
             long nowMillis) {
         if (!RealCivConfig.staleActionResetEnabled()) {
             return;

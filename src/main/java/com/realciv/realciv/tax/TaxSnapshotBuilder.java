@@ -2,6 +2,7 @@ package com.realciv.realciv.tax;
 
 import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
 import java.util.ArrayList;
@@ -14,7 +15,7 @@ public final class TaxSnapshotBuilder {
     private TaxSnapshotBuilder() {}
 
     public static TaxSnapshot build(ServerPlayer player, CivSavedData data, String civId) {
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         @Nullable CivilizationRecord civ = data.getCivilization(civId);
         String civName = civ == null ? civId : civ.displayName();
         boolean canManage = CivPermissionService.hasCivPermission(

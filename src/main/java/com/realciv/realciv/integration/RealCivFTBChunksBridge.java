@@ -302,7 +302,7 @@ public final class RealCivFTBChunksBridge {
                     "This chunk is CIVIC territory. Ask your mayor to allot it as a PRIVATE plot.");
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int ownedPrivate = data.privatePlotCountForOwner(civId, player.getUUID());
         long claimCost = nextPrivateClaimCostCents(ownedPrivate);
         if (record.socialCreditCents(civId) < claimCost) {
@@ -398,7 +398,7 @@ public final class RealCivFTBChunksBridge {
             return;
         }
 
-        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         record.addSocialCreditCents(decision.civId(), -decision.claimCostCents());
         data.setPlot(
                 decision.civId(),
