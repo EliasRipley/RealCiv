@@ -55,9 +55,11 @@ import net.minecraft.world.entity.projectile.Projectile;
 import net.minecraft.world.entity.projectile.WitherSkull;
 import net.minecraft.world.entity.vehicle.MinecartTNT;
 import net.minecraft.world.inventory.ResultSlot;
+import net.minecraft.world.item.ArmorItem;
 import net.minecraft.world.item.BlockItem;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.item.TieredItem;
 import net.minecraft.world.level.Explosion;
 import net.minecraft.world.level.Level;
 import net.minecraft.world.level.block.Block;
@@ -1437,8 +1439,8 @@ public final class RealCivEvents {
     }
 
     /**
-     * Optional profession hook: anvil result taken.
-     * This event is post-action in vanilla flow and is best used for accounting/XP.
+     * Routes anvil repairs to ANVIL_RENAME, ANVIL_COMBINE_ENCHANT, or ANVIL_REPAIR_TOOL
+     * based on operation type, with per-tier level gating for repairs.
      */
     public static void onAnvilRepair(AnvilRepairEvent event) {
         if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
@@ -1448,12 +1450,71 @@ public final class RealCivEvents {
             return;
         }
         CivSavedData data = CivSavedData.get(player.getServer());
+        CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+
+        ItemStack right = event.getRight();
+        ItemStack left = event.getLeft();
+        ItemStack output = event.getOutput();
+
+        if (right.isEmpty()) {
+            tryConsumeConfiguredHookActions(
+                    player, data, ProfessionEventHook.ANVIL_RENAME, 1,
+                    "You can't rename items until you progress your Smithy level.");
+            return;
+        }
+
+        if (right.is(Items.ENCHANTED_BOOK)
+                || (!left.isEmpty() && left.isEnchanted() && right.isEnchanted())) {
+            tryConsumeConfiguredHookActions(
+                    player, data, ProfessionEventHook.ANVIL_COMBINE_ENCHANT, 1,
+                    "You can't combine enchantments until you progress your Smithy level.");
+            return;
+        }
+
+        if (!output.isEmpty()) {
+            String tierKey = resolveRepairTierKey(output);
+            if (!tierKey.isEmpty()) {
+                int requiredLevel = RealCivConfig.smithyRepairTierRequirement(tierKey);
+                int smithyLevel = record.levelFor(Profession.SMITHY);
+                if (smithyLevel < requiredLevel) {
+                    RealCivMessages.deny(player,
+                            "You need Smithy level " + requiredLevel + " to repair "
+                                    + tierKey.toLowerCase(Locale.ROOT)
+                                    + " items (you are level " + smithyLevel + ").");
+                    return;
+                }
+            }
+        }
+
         tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.ANVIL_REPAIR,
-                1,
-                "You can't take more anvil outputs right now until your configured progression gate is met.");
+                player, data, ProfessionEventHook.ANVIL_REPAIR_TOOL, 1,
+                "You can't repair that item yet. Progress your Smithy level.");
+    }
+
+    private static String resolveRepairTierKey(ItemStack stack) {
+        if (stack.isEmpty()) return "";
+        net.minecraft.world.item.Item item = stack.getItem();
+        if (item instanceof TieredItem tiered) {
+            net.minecraft.world.item.Tier tier = tiered.getTier();
+            if (tier instanceof net.minecraft.world.item.Tiers knownTier) {
+                return knownTier.name();
+            }
+        }
+        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
+        String path = id.getPath();
+        if (path.startsWith("leather_")) return "LEATHER";
+        if (path.startsWith("chainmail_")) return "CHAINMAIL";
+        if (path.startsWith("turtle_")) return "TURTLE";
+        if (path.startsWith("iron_")) return "IRON";
+        if (path.startsWith("golden_") || path.startsWith("gold_")) return "GOLD";
+        if (path.startsWith("diamond_")) return "DIAMOND";
+        if (path.startsWith("netherite_")) return "NETHERITE";
+        if (path.equals("shears") || path.equals("shield") || path.equals("elytra")
+                || path.equals("fishing_rod") || path.equals("flint_and_steel")
+                || path.contains("horse_armor") || path.contains("wolf_armor")) {
+            return "DEFAULT";
+        }
+        return "";
     }
 
     /**
@@ -1824,17 +1885,36 @@ public final class RealCivEvents {
         CivSavedData data = CivSavedData.get(player.getServer());
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         int crafterLevel = record.levelFor(Profession.CRAFTER);
-        int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
         int craftedCount = resolveCraftedCount(event, crafted);
         int current = record.crafterActions();
 
+        int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
         if (current >= limit) {
             CraftingLimitService.notifyCraftDenied(player, crafted);
             return;
         }
+        int applied = Math.min(Math.max(0, limit - current), craftedCount);
 
-        int allowed = Math.max(0, limit - current);
-        int applied = Math.min(allowed, craftedCount);
+        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(crafted.getItem());
+        int itemCap = RealCivConfig.crafterItemActionCapForLevel(itemId, crafterLevel);
+        if (itemCap > 0) {
+            int used = record.crafterItemActions(itemId);
+            if (used >= itemCap) {
+                CraftingLimitService.notifyCraftDenied(player, crafted);
+                return;
+            }
+            applied = Math.min(applied, Math.max(0, itemCap - used));
+        }
+
+        int dailyItemCap = RealCivConfig.crafterDailyItemActionCapForLevel(itemId, crafterLevel);
+        if (dailyItemCap > 0) {
+            int used = record.crafterDailyItemActions(itemId);
+            if (used >= dailyItemCap) {
+                CraftingLimitService.notifyCraftDenied(player, crafted);
+                return;
+            }
+            applied = Math.min(applied, Math.max(0, dailyItemCap - used));
+        }
 
         int dailyCap = RealCivConfig.dailyActionCapForLevel(Profession.CRAFTER, crafterLevel);
         if (dailyCap > 0) {
@@ -1845,6 +1925,8 @@ public final class RealCivEvents {
 
         if (applied > 0) {
             record.setCrafterActions(current + applied);
+            record.addCrafterItemActions(itemId, applied);
+            record.addCrafterDailyItemActions(itemId, applied);
             record.addDailyProfessionActions(Profession.CRAFTER, applied);
         }
         data.setDirty();

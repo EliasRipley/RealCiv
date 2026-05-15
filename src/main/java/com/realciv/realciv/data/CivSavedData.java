@@ -886,6 +886,7 @@ public class CivSavedData extends SavedData {
             }
             case CRAFTER -> {
                 record.setCrafterActions(record.crafterActions() - safeRestoredActions);
+                record.clearCrafterItemWindow();
             }
             case ENCHANTER -> {
                 record.setEnchanterActions(record.enchanterActions() - safeRestoredActions);
@@ -3861,6 +3862,9 @@ public class CivSavedData extends SavedData {
         private int crafterActions;
         private long crafterActionsUpdatedAtMillis;
         private int crafterXp;
+        private final Map<String, Integer> crafterItemActions = new HashMap<>();
+        private long crafterDailyItemActionDayIndex = -1L;
+        private final Map<String, Integer> crafterDailyItemActions = new HashMap<>();
         private int enchanterActions;
         private long enchanterActionsUpdatedAtMillis;
         private int enchanterXp;
@@ -4184,6 +4188,52 @@ public class CivSavedData extends SavedData {
             terraformerDailyBlockActions.put(key, (int) next);
         }
 
+        public void clearCrafterItemWindow() {
+            crafterItemActions.clear();
+        }
+
+        public int crafterItemActions(ResourceLocation itemId) {
+            if (itemId == null) {
+                return 0;
+            }
+            return Math.max(0, crafterItemActions.getOrDefault(itemId.toString(), 0));
+        }
+
+        public void addCrafterItemActions(ResourceLocation itemId, int delta) {
+            if (itemId == null || delta <= 0) {
+                return;
+            }
+            String key = itemId.toString();
+            int current = Math.max(0, crafterItemActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            crafterItemActions.put(key, (int) next);
+        }
+
+        public int crafterDailyItemActions(ResourceLocation itemId) {
+            if (itemId == null) {
+                return 0;
+            }
+            resetCrafterDailyItemActionWindowIfNeeded();
+            return Math.max(0, crafterDailyItemActions.getOrDefault(itemId.toString(), 0));
+        }
+
+        public void addCrafterDailyItemActions(ResourceLocation itemId, int delta) {
+            if (itemId == null || delta <= 0) {
+                return;
+            }
+            resetCrafterDailyItemActionWindowIfNeeded();
+            String key = itemId.toString();
+            int current = Math.max(0, crafterDailyItemActions.getOrDefault(key, 0));
+            long next = (long) current + delta;
+            if (next > Integer.MAX_VALUE) {
+                next = Integer.MAX_VALUE;
+            }
+            crafterDailyItemActions.put(key, (int) next);
+        }
+
         public int dailyProfessionActionsUsed(Profession profession) {
             if (profession == null || profession == Profession.NONE) {
                 return 0;
@@ -4431,6 +4481,9 @@ public class CivSavedData extends SavedData {
         public void setCrafterActions(int value) {
             int updated = Math.max(0, value);
             if (this.crafterActions != updated) {
+                if (updated <= 0) {
+                    crafterItemActions.clear();
+                }
                 this.crafterActions = updated;
                 this.crafterActionsUpdatedAtMillis = System.currentTimeMillis();
             }
@@ -4961,6 +5014,15 @@ public class CivSavedData extends SavedData {
             terraformerDailyBlockActions.clear();
         }
 
+        private void resetCrafterDailyItemActionWindowIfNeeded() {
+            long dayIndex = currentUtcDayIndex();
+            if (crafterDailyItemActionDayIndex == dayIndex) {
+                return;
+            }
+            crafterDailyItemActionDayIndex = dayIndex;
+            crafterDailyItemActions.clear();
+        }
+
         private int maxXpForProfessionLevel(int level) {
             if (level < 0) {
                 return 0;
@@ -5248,6 +5310,14 @@ public class CivSavedData extends SavedData {
                 }
             }
             tag.put("terraformerBlockActions", terraformerBlockTag);
+            CompoundTag crafterItemTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : crafterItemActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    crafterItemTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("crafterItemActions", crafterItemTag);
             tag.putInt("terraformerActions", terraformerActions);
             tag.putLong("terraformerActionsUpdatedAtMillis", terraformerActionsUpdatedAtMillis);
             tag.putInt("terraformerXp", terraformerXp);
@@ -5353,6 +5423,18 @@ public class CivSavedData extends SavedData {
             }
             tag.put("minerDailyBlockActions", minerDailyBlockTag);
 
+            if (crafterDailyItemActionDayIndex >= 0L) {
+                tag.putLong("crafterDailyItemActionDayIndex", crafterDailyItemActionDayIndex);
+            }
+            CompoundTag crafterDailyItemTag = new CompoundTag();
+            for (Map.Entry<String, Integer> entry : crafterDailyItemActions.entrySet()) {
+                int value = Math.max(0, entry.getValue());
+                if (value > 0) {
+                    crafterDailyItemTag.putInt(entry.getKey(), value);
+                }
+            }
+            tag.put("crafterDailyItemActions", crafterDailyItemTag);
+
             if (professionProgressDayIndex >= 0L) {
                 tag.putLong("professionProgressDayIndex", professionProgressDayIndex);
             }
@@ -5431,6 +5513,13 @@ public class CivSavedData extends SavedData {
                 int value = Math.max(0, terraformerBlockTag.getInt(key));
                 if (value > 0) {
                     record.terraformerBlockActions.put(key, value);
+                }
+            }
+            CompoundTag crafterItemTag = tag.getCompound("crafterItemActions");
+            for (String key : crafterItemTag.getAllKeys()) {
+                int value = Math.max(0, crafterItemTag.getInt(key));
+                if (value > 0) {
+                    record.crafterItemActions.put(key, value);
                 }
             }
             record.terraformerActions = Math.max(0, tag.getInt("terraformerActions"));
@@ -5583,6 +5672,17 @@ public class CivSavedData extends SavedData {
                 int value = Math.max(0, minerDailyBlockTag.getInt(key));
                 if (value > 0) {
                     record.minerDailyBlockActions.put(key, value);
+                }
+            }
+
+            record.crafterDailyItemActionDayIndex = tag.contains("crafterDailyItemActionDayIndex")
+                    ? tag.getLong("crafterDailyItemActionDayIndex")
+                    : -1L;
+            CompoundTag crafterDailyItemTag = tag.getCompound("crafterDailyItemActions");
+            for (String key : crafterDailyItemTag.getAllKeys()) {
+                int value = Math.max(0, crafterDailyItemTag.getInt(key));
+                if (value > 0) {
+                    record.crafterDailyItemActions.put(key, value);
                 }
             }
 

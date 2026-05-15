@@ -395,6 +395,26 @@ public final class RealCivConfig {
                     () -> "",
                     RealCivConfig::isString);
 
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> CRAFTER_ITEM_ACTION_CAPS = BUILDER
+            .comment("Optional crafter per-item action-window caps by crafter level.")
+            .comment("Format: item_id|cap0,cap1,cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:furnace|8,16,32,64")
+            .defineListAllowEmpty(
+                    "profession.crafterItemActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> CRAFTER_DAILY_ITEM_ACTION_CAPS = BUILDER
+            .comment("Optional crafter per-item daily caps by crafter level.")
+            .comment("Format: item_id|daily_cap0,daily_cap1,daily_cap2,...  (cap <= 0 disables cap)")
+            .comment("Example: minecraft:furnace|16,32,64,128")
+            .defineListAllowEmpty(
+                    "profession.crafterDailyItemActionCaps",
+                    List.of(),
+                    () -> "",
+                    RealCivConfig::isString);
+
     public static final ModConfigSpec.ConfigValue<List<? extends String>> PROFESSION_EVENT_HOOK_RULES = BUILDER
             .comment("Optional event-driven profession action hooks.")
             .comment("Legacy format: hook|profession|actions_per_trigger|optional custom deny message")
@@ -402,7 +422,7 @@ public final class RealCivConfig {
             .comment("Hooks: ANIMAL_BREED, ANIMAL_TAME, SHEAR_ENTITY, SHEAR_BLOCK, PLACE_SCAFFOLDING, BONEMEAL_USE")
             .comment("Additional hooks: TOOL_STRIP_LOG, TOOL_TILL_SOIL, TOOL_FLATTEN_PATH, TOOL_DOUSE_CAMPFIRE")
             .comment("Additional hooks: TOOL_SCRAPE_COPPER, TOOL_WAX_OFF, FARMLAND_TRAMPLE, VILLAGER_INTERACT")
-            .comment("Additional hooks: VILLAGER_TRADE, ANVIL_USE, ANVIL_REPAIR, ITEM_SMELT, ITEM_ENCHANT, POTION_BREW, ITEM_TOSS, STAT_AWARD")
+            .comment("Additional hooks: VILLAGER_TRADE, ANVIL_USE, ANVIL_RENAME, ANVIL_REPAIR_TOOL, ANVIL_COMBINE_ENCHANT, ITEM_SMELT, ITEM_ENCHANT, POTION_BREW, ITEM_TOSS, STAT_AWARD")
             .comment("Option keys: min_profession_level, min_general_level, min_membership_hours,")
             .comment("window_seconds/window_minutes/window_hours, max_triggers, profession_xp, general_xp, stat_prefix, deny_message")
             .comment("Deny placeholders: %hook%, %profession%, %current%, %limit%, %cost%")
@@ -420,8 +440,10 @@ public final class RealCivConfig {
                             "SHEAR_BLOCK|SHEPHERD|1",
                             "ANIMAL_BREED|BREEDER|1",
                             "ANIMAL_TAME|BREEDER|1",
-                            "ANVIL_USE|SMITHY|1",
-                            "ANVIL_REPAIR|SMITHY|1",
+                            "ANVIL_USE|SMITHY|0|min_profession_level=1",
+                            "ANVIL_RENAME|SMITHY|0|min_profession_level=2",
+                            "ANVIL_COMBINE_ENCHANT|SMITHY|0|min_profession_level=4",
+                            "ANVIL_REPAIR_TOOL|SMITHY|0|min_profession_level=1",
                             "ITEM_SMELT|SMELTER|1"),
                     () -> "",
                     RealCivConfig::isString);
@@ -577,7 +599,7 @@ public final class RealCivConfig {
                             "minecraft:mangrove_log|LUMBERJACK|1.2|2|1",
                             "minecraft:crimson_stem|LUMBERJACK|1.2|2|1",
                             "minecraft:warped_stem|LUMBERJACK|1.2|2|1",
-                            "minecraft:oak_planks|LUMBERJACK|0.3|1|1",
+                            "minecraft:oak_planks|CRAFTER|0.3|1|1",
                             "minecraft:bamboo_block|LUMBERJACK|1.0|2|1",
                             "minecraft:stripped_bamboo_block|LUMBERJACK|1.0|2|1",
                             "minecraft:cod|FISHER|1.0|2|1",
@@ -748,6 +770,26 @@ public final class RealCivConfig {
     public static final ModConfigSpec.IntValue UNKNOWN_TIER_TOOL_LEVEL = BUILDER
             .comment("Fallback required level for custom tiered tools not matching vanilla tiers.")
             .defineInRange("tools.requiredLevel.unknownTier", 8, 0, 1000);
+
+    public static final ModConfigSpec.ConfigValue<List<? extends String>> SMITHY_REPAIR_TIER_LEVELS = BUILDER
+            .comment("Smithy level requirements for repairing each material tier on an anvil.")
+            .comment("Format: TIER_NAME=required_level")
+            .comment("Tiers: WOOD, STONE, GOLD, IRON, DIAMOND, NETHERITE, LEATHER, CHAINMAIL, TURTLE, DEFAULT")
+            .defineListAllowEmpty(
+                    "smithy.repairTierLevels",
+                    List.of(
+                            "WOOD=0",
+                            "STONE=1",
+                            "GOLD=2",
+                            "IRON=2",
+                            "DIAMOND=4",
+                            "NETHERITE=6",
+                            "LEATHER=0",
+                            "CHAINMAIL=2",
+                            "TURTLE=2",
+                            "DEFAULT=1"),
+                    () -> "",
+                    RealCivConfig::isString);
 
     public static final ModConfigSpec.BooleanValue CARRY_CAP_PICKUP_ENABLED = BUILDER
             .comment("When true, players cannot pick up profession-tracked items above configured carry caps.")
@@ -1134,6 +1176,14 @@ public final class RealCivConfig {
         return parseBlockLevelCap(TERRAFORMER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, level);
     }
 
+    public static int crafterItemActionCapForLevel(ResourceLocation itemId, int crafterLevel) {
+        return parseBlockLevelCap(CRAFTER_ITEM_ACTION_CAPS.get(), itemId, crafterLevel);
+    }
+
+    public static int crafterDailyItemActionCapForLevel(ResourceLocation itemId, int crafterLevel) {
+        return parseBlockLevelCap(CRAFTER_DAILY_ITEM_ACTION_CAPS.get(), itemId, crafterLevel);
+    }
+
     public static int warriorLimitForLevel(int warriorLevel) {
         if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
             return linearLimitForLevel(warriorLevel, WARRIOR_LIMIT_BASE.get(), WARRIOR_LIMIT_PER_LEVEL.get());
@@ -1209,6 +1259,23 @@ public final class RealCivConfig {
             return linearLimitForLevel(level, SMITHY_LIMIT_BASE.get(), SMITHY_LIMIT_PER_LEVEL.get());
         }
         return RealCivUtil.valueForLevel(level, SMITHY_LIMITS.get(), 1);
+    }
+
+    public static int smithyRepairTierRequirement(String tierKey) {
+        String key = tierKey.trim().toUpperCase(Locale.ROOT);
+        for (String entry : SMITHY_REPAIR_TIER_LEVELS.get()) {
+            String trimmed = entry.trim();
+            int eq = trimmed.indexOf('=');
+            if (eq > 0) {
+                String entryKey = trimmed.substring(0, eq).trim().toUpperCase(Locale.ROOT);
+                if (entryKey.equals(key)) {
+                    try {
+                        return Integer.parseInt(trimmed.substring(eq + 1).trim());
+                    } catch (NumberFormatException ignored) {}
+                }
+            }
+        }
+        return 1;
     }
 
     public static int smelterLimitForLevel(int level) {

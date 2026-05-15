@@ -3,8 +3,6 @@
   "values": [
     "#minecraft:logs",
     "#minecraft:bamboo_blocks",
-    "#minecraft:planks",
-    "#minecraft:saplings",
-    "minecraft:stick"
+    "#minecraft:saplings"
   ]
 }

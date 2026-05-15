@@ -5,7 +5,8 @@
   "mixins": [
     "CraftingMenuMixin",
     "InventoryMenuMixin",
-    "ResultSlotMixin"
+    "ResultSlotMixin",
+    "ResultSlotOnTakeMixin"
   ],
   "injectors": {
     "defaultRequire": 1
