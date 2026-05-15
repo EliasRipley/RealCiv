@@ -1134,20 +1134,7 @@ public final class RealCivConfig {
     }
 
     public static int smithyRepairTierRequirement(String tierKey) {
-        String key = tierKey.trim().toUpperCase(Locale.ROOT);
-        for (String entry : SMITHY_REPAIR_TIER_LEVELS.get()) {
-            String trimmed = entry.trim();
-            int eq = trimmed.indexOf('=');
-            if (eq > 0) {
-                String entryKey = trimmed.substring(0, eq).trim().toUpperCase(Locale.ROOT);
-                if (entryKey.equals(key)) {
-                    try {
-                        return Integer.parseInt(trimmed.substring(eq + 1).trim());
-                    } catch (NumberFormatException ignored) {}
-                }
-            }
-        }
-        return 1;
+        return ToolConfig.smithyRepairTierRequirement(tierKey);
     }
 
     public static int smelterLimitForLevel(int level) {
@@ -1159,50 +1146,43 @@ public final class RealCivConfig {
     }
 
     public static boolean professionToolLevelGatesEnabled() {
-        return TOOLS_PROFESSION_LEVEL_GATES_ENABLED.get();
+        return ToolConfig.professionToolLevelGatesEnabled();
     }
 
     public static boolean generalToolLevelGatesEnabled() {
-        return TOOLS_GENERAL_LEVEL_GATES_ENABLED.get();
+        return ToolConfig.generalToolLevelGatesEnabled();
     }
 
     public static int requiredProfessionLevelForToolTier(Profession profession, RealCivUtil.ToolTier tier) {
-        if (profession == null || profession == Profession.NONE || tier == null || tier == RealCivUtil.ToolTier.NONE) {
-            return 0;
-        }
-        Map<RealCivUtil.ToolTier, Integer> configured = professionToolTierRequirements().get(profession);
-        if (configured == null) {
-            return 0;
-        }
-        return Math.max(0, configured.getOrDefault(tier, 0));
+        return ToolConfig.requiredProfessionLevelForToolTier(profession, tier);
     }
 
     public static boolean specializationSingleProfessionLockEnabled() {
-        return SPECIALIZATION_SINGLE_PROFESSION_LOCK_ENABLED.get();
+        return ProgressionConfig.specializationSingleProfessionLockEnabled();
     }
 
     public static boolean specializationXpDecayEnabled() {
-        return SPECIALIZATION_XP_DECAY_ENABLED.get();
+        return ProgressionConfig.specializationXpDecayEnabled();
     }
 
     public static double specializationXpDecayRate() {
-        return Math.max(0.0D, SPECIALIZATION_XP_DECAY_RATE.get());
+        return ProgressionConfig.specializationXpDecayRate();
     }
 
     public static int warriorXpPerPlayerKill() {
-        return Math.max(0, WARRIOR_XP_PER_PLAYER_KILL.get());
+        return ProgressionConfig.warriorXpPerPlayerKill();
     }
 
     public static int warriorGeneralXpPerPlayerKill() {
-        return Math.max(0, WARRIOR_GENERAL_XP_PER_PLAYER_KILL.get());
+        return ProgressionConfig.warriorGeneralXpPerPlayerKill();
     }
 
     public static boolean warriorRequireHubRegistration() {
-        return WARRIOR_REQUIRE_HUB_REGISTRATION.get();
+        return ProgressionConfig.warriorRequireHubRegistration();
     }
 
     public static boolean warriorHomeDefenseNoActionCost() {
-        return WARRIOR_HOME_DEFENSE_NO_ACTION_COST.get();
+        return ProgressionConfig.warriorHomeDefenseNoActionCost();
     }
 
     public static boolean governanceApprovalWorkflowEnabled() {
@@ -1329,39 +1309,11 @@ public final class RealCivConfig {
     }
 
     public static Set<ResourceLocation> regulatedRedstoneBlocks() {
-        Set<ResourceLocation> out = new HashSet<>();
-        for (String raw : REDSTONER_RESTRICTED_BLOCKS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            try {
-                out.add(ResourceLocation.parse(line));
-            } catch (Exception ignored) {
-            }
-        }
-        return Set.copyOf(out);
+        return ToolConfig.regulatedRedstoneBlocks();
     }
 
     public static Set<ResourceLocation> regulatedExplosiveItems() {
-        Set<ResourceLocation> out = new HashSet<>();
-        for (String raw : EXPLOSIVES_RESTRICTED_ITEMS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            try {
-                out.add(ResourceLocation.parse(line));
-            } catch (Exception ignored) {
-            }
-        }
-        return Set.copyOf(out);
+        return ToolConfig.regulatedExplosiveItems();
     }
 
     public static boolean carryCapPickupEnabled() {
@@ -1481,45 +1433,7 @@ public final class RealCivConfig {
     }
 
     public static Map<Profession, Map<RealCivUtil.ToolTier, Integer>> professionToolTierRequirements() {
-        Map<Profession, Map<RealCivUtil.ToolTier, Integer>> out = new HashMap<>();
-        for (String raw : PROFESSION_TOOL_TIER_REQUIREMENTS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|");
-            if (parts.length < 2) {
-                continue;
-            }
-            Profession profession = Profession.fromConfigName(parts[0].trim());
-            if (profession == null || profession == Profession.NONE) {
-                continue;
-            }
-            Map<RealCivUtil.ToolTier, Integer> tierMap = out.computeIfAbsent(profession, ignored -> new HashMap<>());
-            for (int i = 1; i < parts.length; i++) {
-                String token = parts[i].trim();
-                if (token.isEmpty()) {
-                    continue;
-                }
-                int split = token.indexOf('=');
-                if (split <= 0 || split >= token.length() - 1) {
-                    continue;
-                }
-                @Nullable RealCivUtil.ToolTier tier = parseToolTierKey(token.substring(0, split));
-                if (tier == null || tier == RealCivUtil.ToolTier.NONE) {
-                    continue;
-                }
-                Integer requiredLevel = tryParseInt(token.substring(split + 1).trim());
-                if (requiredLevel == null || requiredLevel < 0) {
-                    continue;
-                }
-                tierMap.put(tier, requiredLevel);
-            }
-        }
-        return out;
+        return ToolConfig.professionToolTierRequirements();
     }
 
     public static List<ProfessionEventHookRule> professionEventHookRules() {
@@ -1819,16 +1733,15 @@ public final class RealCivConfig {
     }
 
     public static double deathActionRefundRatio() {
-        return Math.max(0.0D, Math.min(1.0D, DEATH_ACTION_REFUND_PERCENT.get() / 100.0D));
+        return ProgressionConfig.deathActionRefundRatio();
     }
 
     public static boolean staleActionResetEnabled() {
-        return STALE_ACTION_RESET_ENABLED.get();
+        return ProgressionConfig.staleActionResetEnabled();
     }
 
     public static long staleActionResetMillis() {
-        long minutes = Math.max(1L, STALE_ACTION_RESET_MINUTES.get());
-        return minutes * 60_000L;
+        return ProgressionConfig.staleActionResetMillis();
     }
 
     public static boolean useProfessionRuleFiles() {
@@ -1853,63 +1766,23 @@ public final class RealCivConfig {
     }
 
     public static int professionLevelFromXp(@Nullable Profession profession, int xp) {
-        if (profession == null || profession == Profession.NONE || xp < 0) {
-            return 0;
-        }
-        List<? extends Integer> thresholds = PROFESSION_XP_THRESHOLDS.get();
-        int level = 0;
-        for (int i = 0; i < thresholds.size(); i++) {
-            Integer threshold = thresholds.get(i);
-            if (threshold == null || xp < threshold) {
-                break;
-            }
-            level = i;
-        }
-        return level;
+        return ProgressionConfig.professionLevelFromXp(profession, xp);
     }
 
     public static int professionLevelCap(@Nullable Profession profession) {
-        if (profession == null || profession == Profession.NONE) {
-            return 0;
-        }
-        for (String raw : PROFESSION_LEVEL_CAPS.get()) {
-            if (raw == null) continue;
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) continue;
-            String[] parts = line.split("\\|", 2);
-            if (parts.length != 2) continue;
-            Profession parsed = Profession.fromConfigName(parts[0].trim());
-            if (parsed == profession) {
-                try {
-                    return Math.max(0, Integer.parseInt(parts[1].trim()));
-                } catch (NumberFormatException ignored) {
-                    return Integer.MAX_VALUE;
-                }
-            }
-        }
-        return Integer.MAX_VALUE;
+        return ProgressionConfig.professionLevelCap(profession);
     }
 
     public static int generalLevelFromXp(int xp) {
-        if (xp < 0) return 0;
-        List<? extends Integer> thresholds = GENERAL_XP_THRESHOLDS.get();
-        int level = 0;
-        for (int i = 0; i < thresholds.size(); i++) {
-            Integer threshold = thresholds.get(i);
-            if (threshold == null || xp < threshold) {
-                break;
-            }
-            level = i;
-        }
-        return level;
+        return ProgressionConfig.generalLevelFromXp(xp);
     }
 
     public static int maxProfessionLevelGainsPerDay() {
-        return Math.max(0, MAX_PROFESSION_LEVEL_GAINS_PER_DAY.get());
+        return ProgressionConfig.maxProfessionLevelGainsPerDay();
     }
 
     public static int maxGeneralLevelGainsPerDay() {
-        return Math.max(0, MAX_GENERAL_LEVEL_GAINS_PER_DAY.get());
+        return ProgressionConfig.maxGeneralLevelGainsPerDay();
     }
 
     public static long maxContributionKarmaGainPerDayCents() {
@@ -2161,22 +2034,6 @@ public final class RealCivConfig {
     }
 
     @Nullable
-    private static RealCivUtil.ToolTier parseToolTierKey(String raw) {
-        if (raw == null || raw.isBlank()) {
-            return null;
-        }
-        return switch (raw.trim().toUpperCase(Locale.ROOT)) {
-            case "WOOD", "WOODEN" -> RealCivUtil.ToolTier.WOOD;
-            case "GOLD", "GOLDEN" -> RealCivUtil.ToolTier.GOLD;
-            case "STONE" -> RealCivUtil.ToolTier.STONE;
-            case "IRON" -> RealCivUtil.ToolTier.IRON;
-            case "DIAMOND" -> RealCivUtil.ToolTier.DIAMOND;
-            case "NETHERITE" -> RealCivUtil.ToolTier.NETHERITE;
-            case "UNKNOWN", "ADVANCED" -> RealCivUtil.ToolTier.UNKNOWN;
-            default -> null;
-        };
-    }
-
     private static ClaimDimensionPolicy claimDimensionPolicy() {
         String raw = LAND_CLAIM_DIMENSION_POLICY.get();
         if (raw == null) {
