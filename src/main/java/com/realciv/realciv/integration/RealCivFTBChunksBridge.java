@@ -477,7 +477,7 @@ public final class RealCivFTBChunksBridge {
     }
 
     private static boolean isTownChunk(CivSavedData data, String civId, String dimension, long chunkX, long chunkZ) {
-        @Nullable CivSavedData.PlotRecord plot = data.getPlot(civId, dimension, chunkX, chunkZ);
+        @Nullable PlotRecord plot = data.getPlot(civId, dimension, chunkX, chunkZ);
         return plot != null && plot.landClass() == LandClass.CIVIC;
     }
 

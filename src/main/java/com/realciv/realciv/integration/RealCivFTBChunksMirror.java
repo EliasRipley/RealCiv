@@ -3,6 +3,7 @@ package com.realciv.realciv.integration;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.PlotRecord;
 import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
 import dev.ftb.mods.ftbchunks.api.ClaimResult;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
@@ -228,7 +229,7 @@ public final class RealCivFTBChunksMirror {
         ensureTeamClaimCapacity(teamData, desiredCount);
 
         Set<String> desiredKeys = new HashSet<>();
-        for (CivSavedData.PlotRecord plot : civ.plots().values()) {
+        for (PlotRecord plot : civ.plots().values()) {
             desiredKeys.add(plot.plotKey());
             ensureClaimOwnedByTeam(server, teamData, civTeam, plot.dimension(), plot.chunkX(), plot.chunkZ());
         }

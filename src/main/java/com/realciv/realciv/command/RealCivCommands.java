@@ -2244,7 +2244,7 @@ public final class RealCivCommands {
         }
 
         if (lookup != null && lookup.civilizationId().equals(civId)) {
-            CivSavedData.PlotRecord plot = lookup.plot();
+            PlotRecord plot = lookup.plot();
             if (plot.landClass() == LandClass.CIVIC && !source.hasPermission(3)) {
                 source.sendFailure(Component.literal(
                         "This chunk is CIVIC territory. Ask your mayor to allot it with /realciv town allot <player>."));
@@ -2317,7 +2317,7 @@ public final class RealCivCommands {
             return 1;
         }
 
-        CivSavedData.PlotRecord plot = lookup.plot();
+        PlotRecord plot = lookup.plot();
         String owner = plot.ownerId() == null ? "none" : plot.ownerId().toString();
         long ticksToUpkeep = Math.max(0L, plot.nextUpkeepTick() - now);
         double daysToUpkeep = ticksToUpkeep / 24_000.0D;
@@ -4290,7 +4290,7 @@ public final class RealCivCommands {
             String dimension,
             long chunkX,
             long chunkZ) {
-        @Nullable CivSavedData.PlotRecord plot = data.getPlot(civId, dimension, chunkX, chunkZ);
+        @Nullable PlotRecord plot = data.getPlot(civId, dimension, chunkX, chunkZ);
         return plot != null && plot.landClass() == LandClass.CIVIC;
     }
 
