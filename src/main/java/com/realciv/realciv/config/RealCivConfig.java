@@ -1018,247 +1018,119 @@ public final class RealCivConfig {
     }
 
     public static int farmerLimitForLevel(int farmerLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(farmerLevel, FARMER_LIMIT_BASE.get(), FARMER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(farmerLevel, FARMER_LIMITS.get(), 8);
+        return ProfessionLimitConfig.farmerLimitForLevel(farmerLevel);
     }
 
     public static int minerLimitForLevel(int minerLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(minerLevel, MINER_LIMIT_BASE.get(), MINER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(minerLevel, MINER_LIMITS.get(), 40);
+        return ProfessionLimitConfig.minerLimitForLevel(minerLevel);
     }
 
     public static int terraformerLimitForLevel(int terraformerLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(terraformerLevel, TERRAFORMER_LIMIT_BASE.get(), TERRAFORMER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(terraformerLevel, TERRAFORMER_LIMITS.get(), 40);
+        return ProfessionLimitConfig.terraformerLimitForLevel(terraformerLevel);
     }
 
     public static int lumberjackLimitForLevel(int lumberjackLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(lumberjackLevel, LUMBERJACK_LIMIT_BASE.get(), LUMBERJACK_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(lumberjackLevel, LUMBERJACK_LIMITS.get(), 8);
+        return ProfessionLimitConfig.lumberjackLimitForLevel(lumberjackLevel);
     }
 
     public static int fisherLimitForLevel(int fisherLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(fisherLevel, FISHER_LIMIT_BASE.get(), FISHER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(fisherLevel, FISHER_LIMITS.get(), 8);
+        return ProfessionLimitConfig.fisherLimitForLevel(fisherLevel);
     }
 
     public static int hunterLimitForLevel(int hunterLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(hunterLevel, HUNTER_LIMIT_BASE.get(), HUNTER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(hunterLevel, HUNTER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.hunterLimitForLevel(hunterLevel);
     }
 
     public static int hunterMobActionCapForLevel(ResourceLocation entityId, int hunterLevel) {
-        if (entityId == null) {
-            return 0;
-        }
-        Integer direct = hunterMobActionCapsForLevel(hunterLevel).get(entityId);
-        if (direct == null) {
-            return 0;
-        }
-        return Math.max(0, direct);
+        return ProfessionLimitConfig.hunterMobActionCapForLevel(entityId, hunterLevel);
     }
 
     public static Map<ResourceLocation, Integer> hunterMobActionCapsForLevel(int hunterLevel) {
-        Map<ResourceLocation, Integer> caps = new HashMap<>();
-        for (String raw : HUNTER_MOB_ACTION_CAPS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|", 2);
-            if (parts.length != 2) {
-                continue;
-            }
-            ResourceLocation entityId;
-            try {
-                entityId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                continue;
-            }
-            int cap = parseLevelIndexedValue(parts[1], hunterLevel);
-            caps.put(entityId, Math.max(0, cap));
-        }
-        return caps;
+        return ProfessionLimitConfig.hunterMobActionCapsForLevel(hunterLevel);
     }
 
     public static int hunterRequiredLevelForMob(ResourceLocation entityId) {
-        if (entityId == null) {
-            return 0;
-        }
-        for (String raw : HUNTER_MOB_MIN_LEVELS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|");
-            if (parts.length != 2) {
-                continue;
-            }
-            ResourceLocation parsedId;
-            try {
-                parsedId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                continue;
-            }
-            if (!parsedId.equals(entityId)) {
-                continue;
-            }
-            Integer required = tryParseInt(parts[1].trim());
-            return required == null ? 0 : Math.max(0, required);
-        }
-        return 0;
+        return ProfessionLimitConfig.hunterRequiredLevelForMob(entityId);
     }
 
     public static int dailyActionCapForLevel(Profession profession, int level) {
-        if (profession == null || profession == Profession.NONE) {
-            return 0;
-        }
-        for (String raw : PROFESSION_DAILY_ACTION_CAPS.get()) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|", 2);
-            if (parts.length != 2) {
-                continue;
-            }
-            Profession parsedProfession = Profession.fromConfigName(parts[0].trim());
-            if (parsedProfession == null || parsedProfession != profession) {
-                continue;
-            }
-            return Math.max(0, parseLevelIndexedValue(parts[1], level));
-        }
-        return 0;
+        return ProfessionLimitConfig.dailyActionCapForLevel(profession, level);
     }
 
     public static int minerBlockActionCapForLevel(ResourceLocation blockId, int minerLevel) {
-        return parseBlockLevelCap(MINER_BLOCK_ACTION_CAPS.get(), blockId, minerLevel);
+        return ProfessionLimitConfig.minerBlockActionCapForLevel(blockId, minerLevel);
     }
 
     public static int minerDailyBlockActionCapForLevel(ResourceLocation blockId, int minerLevel) {
-        return parseBlockLevelCap(MINER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, minerLevel);
+        return ProfessionLimitConfig.minerDailyBlockActionCapForLevel(blockId, minerLevel);
     }
 
     public static int lumberjackBlockActionCapForLevel(ResourceLocation blockId, int level) {
-        return parseBlockLevelCap(LUMBERJACK_BLOCK_ACTION_CAPS.get(), blockId, level);
+        return ProfessionLimitConfig.lumberjackBlockActionCapForLevel(blockId, level);
     }
 
     public static int lumberjackDailyBlockActionCapForLevel(ResourceLocation blockId, int level) {
-        return parseBlockLevelCap(LUMBERJACK_DAILY_BLOCK_ACTION_CAPS.get(), blockId, level);
+        return ProfessionLimitConfig.lumberjackDailyBlockActionCapForLevel(blockId, level);
     }
 
     public static int terraformerBlockActionCapForLevel(ResourceLocation blockId, int level) {
-        return parseBlockLevelCap(TERRAFORMER_BLOCK_ACTION_CAPS.get(), blockId, level);
+        return ProfessionLimitConfig.terraformerBlockActionCapForLevel(blockId, level);
     }
 
     public static int terraformerDailyBlockActionCapForLevel(ResourceLocation blockId, int level) {
-        return parseBlockLevelCap(TERRAFORMER_DAILY_BLOCK_ACTION_CAPS.get(), blockId, level);
+        return ProfessionLimitConfig.terraformerDailyBlockActionCapForLevel(blockId, level);
     }
 
     public static int crafterItemActionCapForLevel(ResourceLocation itemId, int crafterLevel) {
-        return parseBlockLevelCap(CRAFTER_ITEM_ACTION_CAPS.get(), itemId, crafterLevel);
+        return ProfessionLimitConfig.crafterItemActionCapForLevel(itemId, crafterLevel);
     }
 
     public static int crafterDailyItemActionCapForLevel(ResourceLocation itemId, int crafterLevel) {
-        return parseBlockLevelCap(CRAFTER_DAILY_ITEM_ACTION_CAPS.get(), itemId, crafterLevel);
+        return ProfessionLimitConfig.crafterDailyItemActionCapForLevel(itemId, crafterLevel);
     }
 
     public static int warriorLimitForLevel(int warriorLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(warriorLevel, WARRIOR_LIMIT_BASE.get(), WARRIOR_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(warriorLevel, WARRIOR_LIMITS.get(), 1);
+        return ProfessionLimitConfig.warriorLimitForLevel(warriorLevel);
     }
 
     public static int explosivesExpertLimitForLevel(int explosivesLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(explosivesLevel, EXPLOSIVES_EXPERT_LIMIT_BASE.get(), EXPLOSIVES_EXPERT_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(explosivesLevel, EXPLOSIVES_EXPERT_LIMITS.get(), 1);
+        return ProfessionLimitConfig.explosivesExpertLimitForLevel(explosivesLevel);
     }
 
     public static int crafterLimitForLevel(int crafterLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(crafterLevel, CRAFTER_LIMIT_BASE.get(), CRAFTER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(crafterLevel, CRAFTER_LIMITS.get(), 64);
+        return ProfessionLimitConfig.crafterLimitForLevel(crafterLevel);
     }
 
     public static int enchanterLimitForLevel(int enchanterLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(enchanterLevel, ENCHANTER_LIMIT_BASE.get(), ENCHANTER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(enchanterLevel, ENCHANTER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.enchanterLimitForLevel(enchanterLevel);
     }
 
     public static int brewerLimitForLevel(int brewerLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(brewerLevel, BREWER_LIMIT_BASE.get(), BREWER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(brewerLevel, BREWER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.brewerLimitForLevel(brewerLevel);
     }
 
     public static int traderLimitForLevel(int traderLevel) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(traderLevel, TRADER_LIMIT_BASE.get(), TRADER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(traderLevel, TRADER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.traderLimitForLevel(traderLevel);
     }
 
     public static int shepherdLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, SHEPHERD_LIMIT_BASE.get(), SHEPHERD_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, SHEPHERD_LIMITS.get(), 2);
+        return ProfessionLimitConfig.shepherdLimitForLevel(level);
     }
 
     public static int explorerLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, EXPLORER_LIMIT_BASE.get(), EXPLORER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, EXPLORER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.explorerLimitForLevel(level);
     }
 
     public static int treasureHunterLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, TREASURE_HUNTER_LIMIT_BASE.get(), TREASURE_HUNTER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, TREASURE_HUNTER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.treasureHunterLimitForLevel(level);
     }
 
     public static int breederLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, BREEDER_LIMIT_BASE.get(), BREEDER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, BREEDER_LIMITS.get(), 2);
+        return ProfessionLimitConfig.breederLimitForLevel(level);
     }
 
     public static int smithyLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, SMITHY_LIMIT_BASE.get(), SMITHY_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, SMITHY_LIMITS.get(), 1);
+        return ProfessionLimitConfig.smithyLimitForLevel(level);
     }
 
     public static int smithyRepairTierRequirement(String tierKey) {
@@ -1279,37 +1151,11 @@ public final class RealCivConfig {
     }
 
     public static int smelterLimitForLevel(int level) {
-        if (PROFESSION_USE_LINEAR_LIMIT_FORMULAS.get()) {
-            return linearLimitForLevel(level, SMELTER_LIMIT_BASE.get(), SMELTER_LIMIT_PER_LEVEL.get());
-        }
-        return RealCivUtil.valueForLevel(level, SMELTER_LIMITS.get(), 1);
+        return ProfessionLimitConfig.smelterLimitForLevel(level);
     }
 
     public static int limitForProfession(Profession profession, int level) {
-        if (profession == null) {
-            return 0;
-        }
-        return switch (profession) {
-            case FARMER -> farmerLimitForLevel(level);
-            case MINER -> minerLimitForLevel(level);
-            case TERRAFORMER -> terraformerLimitForLevel(level);
-            case LUMBERJACK -> lumberjackLimitForLevel(level);
-            case FISHER -> fisherLimitForLevel(level);
-            case HUNTER -> hunterLimitForLevel(level);
-            case WARRIOR -> warriorLimitForLevel(level);
-            case EXPLOSIVES_EXPERT -> explosivesExpertLimitForLevel(level);
-            case CRAFTER -> crafterLimitForLevel(level);
-            case ENCHANTER -> enchanterLimitForLevel(level);
-            case BREWER -> brewerLimitForLevel(level);
-            case TRADER -> traderLimitForLevel(level);
-            case SHEPHERD -> shepherdLimitForLevel(level);
-            case EXPLORER -> explorerLimitForLevel(level);
-            case TREASURE_HUNTER -> treasureHunterLimitForLevel(level);
-            case BREEDER -> breederLimitForLevel(level);
-            case SMITHY -> smithyLimitForLevel(level);
-            case SMELTER -> smelterLimitForLevel(level);
-            case NONE -> 0;
-        };
+        return ProfessionLimitConfig.limitForProfession(profession, level);
     }
 
     public static boolean professionToolLevelGatesEnabled() {
@@ -2312,69 +2158,6 @@ public final class RealCivConfig {
                     Math.max(0.0D, actionsPerItem)));
         }
         return List.copyOf(rules);
-    }
-
-    private static int parseLevelIndexedValue(String rawLevels, int level) {
-        if (rawLevels == null || rawLevels.isBlank()) {
-            return 0;
-        }
-        String[] tokens = rawLevels.split(",");
-        int fallback = 0;
-        for (int index = 0; index < tokens.length; index++) {
-            Integer parsed = tryParseInt(tokens[index].trim());
-            if (parsed == null) {
-                continue;
-            }
-            fallback = Math.max(0, parsed);
-            if (index >= Math.max(0, level)) {
-                return fallback;
-            }
-        }
-        return fallback;
-    }
-
-    private static int linearLimitForLevel(int level, int base, int perLevel) {
-        long safeLevel = Math.max(0L, level);
-        long safeBase = Math.max(0L, base);
-        long safePerLevel = Math.max(0L, perLevel);
-        long value = safeBase + (safePerLevel * safeLevel);
-        if (value <= 0L) {
-            return 0;
-        }
-        if (value > Integer.MAX_VALUE) {
-            return Integer.MAX_VALUE;
-        }
-        return (int) value;
-    }
-
-    private static int parseBlockLevelCap(List<? extends String> lines, @Nullable ResourceLocation blockId, int level) {
-        if (blockId == null) {
-            return 0;
-        }
-        for (String raw : lines) {
-            if (raw == null) {
-                continue;
-            }
-            String line = raw.trim();
-            if (line.isEmpty() || line.startsWith("#")) {
-                continue;
-            }
-            String[] parts = line.split("\\|", 2);
-            if (parts.length != 2) {
-                continue;
-            }
-            ResourceLocation parsedBlockId;
-            try {
-                parsedBlockId = ResourceLocation.parse(parts[0].trim());
-            } catch (Exception ex) {
-                continue;
-            }
-            if (!parsedBlockId.equals(blockId)) {
-                continue;
-            }
-            return Math.max(0, parseLevelIndexedValue(parts[1], level));
-        }
-        return 0;
     }
 
     @Nullable
