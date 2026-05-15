@@ -1,6 +1,7 @@
 package com.realciv.realciv.ledger;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.RealCivUtil;
@@ -30,7 +31,7 @@ public final class ProfessionLedgerSnapshotBuilder {
 
     public static ProfessionLedgerSnapshot build(ServerPlayer viewer, CivSavedData data, String civilizationId) {
         CivSavedData.PlayerRecord record = data.getOrCreatePlayer(viewer.getUUID());
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civilizationId);
+        @Nullable CivilizationRecord civ = data.getCivilization(civilizationId);
         String civName = civ == null ? civilizationId : civ.displayName();
         Profession top = RealCivUtil.topProfession(record);
         List<ProfessionLedgerSnapshot.ProfessionRow> rows = new ArrayList<>();

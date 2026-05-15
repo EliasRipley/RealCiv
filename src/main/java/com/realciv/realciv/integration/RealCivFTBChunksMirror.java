@@ -3,6 +3,7 @@ package com.realciv.realciv.integration;
 import com.mojang.brigadier.exceptions.CommandSyntaxException;
 import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.PlotRecord;
 import dev.ftb.mods.ftbchunks.api.ChunkTeamData;
 import dev.ftb.mods.ftbchunks.api.ClaimResult;
@@ -60,7 +61,7 @@ public final class RealCivFTBChunksMirror {
             return;
         }
 
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civIdRaw);
+        @Nullable CivilizationRecord civ = data.getCivilization(civIdRaw);
         if (civ == null) {
             return;
         }
@@ -91,7 +92,7 @@ public final class RealCivFTBChunksMirror {
             return;
         }
 
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civIdRaw);
+        @Nullable CivilizationRecord civ = data.getCivilization(civIdRaw);
         if (civ == null) {
             return;
         }
@@ -218,7 +219,7 @@ public final class RealCivFTBChunksMirror {
     }
 
     private static void syncCivilizationClaims(MinecraftServer server, CivSavedData data, String civId, Team civTeam) {
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        @Nullable CivilizationRecord civ = data.getCivilization(civId);
         if (civ == null) {
             return;
         }
@@ -293,7 +294,7 @@ public final class RealCivFTBChunksMirror {
     }
 
     @Nullable
-    private static Team ensureCivTeam(MinecraftServer server, CivSavedData.CivilizationRecord civ) {
+    private static Team ensureCivTeam(MinecraftServer server, CivilizationRecord civ) {
         TeamManager manager = FTBTeamsAPI.api().getManager();
         UUID teamId = civTeamId(civ.id());
 

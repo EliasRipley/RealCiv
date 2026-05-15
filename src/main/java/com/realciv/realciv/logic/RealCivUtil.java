@@ -1,6 +1,7 @@
 package com.realciv.realciv.logic;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
 import java.util.Comparator;
 import java.util.List;
@@ -158,7 +159,7 @@ public final class RealCivUtil {
 
     public static String civilizationDisplayName(CivSavedData data, String civId) {
         if (civId == null) return "Unknown Civilization";
-        CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        CivilizationRecord civ = data.getCivilization(civId);
         return civ == null ? civId : civ.displayName();
     }
 

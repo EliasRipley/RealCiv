@@ -483,7 +483,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
     }
 
     private String civDisplay(String id) {
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(id);
+        @Nullable CivilizationRecord civ = data.getCivilization(id);
         return civ == null ? id : civ.displayName();
     }
 

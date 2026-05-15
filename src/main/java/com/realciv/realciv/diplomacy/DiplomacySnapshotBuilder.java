@@ -15,7 +15,7 @@ public final class DiplomacySnapshotBuilder {
     public static DiplomacySnapshot build(ServerPlayer player, CivSavedData data, String civId, int page) {
         boolean canManage = CivPermissionService.hasCivPermission(
                 player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY);
-        @Nullable CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        @Nullable CivilizationRecord civ = data.getCivilization(civId);
         String civName = civ == null ? civId : civ.displayName();
 
         List<String> others = new ArrayList<>(data.civilizationIdsSorted());
@@ -32,7 +32,7 @@ public final class DiplomacySnapshotBuilder {
             String otherId = others.get(idx);
             String state = data.diplomacyState(civId, otherId).displayName();
             WarCasualtyView cv = data.warCasualtiesBetween(civId, otherId);
-            @Nullable CivSavedData.CivilizationRecord otherCiv = data.getCivilization(otherId);
+            @Nullable CivilizationRecord otherCiv = data.getCivilization(otherId);
             String otherName = otherCiv == null ? otherId : otherCiv.displayName();
             rows.add(new DiplomacySnapshot.RelationRow(otherId, otherName, state,
                     (int) cv.yourCasualties(), (int) cv.otherCasualties()));

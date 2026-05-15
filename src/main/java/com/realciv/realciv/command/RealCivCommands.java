@@ -1038,7 +1038,7 @@ public final class RealCivCommands {
         source.sendSuccess(() -> Component.literal("Civilizations:"), false);
         boolean showInternalId = source.hasPermission(3);
         for (String civId : ids) {
-            CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+            CivilizationRecord civ = data.getCivilization(civId);
             String name = civ == null ? civId : civ.displayName();
             int plots = civ == null ? 0 : civ.plots().size();
             if (showInternalId) {
@@ -4316,7 +4316,7 @@ public final class RealCivCommands {
         if (civRaw == null || civRaw.isBlank()) {
             return null;
         }
-        CivSavedData.CivilizationRecord byId = data.getCivilization(civRaw);
+        CivilizationRecord byId = data.getCivilization(civRaw);
         if (byId != null) {
             return byId.id();
         }
@@ -4340,7 +4340,7 @@ public final class RealCivCommands {
     }
 
     private static String civDisplay(CivSavedData data, String civId) {
-        CivSavedData.CivilizationRecord civ = data.getCivilization(civId);
+        CivilizationRecord civ = data.getCivilization(civId);
         if (civ == null) {
             return civId;
         }
