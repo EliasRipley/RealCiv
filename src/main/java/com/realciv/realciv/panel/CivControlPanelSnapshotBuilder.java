@@ -62,7 +62,7 @@ public final class CivControlPanelSnapshotBuilder {
         long leadershipContestEndsAtMillis = 0L;
         List<String> leadershipCandidateEntries = List.of();
 
-        @Nullable CivSavedData.LeadershipContestRecord leadershipContest = data.leadershipContest(civId);
+        @Nullable LeadershipContestRecord leadershipContest = data.leadershipContest(civId);
         if (leadershipContest != null) {
             leadershipContestEndsAtMillis = Math.max(0L, leadershipContest.expiresAtMillis());
             Set<UUID> memberSet = new HashSet<>(members);

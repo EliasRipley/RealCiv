@@ -30,7 +30,7 @@ public final class CivGovernanceWorkflowService {
             return Decision.denied("You are not eligible to propose policy changes under current governance rules.");
         }
 
-        @Nullable CivSavedData.GovernanceProposalRecord existing = clearExpiredAndGet(data, civId);
+        @Nullable GovernanceProposalRecord existing = clearExpiredAndGet(data, civId);
         if (existing != null) {
             if (!existing.matchesAction(action.type(), action.payload(), action.permissionKey())) {
                 return Decision.denied("Another policy proposal is already pending. Resolve it first.");
@@ -40,7 +40,7 @@ public final class CivGovernanceWorkflowService {
         }
 
         int requiredYes = requiredYesVotes(model, data, civId);
-        CivSavedData.GovernanceProposalRecord proposal = new CivSavedData.GovernanceProposalRecord(
+        GovernanceProposalRecord proposal = new GovernanceProposalRecord(
                 action.type(),
                 action.payload(),
                 action.summary(),
@@ -54,7 +54,7 @@ public final class CivGovernanceWorkflowService {
     }
 
     public static synchronized Decision vote(ServerPlayer actor, CivSavedData data, String civId, boolean yes) {
-        @Nullable CivSavedData.GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
+        @Nullable GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
         if (proposal == null) {
             return Decision.denied("No pending policy proposal for your civilization.");
         }
@@ -70,7 +70,7 @@ public final class CivGovernanceWorkflowService {
     }
 
     public static synchronized @Nullable ProposalView proposalView(CivSavedData data, String civId) {
-        @Nullable CivSavedData.GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
+        @Nullable GovernanceProposalRecord proposal = clearExpiredAndGet(data, civId);
         if (proposal == null) {
             return null;
         }
@@ -85,8 +85,8 @@ public final class CivGovernanceWorkflowService {
                 proposal.expiresAtMillis());
     }
 
-    private static @Nullable CivSavedData.GovernanceProposalRecord clearExpiredAndGet(CivSavedData data, String civId) {
-        @Nullable CivSavedData.GovernanceProposalRecord proposal = data.governanceProposal(civId);
+    private static @Nullable GovernanceProposalRecord clearExpiredAndGet(CivSavedData data, String civId) {
+        @Nullable GovernanceProposalRecord proposal = data.governanceProposal(civId);
         if (proposal == null) {
             return null;
         }
@@ -100,7 +100,7 @@ public final class CivGovernanceWorkflowService {
     private static Decision evaluateAndPersist(
             CivSavedData data,
             String civId,
-            CivSavedData.GovernanceProposalRecord proposal) {
+            GovernanceProposalRecord proposal) {
         if (GovernanceMath.quorumReached(proposal.yesVotes().size(), proposal.requiredYesVotes())) {
             data.clearGovernanceProposal(civId);
             return Decision.approved(
@@ -112,7 +112,7 @@ public final class CivGovernanceWorkflowService {
                 "Proposal pending: " + proposal.yesVotes().size() + "/" + proposal.requiredYesVotes() + " yes vote(s).");
     }
 
-    private static PanelAction panelActionFromProposal(CivSavedData.GovernanceProposalRecord proposal) {
+    private static PanelAction panelActionFromProposal(GovernanceProposalRecord proposal) {
         return new PanelAction(
                 proposal.actionType(),
                 proposal.payload(),
