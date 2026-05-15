@@ -80,36 +80,36 @@ public final class RealCivCommands {
                 .then(Commands.literal("profession")
                         .then(Commands.literal("focus")
                                 .then(Commands.literal("show")
-                                        .executes(ctx -> professionFocusShow(
+                                        .executes(ctx -> ProfessionCommands.professionFocusShow(
                                                 ctx.getSource(),
                                                 ctx.getSource().getPlayerOrException()))
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> professionFocusShow(
+                                                .executes(ctx -> ProfessionCommands.professionFocusShow(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player")))))
                                 .then(Commands.literal("set")
                                         .then(Commands.argument("profession", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                        focusableProfessionNames(),
+                                                        ProfessionCommands.focusableProfessionNames(),
                                                         builder))
-                                                .executes(ctx -> professionFocusSetSelf(
+                                                .executes(ctx -> ProfessionCommands.professionFocusSetSelf(
                                                         ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "profession")))))
                                 .then(Commands.literal("clear")
-                                        .executes(ctx -> professionFocusClearSelf(ctx.getSource())))
+                                        .executes(ctx -> ProfessionCommands.professionFocusClearSelf(ctx.getSource())))
                                 .then(Commands.literal("assign")
                                         .then(Commands.argument("player", EntityArgument.player())
                                                 .then(Commands.argument("profession", StringArgumentType.word())
                                                         .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                                focusableProfessionNames(),
+                                                                ProfessionCommands.focusableProfessionNames(),
                                                                 builder))
-                                                        .executes(ctx -> professionFocusAssign(
+                                                        .executes(ctx -> ProfessionCommands.professionFocusAssign(
                                                                 ctx.getSource(),
                                                                 EntityArgument.getPlayer(ctx, "player"),
                                                                 StringArgumentType.getString(ctx, "profession"))))))
                                 .then(Commands.literal("remove")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> professionFocusRemove(
+                                                .executes(ctx -> ProfessionCommands.professionFocusRemove(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player")))))))
                 .then(Commands.literal("civ")
@@ -787,134 +787,6 @@ public final class RealCivCommands {
                                                         false))))
                                 .then(Commands.literal("list")
                                         .executes(ctx -> mayorApprovalList(ctx.getSource())))))));
-    }
-
-    public static int professionFocusShow(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        ServerPlayer actor = source.getPlayer();
-        if (actor != null
-                && !actor.getUUID().equals(target.getUUID())
-                && !canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only leadership/admin can view another player's profession focus."));
-            return 0;
-        }
-        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
-        @Nullable Profession focus = record.focusedProfession();
-        source.sendSuccess(() -> Component.literal(
-                "Profession focus for " + target.getGameProfile().getName() + ": "
-                        + (focus == null ? "none" : focus.name())),
-                false);
-        source.sendSuccess(() -> Component.literal(
-                "specialization.singleProfessionLockEnabled="
-                        + RealCivConfig.specializationSingleProfessionLockEnabled()
-                        + " | specialization.xpDecayEnabled=" + RealCivConfig.specializationXpDecayEnabled()
-                        + " | specialization.xpDecayRate="
-                        + String.format(Locale.ROOT, "%.2f", RealCivConfig.specializationXpDecayRate())),
-                false);
-        return 1;
-    }
-
-    private static int professionFocusSetSelf(CommandSourceStack source, String professionRaw)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        Profession profession = parseFocusableProfession(professionRaw);
-        if (profession == null) {
-            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
-            return 0;
-        }
-        CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.setPlayerFocusProfession(player.getUUID(), profession, actorName(source))) {
-            source.sendFailure(Component.literal(
-                    "No change made. Focus is already " + profession.name() + "."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Set profession focus to " + profession.name() + "."), true);
-        return 1;
-    }
-
-    private static int professionFocusClearSelf(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        if (!data.setPlayerFocusProfession(player.getUUID(), null, actorName(source))) {
-            source.sendFailure(Component.literal("No change made. Focus is already cleared."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal("Cleared profession focus."), true);
-        return 1;
-    }
-
-    private static int professionFocusAssign(CommandSourceStack source, ServerPlayer target, String professionRaw) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        if (!canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only leadership/admin can assign another player's profession focus."));
-            return 0;
-        }
-        Profession profession = parseFocusableProfession(professionRaw);
-        if (profession == null) {
-            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
-            return 0;
-        }
-        if (!data.setPlayerFocusProfession(target.getUUID(), profession, actorName(source))) {
-            source.sendFailure(Component.literal(
-                    "No change made. Focus is already " + profession.name() + "."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Set profession focus for " + target.getGameProfile().getName() + " to " + profession.name() + "."),
-                true);
-        return 1;
-    }
-
-    private static int professionFocusRemove(CommandSourceStack source, ServerPlayer target) {
-        CivSavedData data = CivSavedData.get(source.getServer());
-        if (!canManageProfessionFocus(source, data, target)) {
-            source.sendFailure(Component.literal("Only leadership/admin can clear another player's profession focus."));
-            return 0;
-        }
-        if (!data.setPlayerFocusProfession(target.getUUID(), null, actorName(source))) {
-            source.sendFailure(Component.literal("No change made. Focus is already cleared."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Cleared profession focus for " + target.getGameProfile().getName() + "."),
-                true);
-        return 1;
-    }
-
-    private static boolean canManageProfessionFocus(CommandSourceStack source, CivSavedData data, ServerPlayer target) {
-        if (source.hasPermission(3)) {
-            return true;
-        }
-        ServerPlayer actor = source.getPlayer();
-        if (actor == null) {
-            return false;
-        }
-        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        String targetCiv = data.getOrAssignCivilization(target.getUUID());
-        return actorCiv.equals(targetCiv)
-                && hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_PROFESSION_FOCUS);
-    }
-
-    @Nullable
-    private static Profession parseFocusableProfession(@Nullable String raw) {
-        Profession parsed = Profession.fromConfigName(raw);
-        if (parsed == null || parsed == Profession.NONE) {
-            return null;
-        }
-        return parsed;
-    }
-
-    private static List<String> focusableProfessionNames() {
-        ArrayList<String> names = new ArrayList<>();
-        for (Profession profession : Profession.values()) {
-            if (profession != Profession.NONE) {
-                names.add(profession.name().toLowerCase(Locale.ROOT));
-            }
-        }
-        return names;
     }
 
     private static int civInfo(CommandSourceStack source, ServerPlayer target) {
@@ -4265,7 +4137,7 @@ public final class RealCivCommands {
         return raw.length() > 8 ? raw.substring(0, 8) : raw;
     }
 
-    private static boolean hasCivPermission(
+    public static boolean hasCivPermission(
             CommandSourceStack source,
             CivSavedData data,
             String civId,
@@ -4342,7 +4214,7 @@ public final class RealCivCommands {
     private record StarterItem(Item item, String label) {
     }
 
-    private static String actorName(CommandSourceStack source) {
+    public static String actorName(CommandSourceStack source) {
         if (source.getEntity() instanceof ServerPlayer player) {
             return player.getGameProfile().getName();
         }
