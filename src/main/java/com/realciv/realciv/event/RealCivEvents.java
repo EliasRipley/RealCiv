@@ -93,7 +93,6 @@ import net.neoforged.neoforge.event.tick.ServerTickEvent;
 import org.jetbrains.annotations.Nullable;
 
 public final class RealCivEvents {
-    private static final java.lang.reflect.Field RESULT_SLOT_REMOVE_COUNT_FIELD = findResultSlotRemoveCountField();
     private static final TagKey<Block> PICKAXE_MINEABLE_TAG = TagKey.create(
             Registries.BLOCK,
             ResourceLocation.parse("minecraft:mineable/pickaxe"));
@@ -106,8 +105,8 @@ public final class RealCivEvents {
     private static final long UPKEEP_TICK_INTERVAL = 200L;
     private static final long TERRITORY_CHECK_INTERVAL = 10L;
     private static long lastUpkeepTick = Long.MIN_VALUE;
-    private static final Map<UUID, TerritoryState> LAST_TERRITORY = new HashMap<>();
-    private static final List<Profession> ACTION_TRACKED_PROFESSIONS = List.of(
+    public static final Map<UUID, TerritoryState> LAST_TERRITORY = new HashMap<>();
+    public static final List<Profession> ACTION_TRACKED_PROFESSIONS = List.of(
             Profession.FARMER,
             Profession.MINER,
             Profession.TERRAFORMER,
@@ -131,116 +130,15 @@ public final class RealCivEvents {
     }
 
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null) {
-            return;
-        }
-
-        CivSavedData data = CivSavedData.get(player.getServer());
-        long now = currentGameTime(player);
-        data.processUpkeep(now);
-
-        String civId = data.getOrAssignCivilization(player.getUUID());
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        if (record.firstSeenAtMillis() <= 0L) {
-            record.ensureFirstSeenAtMillis(System.currentTimeMillis());
-            data.setDirty();
-        }
-        applyStaleActionTimeoutReset(player, data, record, System.currentTimeMillis());
-
-        player.sendSystemMessage(Component.literal("RealCiv profile loaded."));
-        player.sendSystemMessage(Component.literal(
-                "Civilization: " + civId
-                        + " | Credits: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
-                        + " | General Level: " + record.generalLevel()
-                        + " | Farmer: " + record.levelFor(Profession.FARMER)
-                        + " | Miner: " + record.levelFor(Profession.MINER)
-                        + " | Terraformer: " + record.levelFor(Profession.TERRAFORMER)
-                        + " | Lumberjack: " + record.levelFor(Profession.LUMBERJACK)
-                        + " | Fisher: " + record.levelFor(Profession.FISHER)
-                        + " | Hunter: " + record.levelFor(Profession.HUNTER)
-                        + " | Warrior: " + record.levelFor(Profession.WARRIOR)
-                        + " | Explosives: " + record.levelFor(Profession.EXPLOSIVES_EXPERT)
-                        + " | Crafter: " + record.levelFor(Profession.CRAFTER)
-                        + " | Enchanter: " + record.levelFor(Profession.ENCHANTER)
-                        + " | Brewer: " + record.levelFor(Profession.BREWER)
-                        + " | Trader: " + record.levelFor(Profession.TRADER)
-                        + " | Shepherd: " + record.levelFor(Profession.SHEPHERD)
-                        + " | Breeder: " + record.levelFor(Profession.BREEDER)
-                        + " | Smithy: " + record.levelFor(Profession.SMITHY)
-                        + " | Smelter: " + record.levelFor(Profession.SMELTER)));
-        if (RealCivConfig.specializationSingleProfessionLockEnabled()) {
-            @Nullable Profession focus = record.focusedProfession();
-            if (focus == null) {
-                player.sendSystemMessage(Component.literal(
-                        "Specialization lock is active. Set your focus with /realciv profession focus set <profession>."));
-            } else {
-                player.sendSystemMessage(Component.literal(
-                        "Specialization focus: " + focus.name().toLowerCase(java.util.Locale.ROOT) + "."));
-            }
-        }
-        if (RealCivConfig.warriorRequireHubRegistration() && record.pendingWarriorHubRegistrations() > 0) {
-            player.sendSystemMessage(Component.literal(
-                    "You have " + record.pendingWarriorHubRegistrations()
-                            + " unregistered warrior kill(s). Visit your Community Hub to claim kill XP."));
-        }
-        if (civId.equals(RealCivConfig.defaultCivilizationId())) {
-            if (RealCivConfig.requireFounderApproval()) {
-                player.sendSystemMessage(Component.literal(
-                        "You are in the default civilization. Ask an admin for founder approval before using /realciv civ found <name>."));
-            } else {
-                    player.sendSystemMessage(Component.literal(
-                            "You are in the default civilization. Use /realciv civ found <name> to create your own civilization."));
-            }
-        }
-        if (RealCivUtil.isBypass(player)) {
-            player.sendSystemMessage(Component.literal(
-                    "[RealCiv] Admin bypass is ACTIVE for your account. Limits and land restrictions will not apply."));
-        }
-        RealCivFTBChunksMirror.syncCivilization(player.getServer(), data, civId);
-        LAST_TERRITORY.remove(player.getUUID());
+        PlayerEventHandlers.handlePlayerLogin(event);
     }
 
     public static void onPlayerLogout(PlayerEvent.PlayerLoggedOutEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player)) {
-            return;
-        }
-        LAST_TERRITORY.remove(player.getUUID());
+        PlayerEventHandlers.handlePlayerLogout(event);
     }
 
     public static void onPlayerClone(PlayerEvent.Clone event) {
-        if (!event.isWasDeath()) {
-            return;
-        }
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-
-        double ratio = RealCivConfig.deathActionRefundRatio();
-        if (ratio <= 0.0D) {
-            return;
-        }
-
-        CivSavedData data = CivSavedData.get(player.getServer());
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        int totalRefund = 0;
-        for (Profession profession : ACTION_TRACKED_PROFESSIONS) {
-            int current = record.actionsForProfession(profession);
-            int refund = refundActions(current, ratio);
-            if (refund > 0) {
-                record.setActionsForProfession(profession, current - refund);
-                totalRefund += refund;
-            }
-        }
-
-        if (totalRefund <= 0) {
-            return;
-        }
-
-        data.setDirty();
-
-        player.sendSystemMessage(Component.literal(
-                "Death recovery refunded " + totalRefund + " profession action(s) total. "
-                        + "Refund rate: " + RealCivUtil.formatPercentFromRatio(ratio) + "."));
+        PlayerEventHandlers.handlePlayerClone(event);
     }
 
     public static void onServerTick(ServerTickEvent.Post event) {
@@ -288,21 +186,7 @@ public final class RealCivEvents {
     }
 
     public static void onItemPickupPre(ItemEntityPickupEvent.Pre event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        ItemStack incoming = event.getItemEntity().getItem();
-        if (incoming.isEmpty()) {
-            return;
-        }
-
-        CivSavedData data = CivSavedData.get(player.getServer());
-        if (!CarryCapService.canAcquireForPickup(player, data, incoming)) {
-            event.setCanPickup(TriState.FALSE);
-        }
+        PlayerEventHandlers.handleItemPickupPre(event);
     }
 
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
@@ -1201,9 +1085,6 @@ public final class RealCivEvents {
         }
     }
 
-    /**
-     * Optional profession hook: villager interaction can be gated before opening trade flows.
-     */
     public static void onEntityInteract(PlayerInteractEvent.EntityInteract event) {
         if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
             return;
@@ -1227,9 +1108,6 @@ public final class RealCivEvents {
         }
     }
 
-    /**
-     * Optional profession hook: entity shearing can be limited before vanilla entity interaction runs.
-     */
     public static void onEntityInteractSpecific(PlayerInteractEvent.EntityInteractSpecific event) {
         if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
             return;
@@ -1418,260 +1296,36 @@ public final class RealCivEvents {
         }
     }
 
-    /**
-     * Optional profession hook: completed villager trades can be counted for quotas, XP, and action costs.
-     * This event is not cancellable in NeoForge, so it is best used for accounting policies.
-     */
     public static void onVillagerTrade(TradeWithVillagerEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        CivSavedData data = CivSavedData.get(player.getServer());
-        tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.VILLAGER_TRADE,
-                1,
-                "You can't complete additional villager trades right now until your configured progression gate is met.");
+        PlayerEventHandlers.handleVillagerTrade(event);
     }
 
-    /**
-     * Routes anvil repairs to ANVIL_RENAME, ANVIL_COMBINE_ENCHANT, or ANVIL_REPAIR_TOOL
-     * based on operation type, with per-tier level gating for repairs.
-     */
     public static void onAnvilRepair(AnvilRepairEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        CivSavedData data = CivSavedData.get(player.getServer());
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-
-        ItemStack right = event.getRight();
-        ItemStack left = event.getLeft();
-        ItemStack output = event.getOutput();
-
-        if (right.isEmpty()) {
-            tryConsumeConfiguredHookActions(
-                    player, data, ProfessionEventHook.ANVIL_RENAME, 1,
-                    "You can't rename items until you progress your Smithy level.");
-            return;
-        }
-
-        if (right.is(Items.ENCHANTED_BOOK)
-                || (!left.isEmpty() && left.isEnchanted() && right.isEnchanted())) {
-            tryConsumeConfiguredHookActions(
-                    player, data, ProfessionEventHook.ANVIL_COMBINE_ENCHANT, 1,
-                    "You can't combine enchantments until you progress your Smithy level.");
-            return;
-        }
-
-        if (!output.isEmpty()) {
-            String tierKey = resolveRepairTierKey(output);
-            if (!tierKey.isEmpty()) {
-                int requiredLevel = RealCivConfig.smithyRepairTierRequirement(tierKey);
-                int smithyLevel = record.levelFor(Profession.SMITHY);
-                if (smithyLevel < requiredLevel) {
-                    RealCivMessages.deny(player,
-                            "You need Smithy level " + requiredLevel + " to repair "
-                                    + tierKey.toLowerCase(Locale.ROOT)
-                                    + " items (you are level " + smithyLevel + ").");
-                    return;
-                }
-            }
-        }
-
-        tryConsumeConfiguredHookActions(
-                player, data, ProfessionEventHook.ANVIL_REPAIR_TOOL, 1,
-                "You can't repair that item yet. Progress your Smithy level.");
+        PlayerEventHandlers.handleAnvilRepair(event);
     }
 
-    private static String resolveRepairTierKey(ItemStack stack) {
-        if (stack.isEmpty()) return "";
-        net.minecraft.world.item.Item item = stack.getItem();
-        if (item instanceof TieredItem tiered) {
-            net.minecraft.world.item.Tier tier = tiered.getTier();
-            if (tier instanceof net.minecraft.world.item.Tiers knownTier) {
-                return knownTier.name();
-            }
-        }
-        ResourceLocation id = BuiltInRegistries.ITEM.getKey(item);
-        String path = id.getPath();
-        if (path.startsWith("leather_")) return "LEATHER";
-        if (path.startsWith("chainmail_")) return "CHAINMAIL";
-        if (path.startsWith("turtle_")) return "TURTLE";
-        if (path.startsWith("iron_")) return "IRON";
-        if (path.startsWith("golden_") || path.startsWith("gold_")) return "GOLD";
-        if (path.startsWith("diamond_")) return "DIAMOND";
-        if (path.startsWith("netherite_")) return "NETHERITE";
-        if (path.equals("shears") || path.equals("shield") || path.equals("elytra")
-                || path.equals("fishing_rod") || path.equals("flint_and_steel")
-                || path.contains("horse_armor") || path.contains("wolf_armor")) {
-            return "DEFAULT";
-        }
-        return "";
-    }
-
-    /**
-     * Optional profession hook: smelting output collected by player.
-     */
     public static void onItemSmelted(PlayerEvent.ItemSmeltedEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        ItemStack smelted = event.getSmelting();
-        int triggerCount = smelted.isEmpty() ? 1 : Math.max(1, smelted.getCount());
-        CivSavedData data = CivSavedData.get(player.getServer());
-        tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.ITEM_SMELT,
-                triggerCount,
-                "You can't smelt additional items right now until your configured progression gate is met.");
+        PlayerEventHandlers.handleItemSmelted(event);
     }
 
-    /**
-     * Optional profession hook: enchanting completed by player.
-     */
     public static void onItemEnchanted(PlayerEnchantItemEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        int triggerCount = Math.max(1, event.getEnchantments().size());
-        CivSavedData data = CivSavedData.get(player.getServer());
-        tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.ITEM_ENCHANT,
-                triggerCount,
-                "You can't apply additional enchantments right now until your configured progression gate is met.");
+        PlayerEventHandlers.handleItemEnchanted(event);
     }
 
-    /**
-     * Optional profession hook: brewed potion taken from stand by player.
-     */
     public static void onPotionBrewed(PlayerBrewedPotionEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        ItemStack brewed = event.getStack();
-        int triggerCount = brewed.isEmpty() ? 1 : Math.max(1, brewed.getCount());
-        CivSavedData data = CivSavedData.get(player.getServer());
-        tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.POTION_BREW,
-                triggerCount,
-                "You can't brew additional potions right now until your configured progression gate is met.");
+        PlayerEventHandlers.handlePotionBrewed(event);
     }
 
-    /**
-     * Optional profession hook: player tosses items into the world.
-     */
     public static void onItemToss(ItemTossEvent event) {
-        if (!(event.getPlayer() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        int triggerCount = 1;
-        ItemStack tossed = event.getEntity().getItem();
-        if (!tossed.isEmpty()) {
-            triggerCount = Math.max(1, tossed.getCount());
-        }
-        CivSavedData data = CivSavedData.get(player.getServer());
-        if (!tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.ITEM_TOSS,
-                triggerCount,
-                "You can't toss additional items right now until your configured progression gate is met.")) {
-            event.setCanceled(true);
-        }
+        PlayerEventHandlers.handleItemToss(event);
     }
 
-    /**
-     * Optional profession hook: stat progression/counters from vanilla stat awards.
-     */
     public static void onStatAward(StatAwardEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-        int triggerCount = Math.max(1, event.getValue());
-        String statId = event.getStat().toString();
-        CivSavedData data = CivSavedData.get(player.getServer());
-        if (!tryConsumeConfiguredHookActions(
-                player,
-                data,
-                ProfessionEventHook.STAT_AWARD,
-                triggerCount,
-                "You can't progress additional tracked stats right now until your configured progression gate is met.",
-                statId)) {
-            event.setCanceled(true);
-        }
+        PlayerEventHandlers.handleStatAward(event);
     }
 
     public static void onItemFished(ItemFishedEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-
-        int fishCaught = 0;
-        for (ItemStack drop : event.getDrops()) {
-            if (!drop.isEmpty() && drop.is(ItemTags.FISHES)) {
-                fishCaught += Math.max(0, drop.getCount());
-            }
-        }
-        if (fishCaught <= 0) {
-            return;
-        }
-
-        CivSavedData data = CivSavedData.get(player.getServer());
-        if (!canProgressProfession(player, data, Profession.FISHER, true)) {
-            event.setCanceled(true);
-            return;
-        }
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        int fisherLevel = record.levelFor(Profession.FISHER);
-        int limit = RealCivConfig.fisherLimitForLevel(fisherLevel);
-        if (!canConsumeDailyActionBudget(player, record, Profession.FISHER, fishCaught, "fish")) {
-            event.setCanceled(true);
-            return;
-        }
-        if (record.fisherActions() + fishCaught > limit) {
-            RealCivMessages.deny(
-                    player,
-                    "You can't catch more fish until you've contributed fish to the Community Hub. "
-                            + "Fisher limit reached (" + record.fisherActions() + "/" + limit
-                            + ", this catch would add " + fishCaught + ").");
-            event.setCanceled(true);
-            return;
-        }
-
-        record.setFisherActions(record.fisherActions() + fishCaught);
-        record.addDailyProfessionActions(Profession.FISHER, fishCaught);
-        data.setDirty();
+        PlayerEventHandlers.handleItemFished(event);
     }
 
     public static void onExplosionStart(ExplosionEvent.Start event) {
@@ -1870,70 +1524,7 @@ public final class RealCivEvents {
     }
 
     public static void onItemCrafted(PlayerEvent.ItemCraftedEvent event) {
-        if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null || player.serverLevel().isClientSide()) {
-            return;
-        }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
-
-        ItemStack crafted = event.getCrafting();
-        if (crafted.isEmpty()) {
-            return;
-        }
-
-        CivSavedData data = CivSavedData.get(player.getServer());
-        PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        int crafterLevel = record.levelFor(Profession.CRAFTER);
-        int craftedCount = resolveCraftedCount(event, crafted);
-        int current = record.crafterActions();
-
-        int limit = RealCivConfig.crafterLimitForLevel(crafterLevel);
-        if (current >= limit) {
-            CraftingLimitService.notifyCraftDenied(player, crafted);
-            return;
-        }
-        int applied = Math.min(Math.max(0, limit - current), craftedCount);
-
-        ResourceLocation itemId = BuiltInRegistries.ITEM.getKey(crafted.getItem());
-        int itemCap = RealCivConfig.crafterItemActionCapForLevel(itemId, crafterLevel);
-        if (itemCap > 0) {
-            int used = record.crafterItemActions(itemId);
-            if (used >= itemCap) {
-                CraftingLimitService.notifyCraftDenied(player, crafted);
-                return;
-            }
-            applied = Math.min(applied, Math.max(0, itemCap - used));
-        }
-
-        int dailyItemCap = RealCivConfig.crafterDailyItemActionCapForLevel(itemId, crafterLevel);
-        if (dailyItemCap > 0) {
-            int used = record.crafterDailyItemActions(itemId);
-            if (used >= dailyItemCap) {
-                CraftingLimitService.notifyCraftDenied(player, crafted);
-                return;
-            }
-            applied = Math.min(applied, Math.max(0, dailyItemCap - used));
-        }
-
-        int dailyCap = RealCivConfig.dailyActionCapForLevel(Profession.CRAFTER, crafterLevel);
-        if (dailyCap > 0) {
-            int dailyUsed = record.dailyProfessionActionsUsed(Profession.CRAFTER);
-            int dailyRemaining = Math.max(0, dailyCap - dailyUsed);
-            applied = Math.min(applied, dailyRemaining);
-        }
-
-        if (applied > 0) {
-            record.setCrafterActions(current + applied);
-            record.addCrafterItemActions(itemId, applied);
-            record.addCrafterDailyItemActions(itemId, applied);
-            record.addDailyProfessionActions(Profession.CRAFTER, applied);
-        }
-        data.setDirty();
-
-        if (craftedCount > applied) {
-            CraftingLimitService.notifyCraftDenied(player, crafted);
-        }
+        PlayerEventHandlers.handleItemCrafted(event);
     }
 
     private static void openHubDepositMenu(PlayerInteractEvent.RightClickBlock event, ServerPlayer player, CivSavedData data) {
@@ -2248,7 +1839,7 @@ public final class RealCivEvents {
     /**
      * Applies all configured event hook rules for the hook (atomically) against profession action counters.
      */
-    private static boolean tryConsumeConfiguredHookActions(
+    public static boolean tryConsumeConfiguredHookActions(
             ServerPlayer player,
             CivSavedData data,
             ProfessionEventHook hook,
@@ -2263,7 +1854,7 @@ public final class RealCivEvents {
                 null);
     }
 
-    private static boolean tryConsumeConfiguredHookActions(
+    public static boolean tryConsumeConfiguredHookActions(
             ServerPlayer player,
             CivSavedData data,
             ProfessionEventHook hook,
@@ -2671,7 +2262,7 @@ public final class RealCivEvents {
         return Character.toUpperCase(raw.charAt(0)) + raw.substring(1);
     }
 
-    private static boolean canProgressProfession(
+    public static boolean canProgressProfession(
             ServerPlayer player,
             CivSavedData data,
             Profession profession,
@@ -2823,7 +2414,7 @@ public final class RealCivEvents {
         return false;
     }
 
-    private static boolean canConsumeDailyActionBudget(
+    public static boolean canConsumeDailyActionBudget(
             ServerPlayer player,
             PlayerRecord record,
             Profession profession,
@@ -2832,7 +2423,7 @@ public final class RealCivEvents {
         return canConsumeDailyActionBudget(player, record, profession, actionCost, activityVerb, true);
     }
 
-    private static boolean canConsumeDailyActionBudget(
+    public static boolean canConsumeDailyActionBudget(
             ServerPlayer player,
             PlayerRecord record,
             Profession profession,
@@ -2864,7 +2455,7 @@ public final class RealCivEvents {
         return false;
     }
 
-    private static long currentGameTime(ServerPlayer player) {
+    public static long currentGameTime(ServerPlayer player) {
         if (player.getServer() == null || player.getServer().overworld() == null) {
             return 0L;
         }
@@ -2944,19 +2535,7 @@ public final class RealCivEvents {
         return Math.max(1, configured);
     }
 
-    private static int refundActions(int spentActions, double ratio) {
-        int current = Math.max(0, spentActions);
-        if (current <= 0 || ratio <= 0.0D) {
-            return 0;
-        }
-        int refunded = (int) Math.floor(current * ratio);
-        if (refunded <= 0) {
-            refunded = 1;
-        }
-        return Math.min(current, refunded);
-    }
-
-    private static void applyStaleActionTimeoutReset(
+    public static void applyStaleActionTimeoutReset(
             ServerPlayer player,
             CivSavedData data,
             PlayerRecord record,
@@ -2993,7 +2572,7 @@ public final class RealCivEvents {
                         + (staleMillis / 60_000L) + " minute(s) without progression reset."));
     }
 
-    private static int staleResetValue(int current, long lastUpdatedMillis, long nowMillis, long staleMillis) {
+    public static int staleResetValue(int current, long lastUpdatedMillis, long nowMillis, long staleMillis) {
         if (current <= 0 || staleMillis <= 0L) {
             return 0;
         }
@@ -3043,38 +2622,6 @@ public final class RealCivEvents {
                 return false;
             }
             return ownerId == null ? other.ownerId == null : ownerId.equals(other.ownerId);
-        }
-    }
-
-    private static int resolveCraftedCount(PlayerEvent.ItemCraftedEvent event, ItemStack crafted) {
-        if (!crafted.isEmpty() && crafted.getCount() > 0) {
-            return crafted.getCount();
-        }
-
-        if (RESULT_SLOT_REMOVE_COUNT_FIELD != null && event.getEntity().containerMenu != null) {
-            if (!event.getEntity().containerMenu.slots.isEmpty()
-                    && event.getEntity().containerMenu.slots.getFirst() instanceof ResultSlot resultSlot) {
-                try {
-                    Object value = RESULT_SLOT_REMOVE_COUNT_FIELD.get(resultSlot);
-                    if (value instanceof Integer removeCount && removeCount > 0) {
-                        return removeCount;
-                    }
-                } catch (IllegalAccessException ignored) {
-                }
-            }
-        }
-
-        return 1;
-    }
-
-    @Nullable
-    private static java.lang.reflect.Field findResultSlotRemoveCountField() {
-        try {
-            java.lang.reflect.Field field = ResultSlot.class.getDeclaredField("removeCount");
-            field.setAccessible(true);
-            return field;
-        } catch (Exception ignored) {
-            return null;
         }
     }
 
