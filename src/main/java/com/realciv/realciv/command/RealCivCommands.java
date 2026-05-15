@@ -637,68 +637,68 @@ public final class RealCivCommands {
                                                 StringArgumentType.getString(ctx, "namespace"))))))
                 .then(Commands.literal("census")
                         .then(Commands.literal("members")
-                                .executes(ctx -> censusMembers(ctx.getSource(), 1))
+                                .executes(ctx -> CensusCommands.censusMembers(ctx.getSource(), 1))
                                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
-                                        .executes(ctx -> censusMembers(
+                                        .executes(ctx -> CensusCommands.censusMembers(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "page")))))
                         .then(Commands.literal("requests")
-                                .executes(ctx -> censusRequests(ctx.getSource(), 1))
+                                .executes(ctx -> CensusCommands.censusRequests(ctx.getSource(), 1))
                                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
-                                        .executes(ctx -> censusRequests(
+                                        .executes(ctx -> CensusCommands.censusRequests(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "page")))))
                         .then(Commands.literal("invites")
-                                .executes(ctx -> censusInvites(ctx.getSource(), 1))
+                                .executes(ctx -> CensusCommands.censusInvites(ctx.getSource(), 1))
                                 .then(Commands.argument("page", IntegerArgumentType.integer(1))
-                                        .executes(ctx -> censusInvites(
+                                        .executes(ctx -> CensusCommands.censusInvites(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "page")))))
                         .then(Commands.literal("invite")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusInvitePlayer(
+                                        .executes(ctx -> CensusCommands.censusInvitePlayer(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("uninvite")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusUninvitePlayer(
+                                        .executes(ctx -> CensusCommands.censusUninvitePlayer(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("approve")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusApproveRequest(
+                                        .executes(ctx -> CensusCommands.censusApproveRequest(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("deny")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusDenyRequest(
+                                        .executes(ctx -> CensusCommands.censusDenyRequest(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("remove")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusRemoveMember(
+                                        .executes(ctx -> CensusCommands.censusRemoveMember(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
                         .then(Commands.literal("manager")
                                 .then(Commands.literal("add")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> censusManagerSet(
+                                                .executes(ctx -> CensusCommands.censusManagerSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         true))))
                                 .then(Commands.literal("remove")
                                         .then(Commands.argument("player", EntityArgument.player())
-                                                .executes(ctx -> censusManagerSet(
+                                                .executes(ctx -> CensusCommands.censusManagerSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         false)))))
                         .then(Commands.literal("mayor")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> censusMayorSet(
+                                        .executes(ctx -> CensusCommands.censusMayorSet(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player"))))
                                 .then(Commands.literal("clear")
-                                        .executes(ctx -> censusMayorClear(ctx.getSource())))))
+                                        .executes(ctx -> CensusCommands.censusMayorClear(ctx.getSource())))))
                 .then(Commands.literal("tax")
                         .then(Commands.literal("status")
                                 .executes(ctx -> TaxCommands.taxStatus(ctx.getSource()))
@@ -2558,275 +2558,6 @@ public final class RealCivCommands {
         return 1;
     }
 
-    private static int censusMembers(CommandSourceStack source, int page)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        List<UUID> members = data.civilizationMembersSorted(civId);
-        if (members.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No members are registered in your civilization."), false);
-            return 1;
-        }
-
-        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
-        int totalPages = Math.max(1, (members.size() + pageSize - 1) / pageSize);
-        int safePage = Math.max(1, Math.min(page, totalPages));
-        int start = (safePage - 1) * pageSize;
-        int end = Math.min(members.size(), start + pageSize);
-
-        source.sendSuccess(() -> Component.literal(
-                "Census members for " + civDisplay(data, civId)
-                        + " (page " + safePage + "/" + totalPages + "):"),
-                false);
-        for (int i = start; i < end; i++) {
-            UUID memberId = members.get(i);
-            ServerPlayer online = source.getServer().getPlayerList().getPlayer(memberId);
-            String name = online == null ? memberId.toString() : online.getGameProfile().getName();
-            String role = data.isMayor(civId, memberId)
-                    ? "MAYOR"
-                    : (data.isCivicManager(civId, memberId) ? "MANAGER" : "CITIZEN");
-            source.sendSuccess(() -> Component.literal("- " + name + " | " + role + " | " + memberId), false);
-        }
-        return 1;
-    }
-
-    private static int censusRequests(CommandSourceStack source, int page)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can view join requests."));
-            return 0;
-        }
-
-        List<UUID> requests = data.joinRequestsSorted(civId);
-        if (requests.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No join requests are pending."), false);
-            return 1;
-        }
-
-        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
-        int totalPages = Math.max(1, (requests.size() + pageSize - 1) / pageSize);
-        int safePage = Math.max(1, Math.min(page, totalPages));
-        int start = (safePage - 1) * pageSize;
-        int end = Math.min(requests.size(), start + pageSize);
-        source.sendSuccess(() -> Component.literal(
-                "Join requests for " + civDisplay(data, civId)
-                        + " (page " + safePage + "/" + totalPages + "):"), false);
-
-        for (int i = start; i < end; i++) {
-            UUID id = requests.get(i);
-            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
-            String name = online == null ? id.toString() : online.getGameProfile().getName();
-            source.sendSuccess(() -> Component.literal("- " + name + " | " + id), false);
-        }
-        return 1;
-    }
-
-    private static int censusInvites(CommandSourceStack source, int page)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can view invitations."));
-            return 0;
-        }
-
-        List<UUID> invites = data.invitedPlayersSorted(civId);
-        if (invites.isEmpty()) {
-            source.sendSuccess(() -> Component.literal("No invitations are pending."), false);
-            return 1;
-        }
-
-        int pageSize = Math.max(1, RealCivConfig.HUB_STOCK_LIST_LIMIT.get());
-        int totalPages = Math.max(1, (invites.size() + pageSize - 1) / pageSize);
-        int safePage = Math.max(1, Math.min(page, totalPages));
-        int start = (safePage - 1) * pageSize;
-        int end = Math.min(invites.size(), start + pageSize);
-        source.sendSuccess(() -> Component.literal(
-                "Invitations for " + civDisplay(data, civId)
-                        + " (page " + safePage + "/" + totalPages + "):"), false);
-
-        for (int i = start; i < end; i++) {
-            UUID id = invites.get(i);
-            ServerPlayer online = source.getServer().getPlayerList().getPlayer(id);
-            String name = online == null ? id.toString() : online.getGameProfile().getName();
-            source.sendSuccess(() -> Component.literal("- " + name + " | " + id), false);
-        }
-        return 1;
-    }
-
-    private static int censusInvitePlayer(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can invite players."));
-            return 0;
-        }
-
-        String targetCiv = data.getOrAssignCivilization(target.getUUID());
-        if (targetCiv.equals(civId)) {
-            source.sendFailure(Component.literal(target.getGameProfile().getName() + " is already in your civilization."));
-            return 0;
-        }
-        if (!data.addInvite(civId, target.getUUID(), actorName(source))) {
-            source.sendFailure(Component.literal("Invite already exists for that player."));
-            return 0;
-        }
-        target.sendSystemMessage(Component.literal(
-                "You have been invited to join " + civDisplay(data, civId)
-                        + ". Use /realciv civ join " + civId + " to accept."));
-        source.sendSuccess(() -> Component.literal(
-                "Invited " + target.getGameProfile().getName() + " to " + civDisplay(data, civId) + "."), true);
-        return 1;
-    }
-
-    private static int censusUninvitePlayer(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can revoke invites."));
-            return 0;
-        }
-        if (!data.removeInvite(civId, target.getUUID(), actorName(source))) {
-            source.sendFailure(Component.literal("No invite found for that player."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Revoked invite for " + target.getGameProfile().getName() + "."), true);
-        return 1;
-    }
-
-    private static int censusApproveRequest(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can approve join requests."));
-            return 0;
-        }
-        if (!data.hasJoinRequest(civId, target.getUUID()) && !data.hasInvite(civId, target.getUUID())) {
-            source.sendFailure(Component.literal("No pending request/invite for that player."));
-            return 0;
-        }
-        if (!data.setPlayerCivilization(target.getUUID(), civId, actorName(source))) {
-            source.sendFailure(Component.literal("Failed to approve join."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Approved " + target.getGameProfile().getName() + " into " + civDisplay(data, civId) + "."), true);
-        target.sendSystemMessage(Component.literal(
-                "Your membership in " + civDisplay(data, civId) + " was approved."));
-        return 1;
-    }
-
-    private static int censusDenyRequest(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can deny join requests."));
-            return 0;
-        }
-        boolean removedRequest = data.removeJoinRequest(civId, target.getUUID(), actorName(source));
-        boolean removedInvite = data.removeInvite(civId, target.getUUID(), actorName(source));
-        if (!removedRequest && !removedInvite) {
-            source.sendFailure(Component.literal("No pending request/invite for that player."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Denied/cleared pending join state for " + target.getGameProfile().getName() + "."), true);
-        target.sendSystemMessage(Component.literal(
-                "Your join request/invite for " + civDisplay(data, civId) + " was declined or revoked."));
-        return 1;
-    }
-
-    private static int censusRemoveMember(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_POLICE_MEMBERS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can remove members."));
-            return 0;
-        }
-        if (actor.getUUID().equals(target.getUUID()) && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("Use /realciv civ leave if you want to leave your own civilization."));
-            return 0;
-        }
-        if (!data.removeMemberToDefault(civId, target.getUUID(), actorName(source))) {
-            source.sendFailure(Component.literal("That player is not a member of your civilization."));
-            return 0;
-        }
-        source.sendSuccess(() -> Component.literal(
-                "Removed " + target.getGameProfile().getName() + " from " + civDisplay(data, civId) + "."), true);
-        target.sendSystemMessage(Component.literal(
-                "You were removed from " + civDisplay(data, civId) + "."));
-        return 1;
-    }
-
-    private static int censusManagerSet(CommandSourceStack source, ServerPlayer target, boolean allowed)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS_ROLES)) {
-            source.sendFailure(Component.literal("Only leadership/admin can manage census roles."));
-            return 0;
-        }
-
-        data.setCivicManager(civId, target.getUUID(), allowed, actorName(source));
-        source.sendSuccess(() -> Component.literal(
-                (allowed ? "Assigned " : "Removed ")
-                        + target.getGameProfile().getName() + " as civic manager in "
-                        + civDisplay(data, civId) + "."), true);
-        return 1;
-    }
-
-    private static int censusMayorSet(CommandSourceStack source, ServerPlayer target)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP)) {
-            source.sendFailure(Component.literal("Only leadership/admin can set mayor through census controls."));
-            return 0;
-        }
-
-        data.setMayor(civId, target.getUUID(), actorName(source));
-        grantMayorStarterHub(target);
-        String title = data.leaderTitle(civId);
-        source.sendSuccess(() -> Component.literal(
-                "Set " + title.toLowerCase(Locale.ROOT) + " for " + civDisplay(data, civId)
-                        + " to " + target.getGameProfile().getName() + "."), true);
-        return 1;
-    }
-
-    private static int censusMayorClear(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP)) {
-            source.sendFailure(Component.literal("Only leadership/admin can clear mayor through census controls."));
-            return 0;
-        }
-        data.setMayor(civId, null, actorName(source));
-        String title = data.leaderTitle(civId);
-        source.sendSuccess(() -> Component.literal(
-                title + " assignment cleared for " + civDisplay(data, civId) + "."), true);
-        return 1;
-    }
-
     public static long countInventoryItem(ServerPlayer player, Item item) {
         long total = 0L;
         for (ItemStack stack : player.getInventory().items) {
@@ -4010,7 +3741,7 @@ public final class RealCivCommands {
         return CivPermissionService.isMayorOrAdmin(source, data, civId);
     }
 
-    private static void grantMayorStarterHub(ServerPlayer player) {
+    public static void grantMayorStarterHub(ServerPlayer player) {
         List<StarterItem> starterItems = List.of(
                 new StarterItem(ModBlocks.COMMUNITY_HUB_ITEM.get(), "Community Hub"),
                 new StarterItem(ModBlocks.CENSUS_BLOCK_ITEM.get(), "Census Block"),
@@ -4062,7 +3793,7 @@ public final class RealCivCommands {
         }
     }
 
-    private static boolean inventoryHasItem(ServerPlayer player, Item item) {
+    public static boolean inventoryHasItem(ServerPlayer player, Item item) {
         for (int slot = 0; slot < player.getInventory().getContainerSize(); slot++) {
             ItemStack stack = player.getInventory().getItem(slot);
             if (stack.is(item)) {
