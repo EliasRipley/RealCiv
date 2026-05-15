@@ -381,25 +381,25 @@ public final class RealCivCommands {
                                                         false)))))
                 .then(Commands.literal("town")
                         .then(Commands.literal("info")
-                                .executes(ctx -> townInfo(ctx.getSource())))
+                                .executes(ctx -> TownCommands.townInfo(ctx.getSource())))
                         .then(Commands.literal("map")
-                                .executes(ctx -> townMap(ctx.getSource(), 4))
+                                .executes(ctx -> TownCommands.townMap(ctx.getSource(), 4))
                                 .then(Commands.argument("radius", IntegerArgumentType.integer(1, 10))
-                                        .executes(ctx -> townMap(
+                                        .executes(ctx -> TownCommands.townMap(
                                                 ctx.getSource(),
                                                 IntegerArgumentType.getInteger(ctx, "radius")))))
                         .then(Commands.literal("claim")
-                                .executes(ctx -> townClaim(ctx.getSource())))
+                                .executes(ctx -> TownCommands.townClaim(ctx.getSource())))
                         .then(Commands.literal("unclaim")
-                                .executes(ctx -> townUnclaim(ctx.getSource())))
+                                .executes(ctx -> TownCommands.townUnclaim(ctx.getSource())))
                         .then(Commands.literal("allot")
                                 .then(Commands.argument("player", EntityArgument.player())
-                                        .executes(ctx -> townAllotPrivate(
+                                        .executes(ctx -> TownCommands.townAllotPrivate(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player"),
                                                 RealCivConfig.LAND_RENT_DAYS.get()))
                                         .then(Commands.argument("days", IntegerArgumentType.integer(1, 10_000))
-                                                .executes(ctx -> townAllotPrivate(
+                                                .executes(ctx -> TownCommands.townAllotPrivate(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         IntegerArgumentType.getInteger(ctx, "days")))))))
@@ -1629,237 +1629,6 @@ public final class RealCivCommands {
                         + (allowed ? " as a" : " from")
                         + " redstoner for " + civDisplay(data, civId) + "."),
                 true);
-        return 1;
-    }
-
-    private static int townInfo(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(player.getUUID());
-        int civicChunks = data.countPlotsByClass(civId, LandClass.CIVIC);
-        int privateChunks = data.countPlotsByClass(civId, LandClass.PRIVATE);
-        long nextTownCost = nextTownClaimCostCents(civicChunks);
-        int ownedPrivate = data.privatePlotCountForOwner(civId, player.getUUID());
-        long nextPrivateCost = nextPrivateClaimCostCents(ownedPrivate);
-        source.sendSuccess(() -> Component.literal(
-                "Town info for " + civDisplay(data, civId)
-                        + " | CIVIC chunks: " + civicChunks
-                        + " | PRIVATE chunks: " + privateChunks
-                        + " | civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))
-                        + " | next CIVIC claim cost: " + RealCivUtil.formatCredits(nextTownCost)
-                        + " | your next PRIVATE claim cost: " + RealCivUtil.formatCredits(nextPrivateCost)),
-                false);
-        return 1;
-    }
-
-    private static int townMap(CommandSourceStack source, int radius)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(player.getUUID());
-        String dimension = player.serverLevel().dimension().location().toString();
-        long centerX = player.chunkPosition().x;
-        long centerZ = player.chunkPosition().z;
-        int safeRadius = Math.max(1, Math.min(10, radius));
-
-        source.sendSuccess(() -> Component.literal(
-                "Town map " + civDisplay(data, civId)
-                        + " | dim: " + dimension
-                        + " | center chunk: [" + centerX + ", " + centerZ + "]"
-                        + " | radius: " + safeRadius),
-                false);
-
-        for (long z = centerZ - safeRadius; z <= centerZ + safeRadius; z++) {
-            StringBuilder row = new StringBuilder();
-            row.append(String.format(Locale.ROOT, "z=%d ", z));
-            for (long x = centerX - safeRadius; x <= centerX + safeRadius; x++) {
-                char symbol = mapSymbolForChunk(data, civId, player.getUUID(), dimension, x, z, centerX, centerZ);
-                row.append(symbol);
-                if (x < centerX + safeRadius) {
-                    row.append(' ');
-                }
-            }
-            String line = row.toString();
-            source.sendSuccess(() -> Component.literal(line), false);
-        }
-
-        source.sendSuccess(() -> Component.literal(
-                "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, m=your COMMUNITY zoning, x=other civ claim, .=wilderness"),
-                false);
-        source.sendSuccess(() -> Component.literal(
-                "Chunk claiming: mayor uses /realciv town claim (CIVIC), citizens use /realciv plot claim (PRIVATE)."),
-                false);
-        return 1;
-    }
-
-    private static int townClaim(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can expand CIVIC claims."));
-            return 0;
-        }
-
-        String dimension = actor.serverLevel().dimension().location().toString();
-        if (!ensureClaimDimensionAllowed(source, dimension)) {
-            return 0;
-        }
-        long chunkX = actor.chunkPosition().x;
-        long chunkZ = actor.chunkPosition().z;
-        long now = source.getServer().overworld().getGameTime();
-
-        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
-        if (existing != null && !existing.civilizationId().equals(civId) && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal(
-                    "This chunk is already claimed by civilization '" + existing.civilizationId() + "'."));
-            return 0;
-        }
-        if (existing != null
-                && existing.civilizationId().equals(civId)
-                && existing.plot().landClass() == LandClass.CIVIC) {
-            source.sendFailure(Component.literal("This chunk is already claimed as CIVIC territory."));
-            return 0;
-        }
-
-        if (data.countPlotsByClass(civId, LandClass.CIVIC) > 0
-                && !isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
-            source.sendFailure(Component.literal(
-                    "CIVIC claims must be adjacent to existing CIVIC territory."));
-            return 0;
-        }
-
-        int civicChunks = data.countPlotsByClass(civId, LandClass.CIVIC);
-        long claimCost = nextTownClaimCostCents(civicChunks);
-        long treasury = data.civTreasuryCents(civId);
-        if (treasury < claimCost) {
-            source.sendFailure(Component.literal(
-                    "Civ treasury has " + RealCivUtil.formatCredits(treasury)
-                            + ", need " + RealCivUtil.formatCredits(claimCost) + " for this claim."));
-            return 0;
-        }
-
-        if (existing != null && !existing.civilizationId().equals(civId) && source.hasPermission(3)) {
-            data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
-        }
-
-        data.addCivTreasuryCents(civId, -claimCost);
-        data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.CIVIC, null, now, 0L);
-        data.addAuditLog(
-                civId,
-                actorName(source) + " claimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "]"
-                        + " for " + RealCivUtil.formatCredits(claimCost),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-
-        source.sendSuccess(() -> Component.literal(
-                "CIVIC chunk claimed at [" + chunkX + ", " + chunkZ + "] in " + civDisplay(data, civId)
-                        + ". Civ treasury: " + RealCivUtil.formatCredits(data.civTreasuryCents(civId))),
-                true);
-        return 1;
-    }
-
-    private static int townUnclaim(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can unclaim CIVIC territory."));
-            return 0;
-        }
-
-        String dimension = actor.serverLevel().dimension().location().toString();
-        long chunkX = actor.chunkPosition().x;
-        long chunkZ = actor.chunkPosition().z;
-        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
-        if (existing == null) {
-            source.sendFailure(Component.literal("This chunk is not claimed."));
-            return 0;
-        }
-        if (!existing.civilizationId().equals(civId) && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("You cannot unclaim another civilization's chunk."));
-            return 0;
-        }
-        if (existing.plot().landClass() == LandClass.PRIVATE && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal(
-                    "Use /realciv plot unclaim on PRIVATE plots, or admin override."));
-            return 0;
-        }
-
-        String civIdRefund = existing.civilizationId();
-        long refundAmount = RealCivConfig.townClaimCostCents();
-        data.addCivTreasuryCents(civIdRefund, refundAmount);
-
-        data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
-        data.addAuditLog(
-                civIdRefund,
-                actorName(source) + " unclaimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "]."
-                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury.",
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-        source.sendSuccess(() -> Component.literal(
-                "CIVIC chunk unclaimed at [" + chunkX + ", " + chunkZ + "]."
-                        + " Refunded " + RealCivUtil.formatCredits(refundAmount) + " to civ treasury."), true);
-        return 1;
-    }
-
-    private static int townAllotPrivate(CommandSourceStack source, ServerPlayer target, int days)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can allot PRIVATE plots."));
-            return 0;
-        }
-
-        String targetCiv = data.getOrAssignCivilization(target.getUUID());
-        if (!targetCiv.equals(civId) && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("Target player must belong to your civilization."));
-            return 0;
-        }
-
-        String dimension = actor.serverLevel().dimension().location().toString();
-        if (!ensureClaimDimensionAllowed(source, dimension)) {
-            return 0;
-        }
-        long chunkX = actor.chunkPosition().x;
-        long chunkZ = actor.chunkPosition().z;
-        long now = source.getServer().overworld().getGameTime();
-        long paidTicks = Math.max(1L, days) * 24_000L;
-
-        @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
-        if (existing == null || !existing.civilizationId().equals(civId)) {
-            source.sendFailure(Component.literal(
-                    "Mayor allotment must be on a chunk already claimed by your civilization."));
-            return 0;
-        }
-        if (existing.plot().landClass() == LandClass.CIVIC || existing.plot().landClass() == LandClass.COMMUNITY) {
-            data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, target.getUUID(), now, paidTicks);
-            data.addAuditLog(
-                    civId,
-                    actorName(source) + " allotted PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "]"
-                            + " to " + target.getGameProfile().getName(),
-                    RealCivConfig.MAX_AUDIT_LOGS.get());
-            data.setDirty();
-            source.sendSuccess(() -> Component.literal(
-                    "Allotted PRIVATE chunk [" + chunkX + ", " + chunkZ + "] to "
-                            + target.getGameProfile().getName() + "."), true);
-            return 1;
-        }
-
-        if (existing.plot().landClass() == LandClass.PRIVATE && !source.hasPermission(3)) {
-            source.sendFailure(Component.literal("This chunk is already a PRIVATE plot."));
-            return 0;
-        }
-        data.setPlot(civId, dimension, chunkX, chunkZ, LandClass.PRIVATE, target.getUUID(), now, paidTicks);
-        data.setDirty();
-        source.sendSuccess(() -> Component.literal(
-                "Reassigned PRIVATE chunk [" + chunkX + ", " + chunkZ + "] to "
-                        + target.getGameProfile().getName() + "."), true);
         return 1;
     }
 
@@ -3585,13 +3354,13 @@ public final class RealCivCommands {
         return 1;
     }
 
-    private static long nextTownClaimCostCents(int civicChunksOwned) {
+    public static long nextTownClaimCostCents(int civicChunksOwned) {
         long base = RealCivConfig.townClaimCostCents();
         long extra = RealCivConfig.townClaimCostAddedPerOwnedCents() * Math.max(0, civicChunksOwned);
         return Math.max(0L, base + extra);
     }
 
-    private static boolean ensureClaimDimensionAllowed(CommandSourceStack source, String dimension) {
+    public static boolean ensureClaimDimensionAllowed(CommandSourceStack source, String dimension) {
         if (source.hasPermission(3)) {
             return true;
         }
@@ -3604,13 +3373,13 @@ public final class RealCivCommands {
         return false;
     }
 
-    private static long nextPrivateClaimCostCents(int privateOwnedByPlayer) {
+    public static long nextPrivateClaimCostCents(int privateOwnedByPlayer) {
         long base = RealCivConfig.rentCostCents();
         long extra = RealCivConfig.rentCostAddedPerOwnedPrivateCents() * Math.max(0, privateOwnedByPlayer);
         return Math.max(0L, base + extra);
     }
 
-    private static char mapSymbolForChunk(
+    public static char mapSymbolForChunk(
             CivSavedData data,
             String civId,
             UUID viewerId,
@@ -3636,7 +3405,7 @@ public final class RealCivCommands {
         };
     }
 
-    private static boolean isWithinOrAdjacentToTown(
+    public static boolean isWithinOrAdjacentToTown(
             CivSavedData data,
             String civId,
             String dimension,
@@ -3657,7 +3426,7 @@ public final class RealCivCommands {
         return isTownChunk(data, civId, dimension, chunkX, chunkZ - 1);
     }
 
-    private static boolean isTownChunk(
+    public static boolean isTownChunk(
             CivSavedData data,
             String civId,
             String dimension,
@@ -3667,14 +3436,14 @@ public final class RealCivCommands {
         return plot != null && plot.landClass() == LandClass.CIVIC;
     }
 
-    private static String civOfSource(CommandSourceStack source, CivSavedData data) {
+    public static String civOfSource(CommandSourceStack source, CivSavedData data) {
         if (source.getEntity() instanceof ServerPlayer player) {
             return data.getOrAssignCivilization(player.getUUID());
         }
         return RealCivConfig.defaultCivilizationId();
     }
 
-    private static boolean canFoundCivilization(CommandSourceStack source, CivSavedData data, ServerPlayer founder) {
+    public static boolean canFoundCivilization(CommandSourceStack source, CivSavedData data, ServerPlayer founder) {
         if (source.hasPermission(3)) {
             return true;
         }
@@ -3685,7 +3454,7 @@ public final class RealCivCommands {
     }
 
     @Nullable
-    private static String resolveCivilizationId(CivSavedData data, String civRaw) {
+    public static String resolveCivilizationId(CivSavedData data, String civRaw) {
         if (civRaw == null || civRaw.isBlank()) {
             return null;
         }
@@ -3696,7 +3465,7 @@ public final class RealCivCommands {
         return data.findCivilizationIdByDisplayName(civRaw);
     }
 
-    private static String resolveMayorCivId(CommandSourceStack source, CivSavedData data, @Nullable String civRaw) {
+    public static String resolveMayorCivId(CommandSourceStack source, CivSavedData data, @Nullable String civRaw) {
         if (civRaw == null || civRaw.isBlank()) {
             return civOfSource(source, data);
         }
@@ -3705,7 +3474,7 @@ public final class RealCivCommands {
     }
 
     @Nullable
-    private static DiplomacyState parseDiplomacyState(@Nullable String raw) {
+    public static DiplomacyState parseDiplomacyState(@Nullable String raw) {
         if (raw == null || raw.isBlank()) {
             return null;
         }
@@ -3720,7 +3489,7 @@ public final class RealCivCommands {
         return civ.displayName();
     }
 
-    private static String playerNameOrShortId(CommandSourceStack source, UUID playerId) {
+    public static String playerNameOrShortId(CommandSourceStack source, UUID playerId) {
         ServerPlayer online = source.getServer().getPlayerList().getPlayer(playerId);
         if (online != null) {
             return online.getGameProfile().getName();
@@ -3737,7 +3506,7 @@ public final class RealCivCommands {
         return CivPermissionService.hasCivPermission(source, data, civId, permissionKey);
     }
 
-    private static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId) {
+    public static boolean isMayorOrAdmin(CommandSourceStack source, CivSavedData data, String civId) {
         return CivPermissionService.isMayorOrAdmin(source, data, civId);
     }
 
