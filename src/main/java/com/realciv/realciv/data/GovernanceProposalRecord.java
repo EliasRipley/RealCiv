@@ -2,6 +2,7 @@ package com.realciv.realciv.data;
 
 import java.util.Collections;
 import java.util.HashSet;
+import java.util.Locale;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.nbt.CompoundTag;
@@ -15,7 +16,7 @@ public final class GovernanceProposalRecord {
     private final String payload;
     private final String summary;
     private final String permissionKey;
-    private final GovernanceModel governanceModel;
+    private final CivicAttribute executiveAttribute;
     @Nullable
     private final UUID proposerId;
     private final int requiredYesVotes;
@@ -28,7 +29,7 @@ public final class GovernanceProposalRecord {
             String payload,
             String summary,
             String permissionKey,
-            GovernanceModel governanceModel,
+            CivicAttribute executiveAttribute,
             @Nullable UUID proposerId,
             int requiredYesVotes,
             long expiresAtMillis) {
@@ -36,7 +37,9 @@ public final class GovernanceProposalRecord {
         this.payload = payload;
         this.summary = summary;
         this.permissionKey = permissionKey;
-        this.governanceModel = governanceModel == null ? GovernanceModel.AUTOCRATIC : governanceModel;
+        this.executiveAttribute = executiveAttribute != null && executiveAttribute.category() == AttributeCategory.EXECUTIVE
+                ? executiveAttribute
+                : CivicAttribute.DIRECT_RULE;
         this.proposerId = proposerId;
         this.requiredYesVotes = Math.max(1, requiredYesVotes);
         this.expiresAtMillis = expiresAtMillis;
@@ -58,8 +61,8 @@ public final class GovernanceProposalRecord {
         return permissionKey;
     }
 
-    public GovernanceModel governanceModel() {
-        return governanceModel;
+    public CivicAttribute executiveAttribute() {
+        return executiveAttribute;
     }
 
     @Nullable
@@ -105,7 +108,7 @@ public final class GovernanceProposalRecord {
                 payload,
                 summary,
                 permissionKey,
-                governanceModel,
+                executiveAttribute,
                 proposerId,
                 requiredYesVotes,
                 expiresAtMillis);
@@ -120,7 +123,7 @@ public final class GovernanceProposalRecord {
         tag.putString("payload", payload);
         tag.putString("summary", summary);
         tag.putString("permissionKey", permissionKey);
-        tag.putString("governanceModel", governanceModel.serializedName());
+        tag.putString("executiveAttribute", executiveAttribute.serializedName());
         if (proposerId != null) {
             tag.putString("proposerId", proposerId.toString());
         }
@@ -143,12 +146,23 @@ public final class GovernanceProposalRecord {
     public static GovernanceProposalRecord load(CompoundTag tag) {
         if (!tag.contains("actionType", Tag.TAG_STRING)
                 || !tag.contains("payload", Tag.TAG_STRING)
-                || !tag.contains("permissionKey", Tag.TAG_STRING)
-                || !tag.contains("governanceModel", Tag.TAG_STRING)) {
+                || !tag.contains("permissionKey", Tag.TAG_STRING)) {
             return null;
         }
-        @Nullable GovernanceModel model = GovernanceModel.fromSerializedName(tag.getString("governanceModel"));
-        if (model == null) {
+        @Nullable CivicAttribute execAttr = null;
+        // Try new key first, then fall back to old governanceModel key
+        if (tag.contains("executiveAttribute", Tag.TAG_STRING)) {
+            execAttr = CivicAttribute.fromSerializedName(tag.getString("executiveAttribute"));
+        } else if (tag.contains("governanceModel", Tag.TAG_STRING)) {
+            String raw = tag.getString("governanceModel").trim().toUpperCase(Locale.ROOT);
+            execAttr = switch (raw) {
+                case "AUTOCRATIC", "AUTOCRACY", "AUTO" -> CivicAttribute.DIRECT_RULE;
+                case "COUNCIL", "OLIGARCHY" -> CivicAttribute.COUNCIL_VOTE;
+                case "DEMOCRATIC", "DEMOCRACY", "DEMO" -> CivicAttribute.POPULAR_VOTE;
+                default -> null;
+            };
+        }
+        if (execAttr == null) {
             return null;
         }
         String summary = tag.contains("summary", Tag.TAG_STRING)
@@ -166,7 +180,7 @@ public final class GovernanceProposalRecord {
                 tag.getString("payload"),
                 summary,
                 tag.getString("permissionKey"),
-                model,
+                execAttr,
                 proposerId,
                 Math.max(1, tag.getInt("requiredYesVotes")),
                 tag.getLong("expiresAtMillis"));

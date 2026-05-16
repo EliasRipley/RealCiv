@@ -1,13 +1,14 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivRoleView;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.DeleteCivilizationResult;
 import com.realciv.realciv.data.DiplomacyState;
 import com.realciv.realciv.data.DiplomacyView;
-import com.realciv.realciv.data.GovernanceModel;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -127,56 +128,72 @@ public final class CivCommands {
             source.sendFailure(Component.literal("Civilization not found: " + civRef));
             return 0;
         }
-        GovernanceModel model = data.governanceModel(civId);
-        source.sendSuccess(() -> Component.literal(
-                "Governance model for " + RealCivCommands.civDisplay(data, civId) + ": " + model.serializedName()),
-                false);
+        StringBuilder sb = new StringBuilder();
+        sb.append("Civic attributes for ").append(RealCivCommands.civDisplay(data, civId)).append(":");
+        for (AttributeCategory cat : AttributeCategory.values()) {
+            CivicAttribute attr = data.civicAttribute(civId, cat);
+            sb.append("\n  ").append(cat.displayName()).append(": ").append(attr.displayName());
+        }
+        String text = sb.toString();
+        source.sendSuccess(() -> Component.literal(text), false);
         return 1;
     }
 
-    public static int civGovernanceSetSelf(CommandSourceStack source, String modelRaw)
+    public static int civAttributeSetSelf(CommandSourceStack source, String categoryRaw, String attributeRaw)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
         if (!RealCivCommands.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
-            source.sendFailure(Component.literal("Only leadership/admin can set governance model."));
+            source.sendFailure(Component.literal("Only leadership/admin can set civic attributes."));
             return 0;
         }
-        @Nullable GovernanceModel model = GovernanceModel.fromSerializedName(modelRaw);
-        if (model == null) {
-            source.sendFailure(Component.literal("Unknown governance model. Use autocratic, council, or democratic."));
+        @Nullable AttributeCategory cat = AttributeCategory.fromSerializedName(categoryRaw);
+        if (cat == null) {
+            source.sendFailure(Component.literal("Unknown category. Use executive, succession, resource, taxation, membership, or land."));
             return 0;
         }
-        if (!data.setGovernanceModel(civId, model, RealCivCommands.actorName(source))) {
-            source.sendFailure(Component.literal("No change made. Governance model already matches."));
+        @Nullable CivicAttribute attr = CivicAttribute.fromSerializedName(attributeRaw);
+        if (attr == null || attr.category() != cat) {
+            source.sendFailure(Component.literal("Unknown attribute for category '" + cat.displayName()
+                    + "'. Check /realciv civ governance for options."));
+            return 0;
+        }
+        if (!data.setCivicAttribute(civId, cat, attr, RealCivCommands.actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Attribute already matches."));
             return 0;
         }
         source.sendSuccess(() -> Component.literal(
-                "Governance model for " + RealCivCommands.civDisplay(data, civId) + " set to " + model.serializedName() + "."),
-                true);
+                cat.displayName() + " for " + RealCivCommands.civDisplay(data, civId)
+                        + " set to " + attr.displayName() + "."), true);
         return 1;
     }
 
-    public static int civGovernanceSetAdmin(CommandSourceStack source, String civRef, String modelRaw) {
+    public static int civAttributeSetAdmin(CommandSourceStack source, String civRef, String categoryRaw, String attributeRaw) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = RealCivCommands.resolveCivilizationId(data, civRef);
         if (civId == null) {
             source.sendFailure(Component.literal("Civilization not found: " + civRef));
             return 0;
         }
-        @Nullable GovernanceModel model = GovernanceModel.fromSerializedName(modelRaw);
-        if (model == null) {
-            source.sendFailure(Component.literal("Unknown governance model. Use autocratic, council, or democratic."));
+        @Nullable AttributeCategory cat = AttributeCategory.fromSerializedName(categoryRaw);
+        if (cat == null) {
+            source.sendFailure(Component.literal("Unknown category. Use executive, succession, resource, taxation, membership, or land."));
             return 0;
         }
-        if (!data.setGovernanceModel(civId, model, RealCivCommands.actorName(source))) {
-            source.sendFailure(Component.literal("No change made. Governance model already matches."));
+        @Nullable CivicAttribute attr = CivicAttribute.fromSerializedName(attributeRaw);
+        if (attr == null || attr.category() != cat) {
+            source.sendFailure(Component.literal("Unknown attribute for category '" + cat.displayName()
+                    + "'. Check /realciv civ governance for options."));
+            return 0;
+        }
+        if (!data.setCivicAttribute(civId, cat, attr, RealCivCommands.actorName(source))) {
+            source.sendFailure(Component.literal("No change made. Attribute already matches."));
             return 0;
         }
         source.sendSuccess(() -> Component.literal(
-                "Governance model for " + RealCivCommands.civDisplay(data, civId) + " set to " + model.serializedName() + "."),
-                true);
+                cat.displayName() + " for " + RealCivCommands.civDisplay(data, civId)
+                        + " set to " + attr.displayName() + "."), true);
         return 1;
     }
 
@@ -500,7 +517,13 @@ public final class CivCommands {
         }
 
         boolean hasInvite = data.hasInvite(civId, player.getUUID());
-        boolean canDirectJoin = source.hasPermission(3) || hasInvite;
+        CivicAttribute membership = data.civicAttribute(civId, AttributeCategory.MEMBERSHIP);
+        boolean canDirectJoin = switch (membership) {
+            case OPEN -> true;
+            case INVITE_ONLY -> source.hasPermission(3) || hasInvite;
+            case APPLICATION -> source.hasPermission(3);
+            default -> false;
+        };
         if (canDirectJoin) {
             if (!data.setPlayerCivilization(player.getUUID(), civId, RealCivCommands.actorName(source))) {
                 source.sendFailure(Component.literal("Failed to join civilization."));

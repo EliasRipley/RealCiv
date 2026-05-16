@@ -1,20 +1,17 @@
 package com.realciv.realciv.panel;
 
-import java.util.Locale;
+import com.realciv.realciv.data.CivicAttribute;
 
 public final class GovernanceMath {
     private GovernanceMath() {
     }
 
-    public static int requiredYesVotes(String governanceModel, int eligibleVoters) {
+    public static int requiredYesVotes(CivicAttribute executiveAttribute, int eligibleVoters) {
         int eligible = Math.max(1, eligibleVoters);
-        String normalized = governanceModel == null ? "" : governanceModel.trim().toUpperCase(Locale.ROOT);
-        return switch (normalized) {
-            case "AUTOCRATIC", "AUTOCRACY", "AUTO" -> 1;
-            case "COUNCIL", "OLIGARCHY", "DEMOCRATIC", "DEMOCRACY", "DEMO" ->
-                    Math.max(1, (int) Math.ceil(eligible / 2.0D));
-            default -> Math.max(1, (int) Math.ceil(eligible / 2.0D));
-        };
+        if (executiveAttribute == CivicAttribute.DIRECT_RULE) {
+            return 1;
+        }
+        return Math.max(1, (int) Math.ceil(eligible / 2.0D));
     }
 
     public static boolean quorumReached(int yesVotes, int requiredYesVotes) {

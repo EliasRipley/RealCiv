@@ -1,15 +1,16 @@
 package com.realciv.realciv.panel;
 
+import com.realciv.realciv.data.CivicAttribute;
 import org.junit.jupiter.api.Assertions;
 import org.junit.jupiter.api.Test;
 
 class GovernanceMathTest {
     @Test
-    void requiredYesVotesRespectsGovernanceModel() {
-        Assertions.assertEquals(1, GovernanceMath.requiredYesVotes("AUTOCRATIC", 10));
-        Assertions.assertEquals(1, GovernanceMath.requiredYesVotes("COUNCIL", 1));
-        Assertions.assertEquals(2, GovernanceMath.requiredYesVotes("COUNCIL", 3));
-        Assertions.assertEquals(3, GovernanceMath.requiredYesVotes("DEMOCRATIC", 5));
+    void requiredYesVotesRespectsExecutiveAttribute() {
+        Assertions.assertEquals(1, GovernanceMath.requiredYesVotes(CivicAttribute.DIRECT_RULE, 10));
+        Assertions.assertEquals(1, GovernanceMath.requiredYesVotes(CivicAttribute.COUNCIL_VOTE, 1));
+        Assertions.assertEquals(2, GovernanceMath.requiredYesVotes(CivicAttribute.COUNCIL_VOTE, 3));
+        Assertions.assertEquals(3, GovernanceMath.requiredYesVotes(CivicAttribute.POPULAR_VOTE, 5));
     }
 
     @Test

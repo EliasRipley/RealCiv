@@ -1,6 +1,8 @@
 package com.realciv.realciv.panel;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CivPermissionService;
@@ -43,8 +45,12 @@ public final class CivControlPanelSnapshotBuilder {
 
         String playerRole = resolveRoleLabel(data, civId, player.getUUID());
         String leaderTitle = data.leaderTitle(civId);
-        String governance = RealCivUtil.humanizeEnumName(data.governanceModel(civId).serializedName());
-        String distribution = RealCivUtil.humanizeEnumName(data.hubDistributionMode(civId).serializedName());
+        String execAttr = data.civicAttribute(civId, AttributeCategory.EXECUTIVE).serializedName();
+        String succAttr = data.civicAttribute(civId, AttributeCategory.SUCCESSION).serializedName();
+        String resAttr = data.civicAttribute(civId, AttributeCategory.RESOURCE).serializedName();
+        String taxAttr = data.civicAttribute(civId, AttributeCategory.TAXATION).serializedName();
+        String memAttr = data.civicAttribute(civId, AttributeCategory.MEMBERSHIP).serializedName();
+        String landAttr = data.civicAttribute(civId, AttributeCategory.LAND).serializedName();
         String claimPolicy = RealCivConfig.claimDimensionPolicyLabel();
 
         @Nullable CivGovernanceWorkflowService.ProposalView proposal = CivGovernanceWorkflowService.proposalView(data, civId);
@@ -120,8 +126,12 @@ public final class CivControlPanelSnapshotBuilder {
                 civId,
                 RealCivUtil.civilizationDisplayName(data, civId),
                 leaderTitle,
-                governance,
-                distribution,
+                execAttr,
+                succAttr,
+                resAttr,
+                taxAttr,
+                memAttr,
+                landAttr,
                 claimPolicy,
                 playerRole,
                 proposalSummary,

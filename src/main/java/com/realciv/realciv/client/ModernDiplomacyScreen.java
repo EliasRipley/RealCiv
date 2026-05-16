@@ -1,11 +1,7 @@
 package com.realciv.realciv.client;
 
-import com.daqem.uilib.api.client.gui.component.scroll.ScrollOrientation;
-import com.daqem.uilib.client.gui.component.AbstractComponent;
-import com.daqem.uilib.client.gui.component.io.ButtonComponent;
-import com.daqem.uilib.client.gui.component.scroll.ScrollBarComponent;
-import com.daqem.uilib.client.gui.component.scroll.ScrollContentComponent;
-import com.daqem.uilib.client.gui.component.scroll.ScrollPanelComponent;
+import dev.ftb.mods.ftblibrary.ui.*;
+import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import com.realciv.realciv.diplomacy.DiplomacySnapshot;
 import com.realciv.realciv.network.RealCivPayloads;
 import net.minecraft.client.Minecraft;
@@ -13,27 +9,12 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 import net.neoforged.neoforge.network.PacketDistributor;
 
-public class ModernDiplomacyScreen extends RealCivUIScreen {
+public class ModernDiplomacyScreen extends RealCivScreen {
     public static final int ACTION_CYCLE_RELATION = 1;
     public static final int ACTION_PREV_PAGE = 2;
     public static final int ACTION_NEXT_PAGE = 3;
 
-    private static final int SCROLL_X = 14;
-    private static final int SCROLL_Y = 52;
-    private static final int SCROLL_W = PANEL_WIDTH - 42;
-    private static final int SCROLL_H = 162;
-    private static final int SCROLL_BAR_X = PANEL_WIDTH - 26;
-    private static final int SCROLL_BAR_W = 6;
-
-    // Table columns
-    private static final int COL_NAME = 4;
-    private static final int COL_STATUS = 160;
-    private static final int COL_CAS = 260;
-    private static final int[] COLS = {COL_NAME, COL_STATUS, COL_CAS};
-    private static final String[] HEADERS = {"Civilization", "Status", "Casualties"};
-
     private DiplomacySnapshot snapshot;
-    private ScrollContentComponent scrollContent;
 
     public ModernDiplomacyScreen(DiplomacySnapshot snapshot) {
         super(Component.literal("Diplomacy Table"), "Relations, alliances, war, and casualties", 0xFFD64545);
@@ -42,70 +23,70 @@ public class ModernDiplomacyScreen extends RealCivUIScreen {
 
     public void refresh(DiplomacySnapshot newSnapshot) {
         this.snapshot = newSnapshot;
-        if (scrollContent != null) {
-            scrollContent.getChildren().clear();
-            populateScrollContent();
-            scrollContent.setY(0);
+        refreshWidgets();
+    }
+
+    @Override
+    protected void addFixedWidgets() {
+        {
+            SimpleTextButton btn = makeFixedBtn(ACTION_PREV_PAGE, "<", 18);
+            btn.setPos(2, 2);
+            add(btn);
+        }
+        {
+            SimpleTextButton btn = makeFixedBtn(ACTION_NEXT_PAGE, ">", 18);
+            btn.setPos(PANEL_W - 20, 2);
+            add(btn);
         }
     }
 
     @Override
-    protected void addScreenWidgets() {
-        addComponent(new ButtonComponent(panelX + 10, panelY + 36, 18, 14,
-                Component.literal("<"), (btn, screen, mx, my, button) -> { sendAction(ACTION_PREV_PAGE); return true; }));
-        addComponent(new ButtonComponent(panelX + PANEL_WIDTH - 28, panelY + 36, 18, 14,
-                Component.literal(">"), (btn, screen, mx, my, button) -> { sendAction(ACTION_NEXT_PAGE); return true; }));
-
-        ScrollContentComponent content = new ScrollContentComponent(0, 0, 2, ScrollOrientation.VERTICAL);
-        scrollContent = content;
-        populateScrollContent();
-
-        addComponent(new ScrollPanelComponent(null, panelX + SCROLL_X, panelY + SCROLL_Y, SCROLL_W, SCROLL_H,
-                ScrollOrientation.VERTICAL, content,
-                createScrollBar(SCROLL_BAR_X, 0, SCROLL_BAR_W, SCROLL_H, ScrollOrientation.VERTICAL)));
-    }
-
-    private void populateScrollContent() {
+    protected void addScrollContent(Panel panel) {
         String pageInfo = "Page " + (snapshot.page() + 1) + "/" + snapshot.totalPages();
-        scrollContent.addChild(new RowLabel(0, 0, pageInfo, 0xFF9DB0C2));
-        scrollContent.addChild(new TableHeaderRow(0, 0, HEADERS, COLS));
+        addLabelRow("", pageInfo, 0xFF9DB0C2);
+
+        panel.add(new LabelWidget(panel, "Civilization", 4, currentY, 0xFF78909C));
+        panel.add(new LabelWidget(panel, "Status", 160, currentY, 0xFF78909C));
+        panel.add(new LabelWidget(panel, "Casualties", 260, currentY, 0xFF78909C));
+        currentY += ROW_H;
 
         for (int i = 0; i < snapshot.relations().size(); i++) {
-            scrollContent.addChild(new RelationRowComponent(0, 0, i, snapshot.relations().get(i)));
+            panel.add(new RelationRowWidget(panel, 4, currentY, i, snapshot.relations().get(i), snapshot.canManage(), this::sendAction));
+            currentY += ROW_H;
         }
 
         if (snapshot.relations().isEmpty()) {
-            scrollContent.addChild(new RowLabel(0, 0, "No diplomatic relations.", 0xFF78909C));
+            addLabelRow("", "No diplomatic relations.", 0xFF78909C);
         }
     }
 
-    private void sendAction(int actionId) {
+    @Override
+    protected void sendAction(int actionId) {
         PacketDistributor.sendToServer(new RealCivPayloads.RealCivActionPayload(
                 RealCivPayloads.SCREEN_DIPLOMACY, actionId));
     }
 
-    private class RelationRowComponent extends AbstractComponent<RelationRowComponent> {
+    private static class RelationRowWidget extends Widget {
         private final int index;
         private final DiplomacySnapshot.RelationRow relation;
+        private final boolean canManage;
+        private final java.util.function.IntConsumer actionSender;
 
-        RelationRowComponent(int x, int y, int index, DiplomacySnapshot.RelationRow relation) {
-            super(null, x, y, CONTENT_WIDTH, ROW_HEIGHT);
+        RelationRowWidget(Panel parent, int x, int y, int index, DiplomacySnapshot.RelationRow relation,
+                          boolean canManage, java.util.function.IntConsumer actionSender) {
+            super(parent);
+            setPosAndSize(x, y, CONTENT_W, ROW_H);
             this.index = index;
             this.relation = relation;
-            setOnClickEvent((comp, screen, mx, my, button) -> {
-                if (snapshot.canManage()) {
-                    sendAction(ACTION_CYCLE_RELATION * 100 + index);
-                    return true;
-                }
-                return false;
-            });
+            this.canManage = canManage;
+            this.actionSender = actionSender;
         }
 
         @Override
-        public void render(GuiGraphics graphics, int mouseX, int mouseY, float delta) {
-            boolean hovered = isTotalHovered(mouseX, mouseY) && snapshot.canManage();
+        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
+            boolean hovered = isMouseOver() && canManage;
             if (hovered) {
-                graphics.fill(-2, -1, CONTENT_WIDTH + 2, 13, 0x20FFFFFF);
+                graphics.fill(x, y, x + w, y + h, 0x20FFFFFF);
             }
 
             int statusColor = switch (relation.state()) {
@@ -116,24 +97,32 @@ public class ModernDiplomacyScreen extends RealCivUIScreen {
 
             var font = Minecraft.getInstance().font;
             graphics.drawString(font, Component.literal(font.plainSubstrByWidth(relation.otherCivName(), 120)),
-                    COL_NAME, 0, 0xFFF4F7FA, false);
-
+                    x + 4, y + 2, 0xFFF4F7FA, false);
             graphics.drawString(font, Component.literal(relation.state()),
-                    COL_STATUS, 0, statusColor, false);
+                    x + 160, y + 2, statusColor, false);
 
             String casualties = "";
             if ("WAR".equals(relation.state())) {
                 casualties = "us:" + relation.ourCasualties() + " them:" + relation.theirCasualties();
             } else if ("ALLY".equals(relation.state())) {
-                casualties = "\u2713 allied";
+                casualties = "V allied";
             }
             graphics.drawString(font, Component.literal(font.plainSubstrByWidth(casualties, 100)),
-                    COL_CAS, 0, 0xFF78909C, false);
+                    x + 260, y + 2, 0xFF78909C, false);
 
             if (hovered) {
                 graphics.drawString(font, Component.literal("Click to cycle relation state"),
-                        COL_CAS, -10, 0x60FFFFFF, false);
+                        x + 260, y + h, 0x60FFFFFF, false);
             }
+        }
+
+        @Override
+        public boolean mousePressed(MouseButton button) {
+            if (isMouseOver() && canManage) {
+                actionSender.accept(ACTION_CYCLE_RELATION * 100 + index);
+                return true;
+            }
+            return false;
         }
     }
 }

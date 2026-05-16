@@ -8,8 +8,12 @@ public record CivControlPanelSnapshot(
         String civilizationId,
         String civilizationName,
         String leaderTitle,
-        String governanceModel,
-        String hubDistributionMode,
+        String executiveAttribute,
+        String successionAttribute,
+        String resourceAttribute,
+        String taxationAttribute,
+        String membershipAttribute,
+        String landAttribute,
         String claimDimensionPolicy,
         String playerRole,
         String pendingProposalSummary,
@@ -59,8 +63,12 @@ public record CivControlPanelSnapshot(
         buffer.writeUtf(civilizationId, MAX_ID_LEN);
         buffer.writeUtf(civilizationName, MAX_NAME_LEN);
         buffer.writeUtf(leaderTitle, MAX_TITLE_LEN);
-        buffer.writeUtf(governanceModel, MAX_TITLE_LEN);
-        buffer.writeUtf(hubDistributionMode, MAX_TITLE_LEN);
+        buffer.writeUtf(executiveAttribute, MAX_TITLE_LEN);
+        buffer.writeUtf(successionAttribute, MAX_TITLE_LEN);
+        buffer.writeUtf(resourceAttribute, MAX_TITLE_LEN);
+        buffer.writeUtf(taxationAttribute, MAX_TITLE_LEN);
+        buffer.writeUtf(membershipAttribute, MAX_TITLE_LEN);
+        buffer.writeUtf(landAttribute, MAX_TITLE_LEN);
         buffer.writeUtf(claimDimensionPolicy, MAX_TITLE_LEN);
         buffer.writeUtf(playerRole, MAX_TITLE_LEN);
         buffer.writeUtf(pendingProposalSummary, MAX_TITLE_LEN);
@@ -109,6 +117,10 @@ public record CivControlPanelSnapshot(
         return new CivControlPanelSnapshot(
                 buffer.readUtf(MAX_ID_LEN),
                 buffer.readUtf(MAX_NAME_LEN),
+                buffer.readUtf(MAX_TITLE_LEN),
+                buffer.readUtf(MAX_TITLE_LEN),
+                buffer.readUtf(MAX_TITLE_LEN),
+                buffer.readUtf(MAX_TITLE_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),

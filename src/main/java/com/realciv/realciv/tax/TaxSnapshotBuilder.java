@@ -1,5 +1,6 @@
 package com.realciv.realciv.tax;
 
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.PlayerRecord;
@@ -29,7 +30,7 @@ public final class TaxSnapshotBuilder {
         long karma = record.socialCreditCents(civId);
         long treasury = data.civTreasuryCents(civId);
         double rate = data.upkeepRateMultiplier(civId);
-        String mode = data.taxPaymentMode(civId).serializedName();
+        String mode = data.civicAttribute(civId, AttributeCategory.TAXATION).displayName();
         String itemId = data.taxItemId(civId).toString();
         int itemCount = data.taxItemCountPerPlot(civId);
         long itemRate = data.taxItemCostPerPlotCurrentRate(civId);

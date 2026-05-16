@@ -1187,6 +1187,9 @@ public class CivSavedData extends SavedData {
     }
 
     public long upkeepCostPerPlotCents(String civIdRaw) {
+        if (civicAttribute(civIdRaw, AttributeCategory.TAXATION) == CivicAttribute.EXEMPT) {
+            return 0L;
+        }
         double scaled = RealCivConfig.upkeepCostCents() * upkeepRateMultiplier(civIdRaw);
         if (scaled <= 0.0D) {
             return 0L;
@@ -1212,25 +1215,26 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
-    public GovernanceModel governanceModel(String civIdRaw) {
-        return getOrCreateCivilization(civIdRaw).governanceModel();
+    public CivicAttribute civicAttribute(String civIdRaw, AttributeCategory category) {
+        return getOrCreateCivilization(civIdRaw).civicAttribute(category);
     }
 
-    public boolean setGovernanceModel(String civIdRaw, GovernanceModel model, String actorName) {
+    public boolean setCivicAttribute(String civIdRaw, AttributeCategory category, @Nullable CivicAttribute attribute, String actorName) {
         CivilizationRecord civ = getCivilization(civIdRaw);
-        if (civ == null) {
+        if (civ == null || attribute == null || attribute.category() != category) {
             return false;
         }
-        GovernanceModel normalized = model == null ? GovernanceModel.AUTOCRATIC : model;
-        if (civ.governanceModel() == normalized) {
+        if (civ.civicAttribute(category) == attribute) {
             return false;
         }
-        civ.setGovernanceModel(normalized);
-        // Model changes can alter voter eligibility/quorum math, so discard any in-flight proposal safely.
-        civ.setGovernanceProposal(null);
+        civ.setCivicAttribute(category, attribute);
+        // Executive attribute changes can alter voter eligibility/quorum math, so discard any in-flight proposal
+        if (category == AttributeCategory.EXECUTIVE) {
+            civ.setGovernanceProposal(null);
+        }
         addAuditLog(
                 civ.id(),
-                actorName + " set governance model to " + normalized.serializedName(),
+                actorName + " set " + category.displayName() + " to " + attribute.displayName(),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
         return true;
@@ -1281,6 +1285,10 @@ public class CivSavedData extends SavedData {
         if (!isCivilizationMember(civ.id(), initiatorId)) {
             return LeadershipContestDecision.denied("Only civilization members can call an election.");
         }
+        CivicAttribute succession = civicAttribute(civ.id(), AttributeCategory.SUCCESSION);
+        if (succession != CivicAttribute.ELECTION) {
+            return LeadershipContestDecision.denied("This civilization does not allow elections (Succession: " + succession.displayName() + ").");
+        }
 
         LeadershipContestDecision resolved = resolveLeadershipContest(civ.id(), actorName, false);
         if (resolved.changed()) {
@@ -1312,6 +1320,10 @@ public class CivSavedData extends SavedData {
         }
         if (!isCivilizationMember(civ.id(), candidateId)) {
             return LeadershipContestDecision.denied("Only civilization members can run in elections.");
+        }
+        CivicAttribute succession = civicAttribute(civ.id(), AttributeCategory.SUCCESSION);
+        if (succession != CivicAttribute.ELECTION) {
+            return LeadershipContestDecision.denied("This civilization does not allow elections (Succession: " + succession.displayName() + ").");
         }
         LeadershipContestRecord contest = civ.leadershipContest();
         if (contest == null || contest.contestType() != LeadershipContestType.ELECTION) {
@@ -1346,6 +1358,10 @@ public class CivSavedData extends SavedData {
         if (!isCivilizationMember(civ.id(), voterId)) {
             return LeadershipContestDecision.denied("Only civilization members can vote.");
         }
+        CivicAttribute succession = civicAttribute(civ.id(), AttributeCategory.SUCCESSION);
+        if (succession != CivicAttribute.ELECTION) {
+            return LeadershipContestDecision.denied("This civilization does not allow elections (Succession: " + succession.displayName() + ").");
+        }
         LeadershipContestRecord contest = civ.leadershipContest();
         if (contest == null || contest.contestType() != LeadershipContestType.ELECTION) {
             return LeadershipContestDecision.denied("No active election to vote in.");
@@ -1376,6 +1392,10 @@ public class CivSavedData extends SavedData {
         }
         if (!isCivilizationMember(civ.id(), proposedLeaderId)) {
             return LeadershipContestDecision.denied("The proposed coup leader must be a civilization member.");
+        }
+        CivicAttribute succession = civicAttribute(civ.id(), AttributeCategory.SUCCESSION);
+        if (succession != CivicAttribute.COUP) {
+            return LeadershipContestDecision.denied("This civilization does not allow coups (Succession: " + succession.displayName() + ").");
         }
         int members = civilizationMembersSorted(civ.id()).size();
         int minimum = RealCivConfig.governanceCoupMinMembers();
@@ -1419,6 +1439,10 @@ public class CivSavedData extends SavedData {
         }
         if (!isCivilizationMember(civ.id(), voterId)) {
             return LeadershipContestDecision.denied("Only civilization members can vote.");
+        }
+        CivicAttribute succession = civicAttribute(civ.id(), AttributeCategory.SUCCESSION);
+        if (succession != CivicAttribute.COUP) {
+            return LeadershipContestDecision.denied("This civilization does not allow coups (Succession: " + succession.displayName() + ").");
         }
         LeadershipContestRecord contest = civ.leadershipContest();
         if (contest == null || contest.contestType() != LeadershipContestType.COUP) {
@@ -1593,30 +1617,6 @@ public class CivSavedData extends SavedData {
         return winner;
     }
 
-    public HubDistributionMode hubDistributionMode(String civIdRaw) {
-        return getOrCreateCivilization(civIdRaw).hubDistributionMode();
-    }
-
-    public boolean setHubDistributionMode(String civIdRaw, @Nullable HubDistributionMode mode, String actorName) {
-        CivilizationRecord civ = getCivilization(civIdRaw);
-        if (civ == null) {
-            return false;
-        }
-        HubDistributionMode normalized = mode == null
-                ? HubDistributionMode.CONTRIBUTION_RATIO
-                : mode;
-        if (civ.hubDistributionMode() == normalized) {
-            return false;
-        }
-        civ.setHubDistributionMode(normalized);
-        addAuditLog(
-                civ.id(),
-                actorName + " set hub distribution mode to " + normalized.serializedName(),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        setDirty();
-        return true;
-    }
-
     public double hubSharedWithdrawRatio(String civIdRaw) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         return clampUnitRatio(civ.hubSharedWithdrawRatio());
@@ -1657,27 +1657,16 @@ public class CivSavedData extends SavedData {
         return limit;
     }
 
-    public TaxPaymentMode taxPaymentMode(String civIdRaw) {
-        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
-        return civ.taxPaymentMode();
+    public boolean isKarmaTax(String civIdRaw) {
+        return civicAttribute(civIdRaw, AttributeCategory.TAXATION) == CivicAttribute.KARMA_TAX;
     }
 
-    public boolean setTaxPaymentMode(String civIdRaw, @Nullable TaxPaymentMode mode, String actorName) {
-        CivilizationRecord civ = getCivilization(civIdRaw);
-        if (civ == null) {
-            return false;
-        }
-        TaxPaymentMode next = mode == null ? TaxPaymentMode.KARMA : mode;
-        if (civ.taxPaymentMode() == next) {
-            return false;
-        }
-        civ.setTaxPaymentMode(next);
-        addAuditLog(
-                civ.id(),
-                actorName + " set tax payment mode to " + next.serializedName(),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        setDirty();
-        return true;
+    public boolean isGoodsTax(String civIdRaw) {
+        return civicAttribute(civIdRaw, AttributeCategory.TAXATION) == CivicAttribute.GOODS_TAX;
+    }
+
+    public boolean isTaxExempt(String civIdRaw) {
+        return civicAttribute(civIdRaw, AttributeCategory.TAXATION) == CivicAttribute.EXEMPT;
     }
 
     public ResourceLocation taxItemId(String civIdRaw) {
@@ -1695,6 +1684,9 @@ public class CivSavedData extends SavedData {
     }
 
     public long taxItemCostPerPlotCurrentRate(String civIdRaw) {
+        if (civicAttribute(civIdRaw, AttributeCategory.TAXATION) == CivicAttribute.EXEMPT) {
+            return 0L;
+        }
         long base = Math.max(1L, taxItemCountPerPlot(civIdRaw));
         double scaled = base * upkeepRateMultiplier(civIdRaw);
         return Math.max(1L, Math.round(scaled));

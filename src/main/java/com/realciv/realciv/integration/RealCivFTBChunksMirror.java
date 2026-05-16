@@ -296,26 +296,40 @@ public final class RealCivFTBChunksMirror {
     @Nullable
     private static Team ensureCivTeam(MinecraftServer server, CivilizationRecord civ) {
         TeamManager manager = FTBTeamsAPI.api().getManager();
-        UUID teamId = civTeamId(civ.id());
 
-        @Nullable Team team = manager.getTeamByID(teamId).orElse(null);
+        @Nullable Team team = null;
+        @Nullable UUID storedId = civ.ftbTeamId();
+        if (storedId != null) {
+            team = manager.getTeamByID(storedId).orElse(null);
+        }
+
         if (team == null) {
-            String creationName = createServerTeamName(civ.displayName(), civ.id());
-            try {
-                team = manager.createServerTeam(
-                        syncSource(server),
-                        creationName,
-                        TEAM_DESCRIPTION_PREFIX + " " + civ.id(),
-                        colorForCiv(civ.id()),
-                        teamId);
-            } catch (CommandSyntaxException exception) {
-                RealCivMod.LOGGER.warn(
-                        "Failed to create FTB server team for civ {} ({})",
-                        civ.id(),
-                        civ.displayName(),
-                        exception);
-                return null;
+            UUID teamId = civTeamId(civ.id());
+            team = manager.getTeamByID(teamId).orElse(null);
+            if (team == null) {
+                String creationName = createServerTeamName(civ.displayName(), civ.id());
+                try {
+                    team = manager.createServerTeam(
+                            syncSource(server),
+                            creationName,
+                            TEAM_DESCRIPTION_PREFIX + " " + civ.id(),
+                            colorForCiv(civ.id()),
+                            teamId);
+                } catch (CommandSyntaxException exception) {
+                    RealCivMod.LOGGER.warn(
+                            "Failed to create FTB server team for civ {} ({})",
+                            civ.id(),
+                            civ.displayName(),
+                            exception);
+                    return null;
+                }
             }
+        }
+
+        // Persist the actual team UUID back to the civ record for consistent lookups
+        if (!java.util.Objects.equals(civ.ftbTeamId(), team.getTeamId())) {
+            civ.setFtbTeamId(team.getTeamId());
+            CivSavedData.get(server).setDirty();
         }
 
         String expectedName = civ.displayName();

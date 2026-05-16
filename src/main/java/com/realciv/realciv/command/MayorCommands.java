@@ -1,7 +1,8 @@
 package com.realciv.realciv.command;
 
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivSavedData;
-import com.realciv.realciv.data.HubDistributionMode;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.logic.RealCivUtil;
 import java.util.List;
@@ -72,7 +73,7 @@ public final class MayorCommands {
                 "Withdrawal rate for " + player.getGameProfile().getName()
                         + " in " + RealCivCommands.civDisplay(data, civId) + ": " + rateText + " (" + mode + ")"),
                 false);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
+        if (data.civicAttribute(civId, AttributeCategory.RESOURCE) == CivicAttribute.RATIONED) {
             source.sendSuccess(() -> Component.literal(
                     "Note: hub distribution mode is daily_allowance, so withdraw rate does not currently apply."),
                     false);
@@ -102,7 +103,7 @@ public final class MayorCommands {
                 "Set withdrawal rate for " + player.getGameProfile().getName()
                         + " in " + RealCivCommands.civDisplay(data, civId)
                         + " to " + RealCivUtil.formatPercentFromRatio(ratio) + "."), true);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
+        if (data.civicAttribute(civId, AttributeCategory.RESOURCE) == CivicAttribute.RATIONED) {
             source.sendSuccess(() -> Component.literal(
                     "Current hub mode is daily_allowance; this rate will apply if switched back to contribution_ratio."),
                     false);
@@ -130,7 +131,7 @@ public final class MayorCommands {
         source.sendSuccess(() -> Component.literal(
                 "Cleared withdrawal rate override for " + player.getGameProfile().getName()
                         + " in " + RealCivCommands.civDisplay(data, civId) + "."), true);
-        if (data.hubDistributionMode(civId) == HubDistributionMode.DAILY_ALLOWANCE) {
+        if (data.civicAttribute(civId, AttributeCategory.RESOURCE) == CivicAttribute.RATIONED) {
             source.sendSuccess(() -> Component.literal(
                     "Current hub mode is daily_allowance; withdraw rates are inactive until contribution_ratio mode is used."),
                     false);

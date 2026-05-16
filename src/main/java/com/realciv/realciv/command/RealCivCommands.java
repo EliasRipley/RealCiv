@@ -123,23 +123,43 @@ public final class RealCivCommands {
                                                         ctx.getSource(),
                                                         StringArgumentType.getString(ctx, "civ")))))
                                 .then(Commands.literal("set")
-                                        .then(Commands.argument("model", StringArgumentType.word())
+                                        .then(Commands.argument("category", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                        List.of("autocratic", "council", "democratic"),
+                                                        List.of("executive", "succession", "resource", "taxation", "membership", "land"),
                                                         builder))
-                                                .executes(ctx -> CivCommands.civGovernanceSetSelf(
-                                                        ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "model"))))
+                                                .then(Commands.argument("attribute", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                List.of("direct_rule", "council_vote", "popular_vote",
+                                                                        "appointed", "election", "coup",
+                                                                        "contribution_share", "equal_share", "rationed",
+                                                                        "karma_tax", "goods_tax", "exempt",
+                                                                        "open", "invite_only", "application",
+                                                                        "open_claim", "leader_claim", "taxed_claim"),
+                                                                builder))
+                                                        .executes(ctx -> CivCommands.civAttributeSetSelf(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "category"),
+                                                                StringArgumentType.getString(ctx, "attribute")))))
                                         .then(Commands.argument("civ", StringArgumentType.string())
                                                 .requires(source -> source.hasPermission(3))
-                                                .then(Commands.argument("model", StringArgumentType.word())
+                                                .then(Commands.argument("category", StringArgumentType.word())
                                                         .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                                List.of("autocratic", "council", "democratic"),
+                                                                List.of("executive", "succession", "resource", "taxation", "membership", "land"),
                                                                 builder))
-                                                        .executes(ctx -> CivCommands.civGovernanceSetAdmin(
-                                                                ctx.getSource(),
-                                                                StringArgumentType.getString(ctx, "civ"),
-                                                                StringArgumentType.getString(ctx, "model")))))))
+                                                        .then(Commands.argument("attribute", StringArgumentType.word())
+                                                                .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                        List.of("direct_rule", "council_vote", "popular_vote",
+                                                                                "appointed", "election", "coup",
+                                                                                "contribution_share", "equal_share", "rationed",
+                                                                                "karma_tax", "goods_tax", "exempt",
+                                                                                "open", "invite_only", "application",
+                                                                                "open_claim", "leader_claim", "taxed_claim"),
+                                                                        builder))
+                                                                .executes(ctx -> CivCommands.civAttributeSetAdmin(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "civ"),
+                                                                        StringArgumentType.getString(ctx, "category"),
+                                                                        StringArgumentType.getString(ctx, "attribute"))))))))
                         .then(Commands.literal("role")
                                 .then(Commands.literal("list")
                                         .executes(ctx -> CivCommands.civRoleList(ctx.getSource(), null))
@@ -550,7 +570,7 @@ public final class RealCivCommands {
                                 .then(Commands.literal("mode")
                                         .then(Commands.argument("mode", StringArgumentType.word())
                                                 .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
-                                                        List.of("contribution_ratio", "shared_stock_ratio", "daily_allowance"),
+                                                        List.of("contribution_share", "equal_share", "rationed"),
                                                         builder))
                                                 .executes(ctx -> HubCommands.hubDistributionSetMode(
                                                         ctx.getSource(),

@@ -1,9 +1,9 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.PlayerRecord;
-import com.realciv.realciv.data.TaxPaymentMode;
 import com.realciv.realciv.logic.RealCivUtil;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.core.registries.BuiltInRegistries;
@@ -44,7 +44,7 @@ public final class TaxCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
-        TaxPaymentMode paymentMode = data.taxPaymentMode(civId);
+        boolean isKarma = data.isKarmaTax(civId);
         ResourceLocation taxItemId = data.taxItemId(civId);
 
         int ownedPlots = data.privatePlotCountForOwner(civId, target.getUUID());
@@ -57,7 +57,7 @@ public final class TaxCommands {
                 "Tax status for " + target.getGameProfile().getName() + " in " + RealCivCommands.civDisplay(data, civId) + ":"), false);
         source.sendSuccess(() -> Component.literal(
                 "Private plots: " + ownedPlots + " | Delinquent: " + delinquentPlots + " | Next upkeep tick: " + nextUpkeepTick), false);
-        if (paymentMode == TaxPaymentMode.KARMA) {
+        if (isKarma) {
             source.sendSuccess(() -> Component.literal(
                     "Mode: karma | Cycle cost: " + RealCivUtil.formatCredits(cycleCost)
                             + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))
@@ -77,7 +77,7 @@ public final class TaxCommands {
         ServerPlayer player = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
-        TaxPaymentMode paymentMode = data.taxPaymentMode(civId);
+        boolean isKarma = data.isKarmaTax(civId);
         ResourceLocation taxItemId = data.taxItemId(civId);
         int safeCycles = Math.max(1, cycles);
         int ownedPlots = data.privatePlotCountForOwner(civId, player.getUUID());
@@ -92,7 +92,7 @@ public final class TaxCommands {
         long totalCost = cycleCost * safeCycles;
         long totalItemCost = cycleItemCost * safeCycles;
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
-        if (paymentMode == TaxPaymentMode.KARMA) {
+        if (isKarma) {
             if (record.socialCreditCents(civId) < totalCost) {
                 source.sendFailure(Component.literal(
                         "Insufficient contribution karma. Need " + RealCivUtil.formatCredits(totalCost)
@@ -122,7 +122,7 @@ public final class TaxCommands {
             return 0;
         }
 
-        if (paymentMode == TaxPaymentMode.KARMA) {
+        if (isKarma) {
             record.addSocialCreditCents(civId, -totalCost);
             data.addCivTreasuryCents(civId, totalCost);
         } else {
@@ -133,14 +133,14 @@ public final class TaxCommands {
         data.addAuditLog(
                 civId,
                 RealCivCommands.actorName(source) + " paid upkeep tax "
-                        + (paymentMode == TaxPaymentMode.KARMA
+                        + (isKarma
                         ? RealCivUtil.formatCredits(totalCost) + " karma"
                         : totalItemCost + "x " + taxItemId)
                         + " for " + affected + " private plot(s) across " + safeCycles + " cycle(s).",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
 
-        if (paymentMode == TaxPaymentMode.KARMA) {
+        if (isKarma) {
             source.sendSuccess(() -> Component.literal(
                     "Paid " + RealCivUtil.formatCredits(totalCost)
                             + " upkeep tax for " + affected + " private plot(s). New balance: "

@@ -4,6 +4,7 @@ import java.util.ArrayList;
 import java.util.HashMap;
 import java.util.HashSet;
 import java.util.List;
+import java.util.Locale;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
@@ -35,11 +36,9 @@ public final class CivilizationRecord {
     private int hubY;
     private int hubZ;
     private String leaderTitle = DEFAULT_LEADER_TITLE;
-    private GovernanceModel governanceModel = GovernanceModel.AUTOCRATIC;
-    private HubDistributionMode hubDistributionMode = HubDistributionMode.CONTRIBUTION_RATIO;
+    private final Map<AttributeCategory, CivicAttribute> civicAttributes = new HashMap<>();
     private double hubSharedWithdrawRatio = 0.10D;
     private double upkeepRateMultiplier = 1.0D;
-    private TaxPaymentMode taxPaymentMode = TaxPaymentMode.KARMA;
     private String taxItemId = "minecraft:gold_nugget";
     private int taxItemCountPerPlot = 1;
     private final Map<String, Integer> hubDailyAllowances = new HashMap<>();
@@ -47,12 +46,17 @@ public final class CivilizationRecord {
     private GovernanceProposalRecord governanceProposal;
     @Nullable
     private LeadershipContestRecord leadershipContest;
+    @Nullable
+    private UUID ftbTeamId;
     private boolean allowIntraCivPvp;
     private boolean starterTownAreaGranted;
 
     public CivilizationRecord(String id, String displayName) {
         this.id = id;
         this.displayName = displayName;
+        for (AttributeCategory cat : AttributeCategory.values()) {
+            civicAttributes.put(cat, CivicAttribute.defaultFor(cat));
+        }
     }
 
     public String id() {
@@ -75,20 +79,18 @@ public final class CivilizationRecord {
         this.leaderTitle = CivSavedData.sanitizeLeaderTitle(title);
     }
 
-    public GovernanceModel governanceModel() {
-        return governanceModel;
+    public CivicAttribute civicAttribute(AttributeCategory category) {
+        return civicAttributes.getOrDefault(category, CivicAttribute.defaultFor(category));
     }
 
-    public void setGovernanceModel(GovernanceModel governanceModel) {
-        this.governanceModel = governanceModel == null ? GovernanceModel.AUTOCRATIC : governanceModel;
+    public void setCivicAttribute(AttributeCategory category, @Nullable CivicAttribute attribute) {
+        if (attribute != null && attribute.category() == category) {
+            civicAttributes.put(category, attribute);
+        }
     }
 
-    public HubDistributionMode hubDistributionMode() {
-        return hubDistributionMode;
-    }
-
-    public void setHubDistributionMode(HubDistributionMode mode) {
-        this.hubDistributionMode = mode == null ? HubDistributionMode.CONTRIBUTION_RATIO : mode;
+    public Map<AttributeCategory, CivicAttribute> civicAttributesCopy() {
+        return Map.copyOf(civicAttributes);
     }
 
     public double hubSharedWithdrawRatio() {
@@ -105,14 +107,6 @@ public final class CivilizationRecord {
 
     public void setUpkeepRateMultiplier(double multiplier) {
         this.upkeepRateMultiplier = CivSavedData.clampUpkeepRateMultiplier(multiplier);
-    }
-
-    public TaxPaymentMode taxPaymentMode() {
-        return taxPaymentMode;
-    }
-
-    public void setTaxPaymentMode(@Nullable TaxPaymentMode mode) {
-        this.taxPaymentMode = mode == null ? TaxPaymentMode.KARMA : mode;
     }
 
     public String taxItemId() {
@@ -225,6 +219,15 @@ public final class CivilizationRecord {
     }
 
     @Nullable
+    public UUID ftbTeamId() {
+        return ftbTeamId;
+    }
+
+    public void setFtbTeamId(@Nullable UUID ftbTeamId) {
+        this.ftbTeamId = ftbTeamId;
+    }
+
+    @Nullable
     public String hubDimension() {
         return hubDimension;
     }
@@ -320,6 +323,9 @@ public final class CivilizationRecord {
         if (mayorId != null) {
             tag.putString("mayor", mayorId.toString());
         }
+        if (ftbTeamId != null) {
+            tag.putString("ftbTeamId", ftbTeamId.toString());
+        }
         if (hubDimension != null) {
             tag.putString("hubDimension", hubDimension);
             tag.putInt("hubX", hubX);
@@ -327,11 +333,13 @@ public final class CivilizationRecord {
             tag.putInt("hubZ", hubZ);
         }
         tag.putString("leaderTitle", CivSavedData.sanitizeLeaderTitle(leaderTitle));
-        tag.putString("governanceModel", governanceModel.serializedName());
-        tag.putString("hubDistributionMode", hubDistributionMode.serializedName());
+        CompoundTag attrTag = new CompoundTag();
+        for (Map.Entry<AttributeCategory, CivicAttribute> entry : civicAttributes.entrySet()) {
+            attrTag.putString(entry.getKey().serializedName(), entry.getValue().serializedName());
+        }
+        tag.put("civicAttributes", attrTag);
         tag.putDouble("hubSharedWithdrawRatio", CivSavedData.clampUnitRatio(hubSharedWithdrawRatio));
         tag.putDouble("upkeepRateMultiplier", CivSavedData.clampUpkeepRateMultiplier(upkeepRateMultiplier));
-        tag.putString("taxPaymentMode", taxPaymentMode.serializedName());
         tag.putString("taxItemId", taxItemId);
         tag.putInt("taxItemCountPerPlot", Math.max(1, taxItemCountPerPlot));
         CompoundTag dailyAllowanceTag = new CompoundTag();
@@ -439,6 +447,12 @@ public final class CivilizationRecord {
             } catch (Exception ignored) {
             }
         }
+        if (tag.contains("ftbTeamId")) {
+            try {
+                record.ftbTeamId = UUID.fromString(tag.getString("ftbTeamId"));
+            } catch (Exception ignored) {
+            }
+        }
         if (tag.contains("hubDimension")) {
             record.hubDimension = tag.getString("hubDimension");
             record.hubX = tag.getInt("hubX");
@@ -448,29 +462,56 @@ public final class CivilizationRecord {
         if (tag.contains("leaderTitle")) {
             record.leaderTitle = CivSavedData.sanitizeLeaderTitle(tag.getString("leaderTitle"));
         }
-        if (tag.contains("governanceModel")) {
-            @Nullable GovernanceModel parsed = GovernanceModel.fromSerializedName(tag.getString("governanceModel"));
-            if (parsed != null) {
-                record.governanceModel = parsed;
+
+        // Load civic attributes — try new format first, fall back to old individual fields
+        if (tag.contains("civicAttributes", Tag.TAG_COMPOUND)) {
+            CompoundTag attrTag = tag.getCompound("civicAttributes");
+            for (String catKey : attrTag.getAllKeys()) {
+                @Nullable AttributeCategory cat = AttributeCategory.fromSerializedName(catKey);
+                if (cat == null) continue;
+                @Nullable CivicAttribute attr = CivicAttribute.fromSerializedName(attrTag.getString(catKey));
+                if (attr != null) {
+                    record.civicAttributes.put(cat, attr);
+                }
+            }
+        } else {
+            // Backward compat: migrate old individual enum fields (inline parsing, no enum dependency)
+            if (tag.contains("governanceModel")) {
+                String raw = tag.getString("governanceModel").trim().toUpperCase(Locale.ROOT);
+                @Nullable CivicAttribute attr = switch (raw) {
+                    case "AUTOCRATIC", "AUTOCRACY", "AUTO" -> CivicAttribute.DIRECT_RULE;
+                    case "COUNCIL", "OLIGARCHY" -> CivicAttribute.COUNCIL_VOTE;
+                    case "DEMOCRATIC", "DEMOCRACY", "DEMO" -> CivicAttribute.POPULAR_VOTE;
+                    default -> null;
+                };
+                if (attr != null) record.civicAttributes.put(AttributeCategory.EXECUTIVE, attr);
+            }
+            if (tag.contains("hubDistributionMode")) {
+                String raw = tag.getString("hubDistributionMode").trim().toUpperCase(Locale.ROOT);
+                @Nullable CivicAttribute attr = switch (raw) {
+                    case "CONTRIBUTION_RATIO", "RATIO", "CONTRIBUTION", "DEFAULT" -> CivicAttribute.CONTRIBUTION_SHARE;
+                    case "SHARED_STOCK_RATIO", "SHARED", "GLOBAL", "ALL_GOODS", "STOCK_RATIO" -> CivicAttribute.EQUAL_SHARE;
+                    case "DAILY_ALLOWANCE", "ALLOWANCE", "DAILY" -> CivicAttribute.RATIONED;
+                    default -> null;
+                };
+                if (attr != null) record.civicAttributes.put(AttributeCategory.RESOURCE, attr);
+            }
+            if (tag.contains("taxPaymentMode", Tag.TAG_STRING)) {
+                String raw = tag.getString("taxPaymentMode").trim().toUpperCase(Locale.ROOT);
+                @Nullable CivicAttribute attr = switch (raw) {
+                    case "KARMA", "CREDIT", "CREDITS", "COMMUNITY_KARMA" -> CivicAttribute.KARMA_TAX;
+                    case "ITEM", "ITEMS", "GOODS" -> CivicAttribute.GOODS_TAX;
+                    default -> null;
+                };
+                if (attr != null) record.civicAttributes.put(AttributeCategory.TAXATION, attr);
             }
         }
-        if (tag.contains("hubDistributionMode")) {
-            @Nullable HubDistributionMode parsed = HubDistributionMode.fromSerializedName(tag.getString("hubDistributionMode"));
-            if (parsed != null) {
-                record.hubDistributionMode = parsed;
-            }
-        }
+
         if (tag.contains("hubSharedWithdrawRatio")) {
             record.hubSharedWithdrawRatio = CivSavedData.clampUnitRatio(tag.getDouble("hubSharedWithdrawRatio"));
         }
         if (tag.contains("upkeepRateMultiplier")) {
             record.upkeepRateMultiplier = CivSavedData.clampUpkeepRateMultiplier(tag.getDouble("upkeepRateMultiplier"));
-        }
-        if (tag.contains("taxPaymentMode", Tag.TAG_STRING)) {
-            @Nullable TaxPaymentMode parsed = TaxPaymentMode.fromSerializedName(tag.getString("taxPaymentMode"));
-            if (parsed != null) {
-                record.taxPaymentMode = parsed;
-            }
         }
         if (tag.contains("taxItemId", Tag.TAG_STRING)) {
             record.taxItemId = tag.getString("taxItemId");

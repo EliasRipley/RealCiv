@@ -1,7 +1,9 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivSavedData;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.data.PlotLookup;
@@ -35,6 +37,14 @@ public final class PlotCommands {
         if (!RealCivCommands.isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
             source.sendFailure(Component.literal(
                     "PRIVATE plots must be adjacent to your civilization's CIVIC territory."));
+            return 0;
+        }
+
+        CivicAttribute landAttr = data.civicAttribute(civId, AttributeCategory.LAND);
+        if (landAttr == CivicAttribute.LEADER_CLAIM && !source.hasPermission(3)
+                && !data.isCivicManager(civId, player.getUUID())
+                && !player.getUUID().equals(data.getMayorId(civId))) {
+            source.sendFailure(Component.literal("Only leadership can claim private plots (Land: Leader Claim)."));
             return 0;
         }
 

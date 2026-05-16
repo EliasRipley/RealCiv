@@ -10,6 +10,8 @@ import com.realciv.realciv.client.ModernHubStockScreen;
 import com.realciv.realciv.client.ModernProfessionLedgerScreen;
 import com.realciv.realciv.client.ModernTaxScreen;
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.*;
 import com.realciv.realciv.diplomacy.DiplomacySnapshot;
 import com.realciv.realciv.diplomacy.DiplomacySnapshotBuilder;
@@ -28,7 +30,6 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import net.minecraft.client.Minecraft;
-import net.minecraft.client.gui.screens.Screen;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceLocation;
@@ -65,14 +66,7 @@ public final class RealCivNetwork {
     }
 
     private static void handleOpenTax(RealCivPayloads.OpenTaxPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> {
-            Screen current = Minecraft.getInstance().screen;
-            if (current instanceof ModernTaxScreen taxScreen) {
-                taxScreen.refresh(payload.snapshot());
-            } else {
-                new ModernTaxScreen(payload.snapshot()).openGui();
-            }
-        });
+        context.enqueueWork(() -> new ModernTaxScreen(payload.snapshot()).openGui());
     }
 
     private static void handleOpenDiplomacy(RealCivPayloads.OpenDiplomacyPayload payload, IPayloadContext context) {
@@ -176,13 +170,13 @@ public final class RealCivNetwork {
             RealCivMessages.deny(player, "You do not own private plots.");
             return;
         }
-        TaxPaymentMode mode = data.taxPaymentMode(civId);
-        long cost = mode == TaxPaymentMode.KARMA
+        boolean isKarma = data.isKarmaTax(civId);
+        long cost = isKarma
                 ? data.upkeepCostPerPlotCents(civId) * ownedPlots * cycles
                 : data.taxItemCostPerPlotCurrentRate(civId) * ownedPlots * cycles;
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
-        if (mode == TaxPaymentMode.KARMA) {
+        if (isKarma) {
             long balance = record.socialCreditCents(civId);
             if (balance < cost) {
                 RealCivMessages.deny(player, "Insufficient karma. Need " + cost + ", have " + balance + ".");
@@ -216,10 +210,11 @@ public final class RealCivNetwork {
     }
 
     private static void toggleMode(ServerPlayer player, CivSavedData data, String civId) {
-        TaxPaymentMode next = data.taxPaymentMode(civId) == TaxPaymentMode.KARMA
-                ? TaxPaymentMode.ITEM : TaxPaymentMode.KARMA;
-        if (data.setTaxPaymentMode(civId, next, player.getGameProfile().getName())) {
-            player.sendSystemMessage(Component.literal("Mode: " + next.serializedName()));
+        CivicAttribute current = data.civicAttribute(civId, AttributeCategory.TAXATION);
+        CivicAttribute next = current == CivicAttribute.KARMA_TAX
+                ? CivicAttribute.GOODS_TAX : CivicAttribute.KARMA_TAX;
+        if (data.setCivicAttribute(civId, AttributeCategory.TAXATION, next, player.getGameProfile().getName())) {
+            player.sendSystemMessage(Component.literal("Tax: " + next.displayName()));
         }
     }
 
@@ -373,25 +368,25 @@ public final class RealCivNetwork {
         switch (actionId) {
             case ModernCivControlPanelScreen.ACTION_GOVERNANCE_CYCLE -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
-                GovernanceModel current = data.governanceModel(civId);
-                GovernanceModel next = switch (current) {
-                    case AUTOCRATIC -> GovernanceModel.COUNCIL;
-                    case COUNCIL -> GovernanceModel.DEMOCRATIC;
-                    case DEMOCRATIC -> GovernanceModel.AUTOCRATIC;
+                CivicAttribute current = data.civicAttribute(civId, AttributeCategory.EXECUTIVE);
+                CivicAttribute next = switch (current) {
+                    case DIRECT_RULE -> CivicAttribute.COUNCIL_VOTE;
+                    case COUNCIL_VOTE -> CivicAttribute.POPULAR_VOTE;
+                    default -> CivicAttribute.DIRECT_RULE;
                 };
-                data.setGovernanceModel(civId, next, name);
-                player.sendSystemMessage(Component.literal("Governance: " + next.serializedName()));
+                data.setCivicAttribute(civId, AttributeCategory.EXECUTIVE, next, name);
+                player.sendSystemMessage(Component.literal("Executive: " + next.displayName()));
             }
             case ModernCivControlPanelScreen.ACTION_DISTRIBUTION_TOGGLE -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) return;
-                HubDistributionMode current = data.hubDistributionMode(civId);
-                HubDistributionMode next = switch (current) {
-                    case CONTRIBUTION_RATIO -> HubDistributionMode.SHARED_STOCK_RATIO;
-                    case SHARED_STOCK_RATIO -> HubDistributionMode.DAILY_ALLOWANCE;
-                    case DAILY_ALLOWANCE -> HubDistributionMode.CONTRIBUTION_RATIO;
+                CivicAttribute current = data.civicAttribute(civId, AttributeCategory.RESOURCE);
+                CivicAttribute next = switch (current) {
+                    case CONTRIBUTION_SHARE -> CivicAttribute.EQUAL_SHARE;
+                    case EQUAL_SHARE -> CivicAttribute.RATIONED;
+                    default -> CivicAttribute.CONTRIBUTION_SHARE;
                 };
-                data.setHubDistributionMode(civId, next, name);
-                player.sendSystemMessage(Component.literal("Distribution: " + next.serializedName()));
+                data.setCivicAttribute(civId, AttributeCategory.RESOURCE, next, name);
+                player.sendSystemMessage(Component.literal("Resource: " + next.displayName()));
             }
             case ModernCivControlPanelScreen.ACTION_FRIENDLY_FIRE_TOGGLE -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE)) return;
@@ -436,6 +431,24 @@ public final class RealCivNetwork {
                     RealCivMessages.deny(player, "Could not create role (may already exist).");
                 }
             }
+            case ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 1,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 2, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 3,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 4, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 5,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 6, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 7,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 8, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 9,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 10, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 11,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 12, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 13,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 14, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 15,
+                 ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 16, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 17 -> {
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
+                int attrOrdinal = actionId - ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE;
+                CivicAttribute[] attrValues = CivicAttribute.values();
+                if (attrOrdinal >= 0 && attrOrdinal < attrValues.length) {
+                    CivicAttribute attr = attrValues[attrOrdinal];
+                    data.setCivicAttribute(civId, attr.category(), attr, name);
+                    player.sendSystemMessage(Component.literal(attr.category().displayName() + ": " + attr.displayName()));
+                }
+            }
             case ModernCivControlPanelScreen.ACTION_VOTE_CANDIDATE_1, ModernCivControlPanelScreen.ACTION_VOTE_CANDIDATE_2,
                  ModernCivControlPanelScreen.ACTION_VOTE_CANDIDATE_3, ModernCivControlPanelScreen.ACTION_VOTE_CANDIDATE_4,
                  ModernCivControlPanelScreen.ACTION_VOTE_CANDIDATE_5 -> {
@@ -457,13 +470,13 @@ public final class RealCivNetwork {
 
     private static void applyAction(ServerPlayer player, CivSavedData data, String civId, CivGovernanceWorkflowService.PanelAction action) {
         switch (action.type()) {
-            case "governance_model" -> {
-                var model = GovernanceModel.fromSerializedName(action.payload());
-                if (model != null) data.setGovernanceModel(civId, model, player.getGameProfile().getName());
+            case "executive_attribute" -> {
+                var attr = CivicAttribute.fromSerializedName(action.payload());
+                if (attr != null) data.setCivicAttribute(civId, AttributeCategory.EXECUTIVE, attr, player.getGameProfile().getName());
             }
-            case "distribution_mode" -> {
-                var mode = HubDistributionMode.fromSerializedName(action.payload());
-                if (mode != null) data.setHubDistributionMode(civId, mode, player.getGameProfile().getName());
+            case "resource_attribute" -> {
+                var attr = CivicAttribute.fromSerializedName(action.payload());
+                if (attr != null) data.setCivicAttribute(civId, AttributeCategory.RESOURCE, attr, player.getGameProfile().getName());
             }
             case "friendly_fire" -> data.setAllowIntraCivPvp(civId, Boolean.parseBoolean(action.payload()), player.getGameProfile().getName());
         }

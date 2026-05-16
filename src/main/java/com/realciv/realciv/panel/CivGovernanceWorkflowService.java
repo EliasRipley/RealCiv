@@ -21,12 +21,12 @@ public final class CivGovernanceWorkflowService {
             return Decision.applyNow("Leader/admin override; change applied immediately.", action);
         }
 
-        GovernanceModel model = data.governanceModel(civId);
-        if (model == GovernanceModel.AUTOCRATIC) {
-            return Decision.applyNow("Autocratic governance keeps direct leadership execution.", action);
+        CivicAttribute execAttr = data.civicAttribute(civId, AttributeCategory.EXECUTIVE);
+        if (execAttr == CivicAttribute.DIRECT_RULE) {
+            return Decision.applyNow("Direct rule keeps immediate leadership execution.", action);
         }
 
-        if (!isEligibleVoter(model, data, civId, actor.getUUID())) {
+        if (!isEligibleVoter(execAttr, data, civId, actor.getUUID())) {
             return Decision.denied("You are not eligible to propose policy changes under current governance rules.");
         }
 
@@ -39,13 +39,13 @@ public final class CivGovernanceWorkflowService {
             return evaluateAndPersist(data, civId, existing);
         }
 
-        int requiredYes = requiredYesVotes(model, data, civId);
+        int requiredYes = requiredYesVotes(execAttr, data, civId);
         GovernanceProposalRecord proposal = new GovernanceProposalRecord(
                 action.type(),
                 action.payload(),
                 action.summary(),
                 action.permissionKey(),
-                model,
+                execAttr,
                 actor.getUUID(),
                 requiredYes,
                 System.currentTimeMillis() + PROPOSAL_TTL_MILLIS);
@@ -58,7 +58,7 @@ public final class CivGovernanceWorkflowService {
         if (proposal == null) {
             return Decision.denied("No pending policy proposal for your civilization.");
         }
-        if (!isEligibleVoter(proposal.governanceModel(), data, civId, actor.getUUID())) {
+        if (!isEligibleVoter(proposal.executiveAttribute(), data, civId, actor.getUUID())) {
             return Decision.denied("You are not eligible to vote on this proposal.");
         }
         if (yes) {
@@ -74,10 +74,10 @@ public final class CivGovernanceWorkflowService {
         if (proposal == null) {
             return null;
         }
-        int eligibleVoters = eligibleVoterCount(proposal.governanceModel(), data, civId);
+        int eligibleVoters = eligibleVoterCount(proposal.executiveAttribute(), data, civId);
         return new ProposalView(
                 proposal.summary(),
-                proposal.governanceModel().serializedName(),
+                proposal.executiveAttribute().displayName(),
                 proposal.requiredYesVotes(),
                 proposal.yesVotes().size(),
                 proposal.noVotes().size(),
@@ -121,32 +121,33 @@ public final class CivGovernanceWorkflowService {
     }
 
     private static boolean isEligibleVoter(
-            GovernanceModel model,
+            CivicAttribute execAttr,
             CivSavedData data,
             String civId,
             UUID playerId) {
-        return switch (model) {
-            case AUTOCRATIC -> data.isMayor(civId, playerId);
-            case COUNCIL -> data.isMayor(civId, playerId)
+        return switch (execAttr) {
+            case DIRECT_RULE -> data.isMayor(civId, playerId);
+            case COUNCIL_VOTE -> data.isMayor(civId, playerId)
                     || data.isCivicManager(civId, playerId)
                     || data.hasCustomRolePermission(civId, playerId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
-            case DEMOCRATIC -> data.isCivilizationMember(civId, playerId);
+            case POPULAR_VOTE -> data.isCivilizationMember(civId, playerId);
+            default -> data.isMayor(civId, playerId);
         };
     }
 
-    private static int requiredYesVotes(GovernanceModel model, CivSavedData data, String civId) {
-        int eligible = eligibleVoterCount(model, data, civId);
-        return GovernanceMath.requiredYesVotes(model.serializedName(), eligible);
+    private static int requiredYesVotes(CivicAttribute execAttr, CivSavedData data, String civId) {
+        int eligible = eligibleVoterCount(execAttr, data, civId);
+        return GovernanceMath.requiredYesVotes(execAttr, eligible);
     }
 
-    private static int eligibleVoterCount(GovernanceModel model, CivSavedData data, String civId) {
+    private static int eligibleVoterCount(CivicAttribute execAttr, CivSavedData data, String civId) {
         List<UUID> members = data.civilizationMembersSorted(civId);
         if (members.isEmpty()) {
             return 0;
         }
         int eligible = 0;
         for (UUID memberId : members) {
-            if (isEligibleVoter(model, data, civId, memberId)) {
+            if (isEligibleVoter(execAttr, data, civId, memberId)) {
                 eligible++;
             }
         }

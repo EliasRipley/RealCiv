@@ -30,7 +30,6 @@ public final class RealCivFTBChunksBridge {
     public static final String CLAIM_MODE_PRIVATE = "private";
 
     private static final ThreadLocal<Boolean> INTERNAL_UNCLAIM = ThreadLocal.withInitial(() -> false);
-    private static final ThreadLocal<Boolean> CLAIM_HANDLED_INTERNALLY = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Integer> INTERNAL_SYNC_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static boolean registered;
 
@@ -121,9 +120,9 @@ public final class RealCivFTBChunksBridge {
         }
         ClaimDecision decision = validateClaim(source, chunk);
         if (decision.allowed()) {
-            CLAIM_HANDLED_INTERNALLY.set(true);
-            applyClaim(source, decision);
-            return CompoundEventResult.interruptFalse(ClaimResult.success());
+            // Claim is valid — let FTB process it normally.
+            // The AFTER_CLAIM handler will update RealCiv data and sync via the mirror.
+            return CompoundEventResult.pass();
         }
         sendClaimFailure(source, decision);
         return CompoundEventResult.interruptFalse(ClaimResult.customProblem(CLAIM_DENIED_TRANSLATION_KEY));
@@ -146,10 +145,6 @@ public final class RealCivFTBChunksBridge {
 
     private static void afterClaim(CommandSourceStack source, ClaimedChunk chunk) {
         if (isInternalSync()) {
-            return;
-        }
-        if (CLAIM_HANDLED_INTERNALLY.get()) {
-            CLAIM_HANDLED_INTERNALLY.set(false);
             return;
         }
         ClaimDecision decision = validateClaim(source, chunk);

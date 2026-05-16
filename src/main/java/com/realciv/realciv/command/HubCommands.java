@@ -1,8 +1,9 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
+import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivSavedData;
-import com.realciv.realciv.data.HubDistributionMode;
+import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.hub.HubStockSnapshot;
 import com.realciv.realciv.hub.HubStockSnapshotBuilder;
@@ -103,7 +104,7 @@ public final class HubCommands {
         }
 
         PlayerRecord quotaRecord = data.getOrCreatePlayer(target.getUUID());
-        HubDistributionMode distributionMode = data.hubDistributionMode(civId);
+        CivicAttribute distributionMode = data.civicAttribute(civId, AttributeCategory.RESOURCE);
         long activeModeLimit = 0L;
         if (!canBypassQuota) {
             if (requester == null) {
@@ -116,7 +117,7 @@ public final class HubCommands {
             }
 
             long remainingAllowance;
-            if (distributionMode == HubDistributionMode.DAILY_ALLOWANCE) {
+            if (distributionMode == CivicAttribute.RATIONED) {
                 activeModeLimit = data.hubDailyAllowanceLimit(civId, itemId);
                 if (activeModeLimit <= 0L) {
                     source.sendFailure(Component.literal(
@@ -125,18 +126,18 @@ public final class HubCommands {
                     return 0;
                 }
                 remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
-            } else if (distributionMode == HubDistributionMode.SHARED_STOCK_RATIO) {
+            } else if (distributionMode == CivicAttribute.EQUAL_SHARE) {
                 activeModeLimit = data.hubSharedStockDailyLimit(civId, itemId);
                 remainingAllowance = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
             } else {
                 remainingAllowance = quotaRecord.remainingPersonalWithdraw(civId, itemId);
             }
             if (remainingAllowance <= 0L) {
-                if (distributionMode == HubDistributionMode.DAILY_ALLOWANCE) {
+                if (distributionMode == CivicAttribute.RATIONED) {
                     source.sendFailure(Component.literal(
                             "No daily allowance remaining for " + itemId + " for "
                                     + target.getGameProfile().getName() + "."));
-                } else if (distributionMode == HubDistributionMode.SHARED_STOCK_RATIO) {
+                } else if (distributionMode == CivicAttribute.EQUAL_SHARE) {
                     source.sendFailure(Component.literal(
                             "No shared-stock allowance remaining for " + itemId + " for "
                                     + target.getGameProfile().getName()
@@ -151,11 +152,11 @@ public final class HubCommands {
                 return 0;
             }
             if (count > remainingAllowance) {
-                if (distributionMode == HubDistributionMode.DAILY_ALLOWANCE) {
+                if (distributionMode == CivicAttribute.RATIONED) {
                     source.sendFailure(Component.literal(
                             "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
                                     + target.getGameProfile().getName() + " right now (daily allowance)."));
-                } else if (distributionMode == HubDistributionMode.SHARED_STOCK_RATIO) {
+                } else if (distributionMode == CivicAttribute.EQUAL_SHARE) {
                     source.sendFailure(Component.literal(
                             "You can withdraw at most " + remainingAllowance + "x " + itemId + " for "
                                     + target.getGameProfile().getName() + " right now (shared-stock allowance)."));
@@ -203,8 +204,8 @@ public final class HubCommands {
 
         long newRemaining = 0L;
         if (!canBypassQuota) {
-            if (distributionMode == HubDistributionMode.DAILY_ALLOWANCE
-                    || distributionMode == HubDistributionMode.SHARED_STOCK_RATIO) {
+            if (distributionMode == CivicAttribute.RATIONED
+                    || distributionMode == CivicAttribute.EQUAL_SHARE) {
                 quotaRecord.recordDailyAllowanceWithdrawal(civId, itemId, count);
                 newRemaining = quotaRecord.remainingDailyAllowance(civId, itemId, activeModeLimit);
             } else {
@@ -224,7 +225,7 @@ public final class HubCommands {
                     actor + " withdrew " + count + "x " + itemId + " for " + target.getGameProfile().getName(),
                     RealCivConfig.MAX_AUDIT_LOGS.get());
         } else {
-            if (distributionMode == HubDistributionMode.DAILY_ALLOWANCE) {
+            if (distributionMode == CivicAttribute.RATIONED) {
                 long finalNewRemaining = newRemaining;
                 long finalConfiguredDailyLimit = activeModeLimit;
                 data.addAuditLog(
@@ -238,7 +239,7 @@ public final class HubCommands {
                         "Daily allowance remaining for " + target.getGameProfile().getName()
                                 + " on " + itemId + ": " + finalNewRemaining + "/" + finalConfiguredDailyLimit),
                         false);
-            } else if (distributionMode == HubDistributionMode.SHARED_STOCK_RATIO) {
+            } else if (distributionMode == CivicAttribute.EQUAL_SHARE) {
                 long finalNewRemaining = newRemaining;
                 long finalSharedLimit = activeModeLimit;
                 data.addAuditLog(
@@ -329,9 +330,9 @@ public final class HubCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(target.getUUID());
         PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
-        HubDistributionMode mode = data.hubDistributionMode(civId);
+        CivicAttribute mode = data.civicAttribute(civId, AttributeCategory.RESOURCE);
 
-        if (mode == HubDistributionMode.DAILY_ALLOWANCE) {
+        if (mode == CivicAttribute.RATIONED) {
             List<Map.Entry<String, Integer>> entries = data.hubDailyAllowanceEntriesSorted(civId);
             if (entries.isEmpty()) {
                 source.sendSuccess(() -> Component.literal(
@@ -376,7 +377,7 @@ public final class HubCommands {
             return 1;
         }
 
-        if (mode == HubDistributionMode.SHARED_STOCK_RATIO) {
+        if (mode == CivicAttribute.EQUAL_SHARE) {
             List<Map.Entry<String, Long>> stockEntries = data.getHubStockEntriesSorted(civId);
             if (stockEntries.isEmpty()) {
                 source.sendSuccess(() -> Component.literal(
@@ -486,18 +487,18 @@ public final class HubCommands {
     public static int hubDistributionShow(CommandSourceStack source) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = RealCivCommands.civOfSource(source, data);
-        HubDistributionMode mode = data.hubDistributionMode(civId);
+        CivicAttribute mode = data.civicAttribute(civId, AttributeCategory.RESOURCE);
         source.sendSuccess(() -> Component.literal(
-                "Hub distribution mode for " + RealCivCommands.civDisplay(data, civId) + ": " + mode.serializedName()),
+                "Hub distribution mode for " + RealCivCommands.civDisplay(data, civId) + ": " + mode.displayName()),
                 false);
 
-        if (mode == HubDistributionMode.CONTRIBUTION_RATIO) {
+        if (mode == CivicAttribute.CONTRIBUTION_SHARE) {
             source.sendSuccess(() -> Component.literal(
                     "Contribution-ratio mode uses each player's contribution quota and personal withdraw rate."),
                     false);
             return 1;
         }
-        if (mode == HubDistributionMode.SHARED_STOCK_RATIO) {
+        if (mode == CivicAttribute.EQUAL_SHARE) {
             source.sendSuccess(() -> Component.literal(
                     "Shared-stock ratio mode gives each member a daily allowance per item based on current stock and shared ratio."),
                     false);
@@ -540,19 +541,19 @@ public final class HubCommands {
             source.sendFailure(Component.literal("Only leadership/admin can manage hub distribution mode."));
             return 0;
         }
-        @Nullable HubDistributionMode mode = HubDistributionMode.fromSerializedName(modeRaw);
-        if (mode == null) {
+        @Nullable CivicAttribute mode = CivicAttribute.fromSerializedName(modeRaw);
+        if (mode == null || mode.category() != AttributeCategory.RESOURCE) {
             source.sendFailure(Component.literal(
-                    "Unknown mode. Use contribution_ratio, shared_stock_ratio, or daily_allowance."));
+                    "Unknown resource policy. Use contribution_share, equal_share, or rationed."));
             return 0;
         }
-        if (!data.setHubDistributionMode(civId, mode, RealCivCommands.actorName(source))) {
+        if (!data.setCivicAttribute(civId, AttributeCategory.RESOURCE, mode, RealCivCommands.actorName(source))) {
             source.sendFailure(Component.literal("No change made. Hub distribution mode already matches."));
             return 0;
         }
         source.sendSuccess(() -> Component.literal(
-                "Hub distribution mode for " + RealCivCommands.civDisplay(data, civId)
-                        + " set to " + mode.serializedName() + "."), true);
+                "Resource policy for " + RealCivCommands.civDisplay(data, civId)
+                        + " set to " + mode.displayName() + "."), true);
         return 1;
     }
 
