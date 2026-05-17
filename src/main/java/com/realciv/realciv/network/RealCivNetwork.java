@@ -25,7 +25,6 @@ import com.realciv.realciv.panel.CivControlPanelSnapshotBuilder;
 import com.realciv.realciv.panel.CivGovernanceWorkflowService;
 import com.realciv.realciv.tax.TaxSnapshot;
 import com.realciv.realciv.tax.TaxSnapshotBuilder;
-import dev.ftb.mods.ftbchunks.client.ClientTaskQueue;
 import dev.ftb.mods.ftbchunks.client.FTBChunksClient;
 import dev.ftb.mods.ftbchunks.client.map.MapDimension;
 import dev.ftb.mods.ftbchunks.client.map.MapManager;
@@ -105,8 +104,6 @@ public final class RealCivNetwork {
 
             ResourceKey<Level> dimKey = payload.dimensionKey();
             MapManager.getInstance().ifPresent(mm -> {
-                ClientTaskQueue.flushTasks();
-
                 MapDimension mapDim = mm.getDimension(dimKey);
                 XZ regionPos = XZ.regionFromChunk(payload.chunkX(), payload.chunkZ());
                 MapRegion region = mapDim.getRegion(regionPos);

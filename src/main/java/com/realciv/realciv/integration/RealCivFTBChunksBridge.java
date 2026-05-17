@@ -154,8 +154,6 @@ public final class RealCivFTBChunksBridge {
             return;
         }
         applyClaim(source, decision);
-        sendMapRefreshToPlayer(source, chunk.getPos());
-        syncCivClaims(source, decision);
     }
 
     private static void syncCivClaims(CommandSourceStack source, ClaimDecision decision) {
