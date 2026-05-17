@@ -10,6 +10,8 @@ import com.realciv.realciv.data.PlotRecord;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import com.realciv.realciv.logic.LandWandService;
+import com.realciv.realciv.network.RealCivPayloads;
+import dev.architectury.networking.NetworkManager;
 import java.util.Locale;
 import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
@@ -117,6 +119,7 @@ public final class LandCommands {
                         + (ownerId == null ? "" : " owner=" + ownerId),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
+        forceMapRefresh(actor, dimension, chunkX, chunkZ);
 
         String ownerText = ownerId == null ? "none" : ownerId.toString();
         source.sendSuccess(() -> Component.literal(
@@ -152,6 +155,7 @@ public final class LandCommands {
         }
 
         data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
+        forceMapRefresh(actor, dimension, chunkX, chunkZ);
         data.addAuditLog(
                 existing.civilizationId(),
                 RealCivCommands.actorName(source) + " cleared zoning at " + dimension + "[" + chunkX + "," + chunkZ + "]",
@@ -191,33 +195,11 @@ public final class LandCommands {
         return 1;
     }
 
-    public static int landSelectionInfo(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(player);
-        if (selection == null) {
-            source.sendFailure(Component.literal(
-                    "No complete wand selection in this dimension. Use Land Wand left-click for pos1 and right-click for pos2."));
-            return 0;
-        }
+    // POS1/POS2 SELECTION (DISABLED) - see LandWandService.java for details
+    // public static int landSelectionInfo(CommandSourceStack source) { ... }
 
-        source.sendSuccess(() -> Component.literal(
-                "Land selection: dimension=" + selection.dimension()
-                        + " | X " + selection.minChunkX() + ".." + selection.maxChunkX()
-                        + " | Z " + selection.minChunkZ() + ".." + selection.maxChunkZ()
-                        + " | chunks=" + selection.chunkCount()), false);
-        source.sendSuccess(() -> Component.literal(
-                "Configured selection max: " + RealCivConfig.landWandMaxSelectionChunks() + " chunk(s)."), false);
-        return 1;
-    }
-
-    public static int landSelectionClear(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer player = source.getPlayerOrException();
-        LandWandService.clearSelection(player);
-        source.sendSuccess(() -> Component.literal("Land wand selection cleared."), false);
-        return 1;
-    }
+    // POS1/POS2 SELECTION (DISABLED) - see LandWandService.java for details
+    // public static int landSelectionClear(CommandSourceStack source) { ... }
 
     public static int landVisualize(CommandSourceStack source, int radius)
             throws com.mojang.brigadier.exceptions.CommandSyntaxException {
@@ -225,11 +207,9 @@ public final class LandCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         int safeRadius = Math.max(1, Math.min(64, radius));
         int boundaryLines = LandWandService.visualizeNearbyPlots(player, data, safeRadius);
-        int selectionLines = LandWandService.visualizeSelection(player);
         source.sendSuccess(() -> Component.literal(
                 "Visualized " + boundaryLines + " land boundary line(s) within " + safeRadius + " chunks"
-                        + " (all distinct nearby claim boundaries)."
-                        + (selectionLines > 0 ? " Selection boundary lines: " + selectionLines + "." : "")),
+                        + " (all distinct nearby claim boundaries)."),
                 false);
         return 1;
     }
@@ -324,156 +304,14 @@ public final class LandCommands {
         };
     }
 
-    public static int landZoneSelection(
-            CommandSourceStack source,
-            String landClassRaw,
-            @Nullable ServerPlayer owner,
-            int prepayDays) throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
-            source.sendFailure(Component.literal("Only leadership/admin can zone selected areas for this civilization."));
-            return 0;
-        }
+    // POS1/POS2 SELECTION (DISABLED) - see LandWandService.java for details
+    // public static int landZoneSelection(CommandSourceStack source, String landClassRaw, @Nullable ServerPlayer owner, int prepayDays) { ... }
 
-        LandClass landClass = LandClass.fromConfig(landClassRaw);
-        if (landClass == null) {
-            source.sendFailure(Component.literal("Invalid land class. Use: community, civic, private (public also works)."));
-            return 0;
-        }
+    // POS1/POS2 SELECTION (DISABLED) - see LandWandService.java for details
+    // public static int landClearSelection(CommandSourceStack source) { ... }
 
-        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(actor);
-        if (selection == null) {
-            source.sendFailure(Component.literal(
-                    "No complete wand selection in this dimension. Use the Land Wand first."));
-            return 0;
-        }
-
-        if (selection.chunkCount() > RealCivConfig.landWandMaxSelectionChunks()) {
-            source.sendFailure(Component.literal(
-                    "Selection is too large (" + selection.chunkCount() + " chunks). Max allowed: "
-                            + RealCivConfig.landWandMaxSelectionChunks() + "."));
-            return 0;
-        }
-
-        long now = source.getServer().overworld().getGameTime();
-        String dimension = selection.dimension();
-        if (!RealCivCommands.ensureClaimDimensionAllowed(source, dimension)) {
-            return 0;
-        }
-        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
-            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
-                @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
-                if (existing != null
-                        && !existing.civilizationId().equals(actorCiv)
-                        && !source.hasPermission(3)) {
-                    source.sendFailure(Component.literal(
-                            "Selection contains chunk [" + chunkX + ", " + chunkZ + "] already zoned by civilization '"
-                                    + existing.civilizationId() + "'. Admin privileges required to override."));
-                    return 0;
-                }
-            }
-        }
-
-        UUID ownerId = null;
-        long paidTicks = 0L;
-        if (landClass == LandClass.PRIVATE) {
-            ownerId = owner == null ? actor.getUUID() : owner.getUUID();
-            paidTicks = Math.max(1L, prepayDays) * 24_000L;
-        }
-
-        int affected = 0;
-        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
-            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
-                @Nullable PlotLookup existing = data.getPlotAnyCivilization(dimension, chunkX, chunkZ);
-                if (existing != null && !existing.civilizationId().equals(actorCiv) && source.hasPermission(3)) {
-                    data.clearPlot(existing.civilizationId(), dimension, chunkX, chunkZ);
-                }
-                data.setPlot(actorCiv, dimension, chunkX, chunkZ, landClass, ownerId, now, paidTicks);
-                affected++;
-            }
-        }
-
-        data.addAuditLog(
-                actorCiv,
-                RealCivCommands.actorName(source) + " zoned selection " + dimension
-                        + " X[" + selection.minChunkX() + ".." + selection.maxChunkX() + "]"
-                        + " Z[" + selection.minChunkZ() + ".." + selection.maxChunkZ() + "] as " + landClass
-                        + (ownerId == null ? "" : " owner=" + ownerId),
-                RealCivConfig.MAX_AUDIT_LOGS.get());
-        data.setDirty();
-
-        String ownerText = ownerId == null ? "none" : ownerId.toString();
-        final int finalAffected = affected;
-        final String zonedMessage =
-                "Zoned " + finalAffected + " chunk(s) in " + RealCivCommands.civDisplay(data, actorCiv)
-                        + " as " + landClass + " | owner: " + ownerText;
-        source.sendSuccess(() -> Component.literal(zonedMessage), true);
-        return 1;
-    }
-
-    public static int landClearSelection(CommandSourceStack source)
-            throws com.mojang.brigadier.exceptions.CommandSyntaxException {
-        ServerPlayer actor = source.getPlayerOrException();
-        CivSavedData data = CivSavedData.get(source.getServer());
-        String actorCiv = data.getOrAssignCivilization(actor.getUUID());
-        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
-            source.sendFailure(Component.literal("Only leadership/admin can clear selected land zoning."));
-            return 0;
-        }
-
-        @Nullable LandWandService.ChunkSelection selection = LandWandService.selectionForCurrentDimension(actor);
-        if (selection == null) {
-            source.sendFailure(Component.literal(
-                    "No complete wand selection in this dimension. Use the Land Wand first."));
-            return 0;
-        }
-
-        if (selection.chunkCount() > RealCivConfig.landWandMaxSelectionChunks()) {
-            source.sendFailure(Component.literal(
-                    "Selection is too large (" + selection.chunkCount() + " chunks). Max allowed: "
-                            + RealCivConfig.landWandMaxSelectionChunks() + "."));
-            return 0;
-        }
-
-        int cleared = 0;
-        int skipped = 0;
-        for (long chunkX = selection.minChunkX(); chunkX <= selection.maxChunkX(); chunkX++) {
-            for (long chunkZ = selection.minChunkZ(); chunkZ <= selection.maxChunkZ(); chunkZ++) {
-                @Nullable PlotLookup existing = data.getPlotAnyCivilization(selection.dimension(), chunkX, chunkZ);
-                if (existing == null) {
-                    continue;
-                }
-                if (!existing.civilizationId().equals(actorCiv) && !source.hasPermission(3)) {
-                    skipped++;
-                    continue;
-                }
-                if (data.clearPlot(existing.civilizationId(), selection.dimension(), chunkX, chunkZ)) {
-                    data.addAuditLog(
-                            existing.civilizationId(),
-                            RealCivCommands.actorName(source) + " cleared zoning at " + selection.dimension()
-                                    + "[" + chunkX + "," + chunkZ + "]",
-                            RealCivConfig.MAX_AUDIT_LOGS.get());
-                    cleared++;
-                }
-            }
-        }
-        data.setDirty();
-
-        if (cleared == 0) {
-            source.sendFailure(Component.literal(
-                    "No zoned chunks were cleared in selection."
-                            + (skipped > 0 ? " Skipped " + skipped + " chunk(s) owned by other civilizations." : "")));
-            return 0;
-        }
-
-        final int finalCleared = cleared;
-        final int finalSkipped = skipped;
-        final String clearedMessage =
-                "Cleared zoning for " + finalCleared + " chunk(s)."
-                        + (finalSkipped > 0 ? " Skipped " + finalSkipped + " chunk(s) owned by other civilizations." : "");
-        source.sendSuccess(() -> Component.literal(clearedMessage), true);
-        return 1;
+    private static void forceMapRefresh(ServerPlayer player, String dimension, long chunkX, long chunkZ) {
+        NetworkManager.sendToPlayer(player, new RealCivPayloads.ForceMapRefreshPayload(
+                dimension, (int) chunkX, (int) chunkZ));
     }
 }

@@ -25,6 +25,7 @@ public abstract class RealCivScreen extends BaseScreen {
     protected static final int ROW_H = 18;
     protected static final int BTN_H = 14;
 
+    private boolean closing = false;
     private final Component screenTitle;
     private final String subtitleText;
     private final int accentColor;
@@ -178,6 +179,17 @@ public abstract class RealCivScreen extends BaseScreen {
     @Override
     public boolean shouldCloseOnEsc() {
         return true;
+    }
+
+    @Override
+    public void onClosed() {
+        if (closing) return;
+        closing = true;
+        super.onClosed();
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen != null) {
+            mc.setScreen(null);
+        }
     }
 
     @Override

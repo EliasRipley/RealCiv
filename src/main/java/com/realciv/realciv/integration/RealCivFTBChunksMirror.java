@@ -294,6 +294,16 @@ public final class RealCivFTBChunksMirror {
     }
 
     @Nullable
+    public static Team getCivTeamForPlayer(ServerPlayer player) {
+        if (!ftbApisReady()) return null;
+        MinecraftServer server = player.server;
+        CivSavedData data = CivSavedData.get(server);
+        String civId = data.getOrAssignCivilization(player.getUUID());
+        CivilizationRecord civ = data.getCivilization(civId);
+        if (civ == null) return null;
+        return ensureCivTeam(server, civ);
+    }
+
     private static Team ensureCivTeam(MinecraftServer server, CivilizationRecord civ) {
         TeamManager manager = FTBTeamsAPI.api().getManager();
 

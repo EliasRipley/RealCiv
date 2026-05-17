@@ -5,6 +5,8 @@ import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
+import com.realciv.realciv.network.RealCivPayloads;
+import dev.architectury.networking.NetworkManager;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -197,6 +199,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
                         + " for " + RealCivUtil.formatCredits(claimCost),
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
+        forceMapRefresh(viewer, dimension, chunkX, chunkZ);
         viewer.sendSystemMessage(Component.literal(
                 "CIVIC chunk claimed [" + chunkX + ", " + chunkZ + "]. Civ treasury: "
                         + RealCivUtil.formatCredits(data.civTreasuryCents(civId))));
@@ -223,6 +226,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         data.addCivTreasuryCents(civIdRefund, refundAmount);
 
         data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
+        forceMapRefresh(viewer, dimension, chunkX, chunkZ);
         data.addAuditLog(
                 civIdRefund,
                 viewer.getGameProfile().getName() + " unclaimed CIVIC chunk " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI."
@@ -300,6 +304,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
                             + " until upkeep tick " + next,
                     RealCivConfig.MAX_AUDIT_LOGS.get());
             data.setDirty();
+            forceMapRefresh(viewer, dimension, chunkX, chunkZ);
             viewer.sendSystemMessage(Component.literal(
                     "PRIVATE plot renewed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
                             + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
@@ -313,6 +318,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 viewer.getGameProfile().getName() + " claimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI",
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         data.setDirty();
+        forceMapRefresh(viewer, dimension, chunkX, chunkZ);
         viewer.sendSystemMessage(Component.literal(
                 "PRIVATE chunk claimed [" + chunkX + ", " + chunkZ + "]. Cost: " + RealCivUtil.formatCredits(cost)
                         + " | Balance: " + RealCivUtil.formatCredits(record.socialCreditCents(civId))));
@@ -346,6 +352,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
         data.getOrCreatePlayer(viewer.getUUID()).addSocialCreditCents(civIdRefund, refundAmount);
 
         data.clearPlot(civIdRefund, dimension, chunkX, chunkZ);
+        forceMapRefresh(viewer, dimension, chunkX, chunkZ);
         data.addAuditLog(
                 civIdRefund,
                 viewer.getGameProfile().getName() + " unclaimed PRIVATE plot " + dimension + "[" + chunkX + "," + chunkZ + "] via land GUI."
@@ -499,6 +506,11 @@ public class LandClaimMenu extends AbstractContainerMenu {
     }
 
     private record ChunkRef(long chunkX, long chunkZ) {
+    }
+
+    private static void forceMapRefresh(ServerPlayer player, String dimension, long chunkX, long chunkZ) {
+        NetworkManager.sendToPlayer(player, new RealCivPayloads.ForceMapRefreshPayload(
+                dimension, (int) chunkX, (int) chunkZ));
     }
 
     private static class ReadOnlySlot extends Slot {

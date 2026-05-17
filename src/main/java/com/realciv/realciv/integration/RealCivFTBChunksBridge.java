@@ -6,15 +6,15 @@ import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
+import com.realciv.realciv.network.RealCivPayloads;
 import dev.architectury.event.CompoundEventResult;
 import dev.architectury.networking.NetworkManager;
 import dev.ftb.mods.ftbchunks.api.ClaimResult;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
 import dev.ftb.mods.ftbchunks.api.event.ClaimedChunkEvent;
 import dev.ftb.mods.ftbchunks.net.OpenClaimGUIPacket;
-import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
+import dev.ftb.mods.ftblibrary.math.ChunkDimPos;
 import dev.ftb.mods.ftbteams.api.Team;
-import java.util.Optional;
 import java.util.UUID;
 import java.util.function.Supplier;
 import net.minecraft.commands.CommandSourceStack;
@@ -50,14 +50,14 @@ public final class RealCivFTBChunksBridge {
 
     public static boolean tryOpenClaimMap(ServerPlayer player) {
         try {
-            Optional<Team> team = FTBTeamsAPI.api().getManager().getTeamForPlayer(player);
-            if (team.isEmpty()) {
+            Team civTeam = RealCivFTBChunksMirror.getCivTeamForPlayer(player);
+            if (civTeam == null) {
                 player.sendSystemMessage(Component.literal(
-                        "FTB claim map context is unavailable for your current team state. "
+                        "Civ FTB team is unavailable. "
                                 + "Opening the RealCiv land map instead."));
                 return false;
             }
-            NetworkManager.sendToPlayer(player, new OpenClaimGUIPacket(team.get().getTeamId()));
+            NetworkManager.sendToPlayer(player, new OpenClaimGUIPacket(civTeam.getTeamId()));
             return true;
         } catch (Throwable throwable) {
             RealCivMod.LOGGER.warn("Failed to open FTB claim map for {}.", player.getGameProfile().getName(), throwable);
@@ -154,6 +154,17 @@ public final class RealCivFTBChunksBridge {
             return;
         }
         applyClaim(source, decision);
+        sendMapRefreshToPlayer(source, chunk.getPos());
+        syncCivClaims(source, decision);
+    }
+
+    private static void syncCivClaims(CommandSourceStack source, ClaimDecision decision) {
+        if (source.getServer() == null) return;
+        if (decision.civId() == null) return;
+        // Re-sync civilization's FTB claims so FTB Chunks renders merged borders
+        // for adjacent claims (no internal chunk boundary lines between them).
+        CivSavedData data = CivSavedData.get(source.getServer());
+        RealCivFTBChunksMirror.syncCivilization(source.getServer(), data, decision.civId());
     }
 
     private static void afterUnclaim(CommandSourceStack source, ClaimedChunk chunk) {
@@ -428,6 +439,16 @@ public final class RealCivFTBChunksBridge {
         } finally {
             INTERNAL_UNCLAIM.set(previous);
         }
+    }
+
+    private static void sendMapRefreshToPlayer(CommandSourceStack source, ChunkDimPos pos) {
+        if (!(source.getEntity() instanceof ServerPlayer player)) {
+            return;
+        }
+        NetworkManager.sendToPlayer(player, new RealCivPayloads.ForceMapRefreshPayload(
+                pos.dimension().location().toString(),
+                pos.x(),
+                pos.z()));
     }
 
     private static void sendClaimFailure(CommandSourceStack source, DenialReason denial) {

@@ -465,45 +465,11 @@ public final class RealCivCommands {
                                                         false)))))
                         .then(Commands.literal("wand")
                                 .executes(ctx -> LandCommands.landWandGive(ctx.getSource(), ctx.getSource().getPlayerOrException()))
-                                .then(Commands.literal("clear")
-                                        .executes(ctx -> LandCommands.landSelectionClear(ctx.getSource())))
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .requires(source -> source.hasPermission(3))
                                         .executes(ctx -> LandCommands.landWandGive(
                                                 ctx.getSource(),
                                                 EntityArgument.getPlayer(ctx, "player")))))
-                        .then(Commands.literal("selection")
-                                .then(Commands.literal("info")
-                                        .executes(ctx -> LandCommands.landSelectionInfo(ctx.getSource())))
-                                .then(Commands.literal("clear")
-                                        .executes(ctx -> LandCommands.landSelectionClear(ctx.getSource()))))
-                        .then(Commands.literal("zone-selection")
-                                .then(Commands.argument("class", StringArgumentType.word())
-                                        .executes(ctx -> LandCommands.landZoneSelection(
-                                                ctx.getSource(),
-                                                StringArgumentType.getString(ctx, "class"),
-                                                null,
-                                                RealCivConfig.LAND_RENT_DAYS.get()))
-                                        .then(Commands.argument("owner", EntityArgument.player())
-                                                .executes(ctx -> LandCommands.landZoneSelection(
-                                                        ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "class"),
-                                                        EntityArgument.getPlayer(ctx, "owner"),
-                                                        RealCivConfig.LAND_RENT_DAYS.get()))
-                                                .then(Commands.argument("days", IntegerArgumentType.integer(1, 10_000))
-                                                        .executes(ctx -> LandCommands.landZoneSelection(
-                                                                ctx.getSource(),
-                                                                StringArgumentType.getString(ctx, "class"),
-                                                                EntityArgument.getPlayer(ctx, "owner"),
-                                                                IntegerArgumentType.getInteger(ctx, "days")))))
-                                        .then(Commands.argument("days", IntegerArgumentType.integer(1, 10_000))
-                                                .executes(ctx -> LandCommands.landZoneSelection(
-                                                        ctx.getSource(),
-                                                        StringArgumentType.getString(ctx, "class"),
-                                                        null,
-                                                        IntegerArgumentType.getInteger(ctx, "days"))))))
-                        .then(Commands.literal("clear-selection")
-                                .executes(ctx -> LandCommands.landClearSelection(ctx.getSource())))
                         .then(Commands.literal("visualize")
                                 .executes(ctx -> LandCommands.landVisualize(ctx.getSource(), RealCivConfig.landWandVisualizeRadiusChunks()))
                                 .then(Commands.argument("radius", IntegerArgumentType.integer(1, 64))

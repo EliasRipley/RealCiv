@@ -4,10 +4,13 @@ import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.census.CensusSnapshot;
 import com.realciv.realciv.ledger.ProfessionLedgerSnapshot;
 import io.netty.buffer.ByteBuf;
+import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
 import net.minecraft.network.protocol.common.custom.CustomPacketPayload;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.level.Level;
 
 public final class RealCivPayloads {
     private RealCivPayloads() {}
@@ -117,6 +120,26 @@ public final class RealCivPayloads {
                 StreamCodec.of(
                         (b, p) -> p.snapshot().write(b),
                         b -> new OpenHubStockPayload(com.realciv.realciv.hub.HubStockSnapshot.read(b)));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record ForceMapRefreshPayload(String dimension, int chunkX, int chunkZ) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<ForceMapRefreshPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "force_map_refresh"));
+
+        public static final StreamCodec<ByteBuf, ForceMapRefreshPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, ForceMapRefreshPayload::dimension,
+                ByteBufCodecs.VAR_INT, ForceMapRefreshPayload::chunkX,
+                ByteBufCodecs.VAR_INT, ForceMapRefreshPayload::chunkZ,
+                ForceMapRefreshPayload::new);
+
+        public ResourceKey<Level> dimensionKey() {
+            return ResourceKey.create(Registries.DIMENSION, ResourceLocation.parse(dimension));
+        }
 
         @Override
         public Type<? extends CustomPacketPayload> type() {

@@ -25,6 +25,12 @@ import com.realciv.realciv.panel.CivControlPanelSnapshotBuilder;
 import com.realciv.realciv.panel.CivGovernanceWorkflowService;
 import com.realciv.realciv.tax.TaxSnapshot;
 import com.realciv.realciv.tax.TaxSnapshotBuilder;
+import dev.ftb.mods.ftbchunks.client.ClientTaskQueue;
+import dev.ftb.mods.ftbchunks.client.FTBChunksClient;
+import dev.ftb.mods.ftbchunks.client.map.MapDimension;
+import dev.ftb.mods.ftbchunks.client.map.MapManager;
+import dev.ftb.mods.ftbchunks.client.map.MapRegion;
+import dev.ftb.mods.ftblibrary.math.XZ;
 import java.util.HashMap;
 import java.util.List;
 import java.util.Map;
@@ -32,11 +38,13 @@ import java.util.UUID;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
+import net.minecraft.world.level.Level;
 import net.neoforged.neoforge.network.PacketDistributor;
 import net.neoforged.neoforge.network.event.RegisterPayloadHandlersEvent;
 import net.neoforged.neoforge.network.handling.IPayloadContext;
@@ -61,6 +69,7 @@ public final class RealCivNetwork {
         registrar.playToClient(RealCivPayloads.OpenControlPanelPayload.TYPE, RealCivPayloads.OpenControlPanelPayload.STREAM_CODEC, RealCivNetwork::handleOpenControlPanel);
         registrar.playToClient(RealCivPayloads.OpenHubStockPayload.TYPE, RealCivPayloads.OpenHubStockPayload.STREAM_CODEC, RealCivNetwork::handleOpenHubStock);
 
+        registrar.playToClient(RealCivPayloads.ForceMapRefreshPayload.TYPE, RealCivPayloads.ForceMapRefreshPayload.STREAM_CODEC, RealCivNetwork::handleForceMapRefresh);
         registrar.playToServer(RealCivPayloads.RealCivActionPayload.TYPE, RealCivPayloads.RealCivActionPayload.STREAM_CODEC, RealCivNetwork::handleAction);
         registrar.playToServer(RealCivPayloads.SetTaxItemPayload.TYPE, RealCivPayloads.SetTaxItemPayload.STREAM_CODEC, RealCivNetwork::handleSetTaxItem);
     }
@@ -87,6 +96,27 @@ public final class RealCivNetwork {
 
     private static void handleOpenHubStock(RealCivPayloads.OpenHubStockPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> new ModernHubStockScreen(payload.snapshot()).openGui());
+    }
+
+    private static void handleForceMapRefresh(RealCivPayloads.ForceMapRefreshPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            Minecraft mc = Minecraft.getInstance();
+            if (mc.level == null) return;
+
+            ResourceKey<Level> dimKey = payload.dimensionKey();
+            MapManager.getInstance().ifPresent(mm -> {
+                ClientTaskQueue.flushTasks();
+
+                MapDimension mapDim = mm.getDimension(dimKey);
+                XZ regionPos = XZ.regionFromChunk(payload.chunkX(), payload.chunkZ());
+                MapRegion region = mapDim.getRegion(regionPos);
+                if (region != null) {
+                    region.update(false);
+                    region.getRenderedMapImage();
+                }
+            });
+            FTBChunksClient.INSTANCE.scheduleMinimapUpdate();
+        });
     }
 
     private static void handleAction(RealCivPayloads.RealCivActionPayload payload, IPayloadContext context) {

@@ -91,18 +91,16 @@ public final class BlockEventHandlers {
             if (player.isShiftKeyDown()) {
                 int radius = RealCivConfig.landWandVisualizeRadiusChunks();
                 int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
-                int selectedEdges = LandWandService.visualizeSelection(player);
                 player.sendSystemMessage(Component.literal(
                         "[RealCiv] Land Wand visualized " + edges
                                 + " nearby boundary line(s) within " + radius + " chunks"
-                                + " (all distinct nearby claim boundaries)."
-                                + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
-            } else {
-                LandWandService.setPos2(player, event.getPos());
+                                + " (all distinct nearby claim boundaries)."));
+                event.setCancellationResult(InteractionResult.SUCCESS);
+                event.setCanceled(true);
+                return;
             }
-            event.setCancellationResult(InteractionResult.SUCCESS);
-            event.setCanceled(true);
-            return;
+            // POS1/POS2 SELECTION (DISABLED) - wand in hand does not interfere with block interaction
+            // Previously called LandWandService.setPos2(player, event.getPos()) here.
         }
 
         if (clickedState.is(ModBlocks.COMMUNITY_HUB.get())) {
@@ -263,12 +261,10 @@ public final class BlockEventHandlers {
             if (player.isShiftKeyDown()) {
                 int radius = RealCivConfig.landWandVisualizeRadiusChunks();
                 int edges = LandWandService.visualizeNearbyPlots(player, data, radius);
-                int selectedEdges = LandWandService.visualizeSelection(player);
                 player.sendSystemMessage(Component.literal(
                         "[RealCiv] Land Wand visualized " + edges
                                 + " nearby boundary line(s) within " + radius + " chunks"
-                                + " (all distinct nearby claim boundaries)."
-                                + (selectedEdges > 0 ? " Selection boundary lines: " + selectedEdges + "." : "")));
+                                + " (all distinct nearby claim boundaries)."));
             } else {
                 RealCivCommands.openLandGuiForPlayer(player, data);
             }
@@ -290,11 +286,8 @@ public final class BlockEventHandlers {
             return;
         }
 
-        if (event.getItemStack().is(ModBlocks.LAND_WAND.get())) {
-            LandWandService.setPos1(player, event.getPos());
-            event.setCanceled(true);
-            return;
-        }
+        // POS1/POS2 SELECTION (DISABLED) - left-click with wand performs normal interaction
+        // Previously called LandWandService.setPos1(player, event.getPos()) here.
 
         CivSavedData data = CivSavedData.get(player.getServer());
         if (isToolLocked(player, event.getItemStack(), data)) {

@@ -7,6 +7,12 @@
   "block.realciv.war_table": "Diplomacy Table",
   "item.realciv.land_wand": "Land Wand",
   "itemGroup.realciv": "Real Civilization",
+  "tooltip.realciv.community_hub": "Deposit resources for profession credits and civ stock. Sneak + right-click to withdraw.",
+  "tooltip.realciv.census_block": "View civ members, manage join requests, and send invitations.",
+  "tooltip.realciv.tax_block": "Pay plot upkeep, adjust tax rates, and set tax collection items.",
+  "tooltip.realciv.civic_control_console": "Manage governance, economy policies, leadership contests, and roles.",
+  "tooltip.realciv.profession_ledger": "Track your profession levels, XP, and action limits.",
+  "tooltip.realciv.war_table": "View and manage diplomatic relations with other civilizations.",
   "realciv.ftbchunks.claim_denied": "Claim denied by RealCiv rules. See chat for details.",
   "realciv.ftbchunks.unclaim_denied": "Unclaim denied by RealCiv rules. See chat for details."
 }
