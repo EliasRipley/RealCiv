@@ -25,6 +25,9 @@ import com.realciv.realciv.panel.CivControlPanelSnapshotBuilder;
 import com.realciv.realciv.panel.CivGovernanceWorkflowService;
 import com.realciv.realciv.tax.TaxSnapshot;
 import com.realciv.realciv.tax.TaxSnapshotBuilder;
+import com.mojang.blaze3d.platform.NativeImage;
+import com.mojang.blaze3d.systems.RenderSystem;
+import dev.ftb.mods.ftbchunks.FTBChunks;
 import dev.ftb.mods.ftbchunks.client.FTBChunksClient;
 import dev.ftb.mods.ftbchunks.client.map.MapDimension;
 import dev.ftb.mods.ftbchunks.client.map.MapManager;
@@ -100,17 +103,40 @@ public final class RealCivNetwork {
     private static void handleForceMapRefresh(RealCivPayloads.ForceMapRefreshPayload payload, IPayloadContext context) {
         context.enqueueWork(() -> {
             Minecraft mc = Minecraft.getInstance();
-            if (mc.level == null) return;
+            if (mc.level == null || mc.player == null) return;
 
-            ResourceKey<Level> dimKey = payload.dimensionKey();
             MapManager.getInstance().ifPresent(mm -> {
-                MapDimension mapDim = mm.getDimension(dimKey);
+                MapDimension mapDim = mm.getDimension(payload.dimensionKey());
+                if (mapDim == null) return;
+
                 XZ regionPos = XZ.regionFromChunk(payload.chunkX(), payload.chunkZ());
                 MapRegion region = mapDim.getRegion(regionPos);
-                if (region != null) {
-                    region.update(false);
-                    region.getRenderedMapImage();
+                if (region == null) return;
+
+                region.update(false);
+                NativeImage regionImage = region.getRenderedMapImage();
+                if (regionImage == null) return;
+
+                // Directly update the minimap texture tile for this chunk.
+                // This is needed because when ChunkScreen is open the normal
+                // minimap render loop (which rebuilds the minimap texture)
+                // does not run, so the claim map shows stale borders.
+                int pcx = mc.player.chunkPosition().x;
+                int pcz = mc.player.chunkPosition().z;
+                int mx = payload.chunkX() - (pcx - FTBChunks.TILE_OFFSET);
+                int mz = payload.chunkZ() - (pcz - FTBChunks.TILE_OFFSET);
+
+                if (mx >= 0 && mx < FTBChunks.TILES && mz >= 0 && mz < FTBChunks.TILES) {
+                    int texId = FTBChunksClient.INSTANCE.getMinimapTextureId();
+                    if (texId != -1) {
+                        RenderSystem.bindTexture(texId);
+                        regionImage.upload(0, mx * 16, mz * 16,
+                                (payload.chunkX() & 31) * 16, (payload.chunkZ() & 31) * 16,
+                                16, 16, false, false, false, false);
+                    }
                 }
+
+                region.getRenderedMapImageTextureId();
             });
             FTBChunksClient.INSTANCE.scheduleMinimapUpdate();
         });
