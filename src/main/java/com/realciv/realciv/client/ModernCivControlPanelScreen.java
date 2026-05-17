@@ -10,7 +10,11 @@ import com.realciv.realciv.network.RealCivPayloads;
 import com.realciv.realciv.panel.CivControlPanelSnapshot;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 public class ModernCivControlPanelScreen extends RealCivScreen {
@@ -29,12 +33,13 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     public static final int ACTION_VOTE_CANDIDATE_4 = 13;
     public static final int ACTION_VOTE_CANDIDATE_5 = 14;
     public static final int ACTION_ROLES_CREATE = 15;
+    public static final int ACTION_OPEN_RATION_EDITOR = 16;
     public static final int ACTION_SET_ATTRIBUTE = 1000;
 
     private static final int TAB_W = 90;
     private static final int TAB_H = 16;
-    private static final int BTN_Y = 270;
-    private static final int VOTE_Y = 245;
+    private static final int BTN_Y = FOOTER_Y;
+    private static final int VOTE_Y = FOOTER_Y + 16;
 
     private CivControlPanelSnapshot snapshot;
     private String selectedTab = "OVERVIEW";
@@ -118,6 +123,13 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
                 addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
                 addBtn(ACTION_ROLES_CREATE, "Create Role", 80, 158, BTN_Y);
             }
+            case "ECONOMY" -> {
+                addBtn(ACTION_DISTRIBUTION_TOGGLE, "Policy", 60, 10, BTN_Y);
+                addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
+                if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
+                    addBtn(ACTION_OPEN_RATION_EDITOR, "Rations", 70, 158, BTN_Y);
+                }
+            }
             default -> {
                 addBtn(ACTION_DISTRIBUTION_TOGGLE, "Policy", 60, 10, BTN_Y);
                 addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
@@ -156,6 +168,8 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     }
 
     private void populateOverview() {
+        addIdentitySection(snapshot.civilizationName(), snapshot.playerRole(), hasAnyManagementAccess());
+        addSection("Governance Snapshot", 0xFFAED3FF);
         addLabelRow("Leader", snapshot.leaderTitle());
         for (AttributeCategory cat : AttributeCategory.values()) {
             String attrKey = activeAttributeKey(cat);
@@ -178,30 +192,55 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     }
 
     private void populateEconomy() {
+        addIdentitySection(snapshot.civilizationName(), snapshot.playerRole(), snapshot.canManageHubDistribution());
+        addSection("Economy Snapshot", 0xFFFFC58A);
         addLabelRow("Civ treasury", RealCivUtil.formatCredits(snapshot.civTreasuryCents()));
         addLabelRow("Your karma", RealCivUtil.formatCredits(snapshot.playerContributionKarmaCents()));
         addLabelRow("Total contributions", String.valueOf(snapshot.playerContributedItemsTotal()));
         addLabelRow("Hub stock types", String.valueOf(snapshot.hubStockEntryCount()));
-        addLabelRow("Distribution mode", snapshot.resourceAttribute());
+        addLabelRow("Distribution mode", displayAttribute(snapshot.resourceAttribute()));
         addLabelRow("Daily allowances", String.valueOf(snapshot.hubDailyAllowanceCount()));
+        if (!snapshot.hubDailyAllowanceEntries().isEmpty()) {
+            addSpacer(2);
+            addSection("Ration Allowance Preview", 0xFF80CBC4);
+            for (String allowanceEntry : snapshot.hubDailyAllowanceEntries()) {
+                int split = allowanceEntry.indexOf('|');
+                if (split <= 0 || split + 1 >= allowanceEntry.length()) {
+                    continue;
+                }
+                String itemId = allowanceEntry.substring(0, split);
+                int dailyAllowance = parseNonNegativeInt(allowanceEntry.substring(split + 1));
+                addLabelRow(resolveItemDisplayName(itemId), dailyAllowance + "/day", 0xFF9DB0C2);
+            }
+            int hidden = Math.max(0, snapshot.hubDailyAllowanceCount() - snapshot.hubDailyAllowanceEntries().size());
+            if (hidden > 0) {
+                addLabelRow("", "+" + hidden + " more item allowance entr" + (hidden == 1 ? "y" : "ies"), 0xFF78909C);
+            }
+        }
         String cap = snapshot.maxContributionKarmaGainPerDayCents() <= 0
                 ? "Unlimited" : RealCivUtil.formatCredits(snapshot.maxContributionKarmaGainPerDayCents());
         addLabelRow("Karma cap/day", cap);
         addSpacer(4);
+        if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
+            addLabelRow("", "Rationed mode active. Use the Rations button below to edit daily allowances.", 0xFF80CBC4);
+            addSpacer(2);
+        }
         addSection("Resource Policy", 0xFFC6D2DE);
-        addAttributeSelectorButtons(snapshot.resourceAttribute());
+        addAttributeSelectorButtons(AttributeCategory.RESOURCE, snapshot.resourceAttribute());
     }
 
     private void populateGovernance() {
+        addIdentitySection(snapshot.civilizationName(), snapshot.playerRole(), snapshot.canManageGovernance());
+        addSection("Governance Controls", 0xFFAED3FF);
         addLabelRow("Leader", snapshot.leaderTitle());
         addLabelRow("Workflow", snapshot.governanceApprovalWorkflowEnabled() ? "Enabled" : "Disabled");
-        addLabelRow("You are", snapshot.playerRole());
+        addLabelRow("Friendly fire", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
         addSpacer(4);
 
         for (AttributeCategory cat : AttributeCategory.values()) {
             if (cat == AttributeCategory.RESOURCE) continue;
             addSection(cat.displayName(), 0xFFC6D2DE);
-            addAttributeSelectorButtons(activeAttributeKey(cat));
+            addAttributeSelectorButtons(cat, activeAttributeKey(cat));
         }
 
         addSpacer(4);
@@ -236,18 +275,16 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
         }
     }
 
-    private void addAttributeSelectorButtons(String active) {
-        for (AttributeCategory cat : AttributeCategory.values()) {
-            String catActive = activeAttributeKey(cat);
-            for (CivicAttribute attr : CivicAttribute.values()) {
-                if (attr.category() != cat) continue;
-                if (!attr.serializedName().equals(catActive) && attr.category() == AttributeCategory.RESOURCE && cat != AttributeCategory.RESOURCE) continue;
-                boolean isActive = attr.serializedName().equals(catActive);
-                String label = (isActive ? "[x] " : "[  ] ") + attr.displayName();
-                int color = isActive ? 0xFFA5D6A7 : 0xFF9BA9B7;
-                int attrOrdinal = attr.ordinal();
-                addSelectableRow(label, color, btn -> sendAction(ACTION_SET_ATTRIBUTE + attrOrdinal));
+    private void addAttributeSelectorButtons(AttributeCategory category, String active) {
+        for (CivicAttribute attr : CivicAttribute.values()) {
+            if (attr.category() != category) {
+                continue;
             }
+            boolean isActive = attr.serializedName().equals(active);
+            String label = (isActive ? "[x] " : "[  ] ") + attr.displayName();
+            int color = isActive ? 0xFFA5D6A7 : 0xFF9BA9B7;
+            int attrOrdinal = attr.ordinal();
+            addSelectableRow(label, color, btn -> sendAction(ACTION_SET_ATTRIBUTE + attrOrdinal));
         }
     }
 
@@ -263,10 +300,12 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     }
 
     private void populateRoles() {
+        addIdentitySection(snapshot.civilizationName(), snapshot.playerRole(), snapshot.canManageGovernance());
+        addSection("Role Administration", 0xFFB0BEC5);
         addLabelRow("Custom roles", String.valueOf(snapshot.customRoleCount()));
         addLabelRow("Managers", String.valueOf(snapshot.managerCount()));
         addLabelRow("Leader title", snapshot.leaderTitle());
-        addLabelRow("Resource policy", snapshot.resourceAttribute());
+        addLabelRow("Resource policy", displayAttribute(snapshot.resourceAttribute()));
         addLabelRow("Friendly PvP", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
         addSpacer(4);
 
@@ -290,6 +329,43 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
         } else {
             addLabelRow("", "Role management is available to leadership.", 0xFF78909C);
         }
+    }
+
+    private String displayAttribute(String serializedName) {
+        CivicAttribute attr = CivicAttribute.fromSerializedName(serializedName);
+        return attr == null ? fallbackText(serializedName, "-") : attr.displayName();
+    }
+
+    private int parseNonNegativeInt(String value) {
+        try {
+            return Math.max(0, Integer.parseInt(value));
+        } catch (NumberFormatException ignored) {
+            return 0;
+        }
+    }
+
+    private String resolveItemDisplayName(String itemIdRaw) {
+        try {
+            ResourceLocation itemId = ResourceLocation.parse(itemIdRaw);
+            Item item = BuiltInRegistries.ITEM.getOptional(itemId).orElse(Items.AIR);
+            if (item == Items.AIR) {
+                return itemIdRaw;
+            }
+            return item.getDescription().getString();
+        } catch (Exception ignored) {
+            return itemIdRaw;
+        }
+    }
+
+    private boolean hasAnyManagementAccess() {
+        return snapshot.canManageGovernance()
+                || snapshot.canManageCensus()
+                || snapshot.canManageHubDistribution();
+    }
+
+    private boolean isRationedPolicy() {
+        CivicAttribute attr = CivicAttribute.fromSerializedName(snapshot.resourceAttribute());
+        return attr == CivicAttribute.RATIONED;
     }
 
     @Override

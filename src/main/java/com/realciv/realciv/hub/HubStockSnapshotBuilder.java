@@ -15,7 +15,7 @@ import net.minecraft.world.item.Items;
 import org.jetbrains.annotations.Nullable;
 
 public final class HubStockSnapshotBuilder {
-    private static final int ROWS_PER_PAGE = 20;
+    public static final int ROWS_PER_PAGE = 20;
 
     private HubStockSnapshotBuilder() {}
 

@@ -12,10 +12,12 @@ import org.jetbrains.annotations.NotNull;
 public class CommunityHubDepositMenu extends AbstractContainerMenu {
     private static final int DEPOSIT_SLOTS = 54;
     private final CommunityHubDepositContainer deposit;
+    private final String civilizationId;
 
     public CommunityHubDepositMenu(int containerId, Inventory inventory, CommunityHubDepositContainer deposit) {
         super(ModMenus.HUB_DEPOSIT.get(), containerId);
         this.deposit = deposit;
+        this.civilizationId = deposit.civilizationId();
 
         int slotIndex = 0;
         for (int row = 0; row < 6; row++) {
@@ -36,7 +38,12 @@ public class CommunityHubDepositMenu extends AbstractContainerMenu {
     }
 
     public static CommunityHubDepositMenu fromBuffer(int containerId, Inventory inventory, RegistryFriendlyByteBuf buffer) {
-        return new CommunityHubDepositMenu(containerId, inventory, new CommunityHubDepositContainer(""));
+        String civId = buffer.readableBytes() > 0 ? buffer.readUtf(128) : "";
+        return new CommunityHubDepositMenu(containerId, inventory, new CommunityHubDepositContainer(civId));
+    }
+
+    public String civilizationId() {
+        return civilizationId;
     }
 
     @Override

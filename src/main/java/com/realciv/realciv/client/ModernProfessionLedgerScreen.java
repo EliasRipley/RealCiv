@@ -8,19 +8,27 @@ import net.minecraft.client.gui.GuiGraphics;
 import net.minecraft.network.chat.Component;
 
 public class ModernProfessionLedgerScreen extends RealCivScreen {
-    private final ProfessionLedgerSnapshot snapshot;
+    private ProfessionLedgerSnapshot snapshot;
 
     public ModernProfessionLedgerScreen(ProfessionLedgerSnapshot snapshot) {
         super(Component.literal("Profession Ledger"), "Your skills, levels, and progression", 0xFF8BC34A);
         this.snapshot = snapshot;
     }
 
+    public void refresh(ProfessionLedgerSnapshot newSnapshot) {
+        this.snapshot = newSnapshot;
+        refreshWidgets();
+    }
+
     @Override
     protected void addScrollContent(Panel panel) {
-        addSection("Player Info", 0xFFA5D6A7);
-        addLabelRow("Name", snapshot.playerName());
-        addLabelRow("Civilization", snapshot.civName());
+        addIdentitySection(snapshot.civName(), "", false);
+        addSection("Player Status", 0xFFA5D6A7);
+        addLabelRow("Player", snapshot.playerName());
         addLabelRow("Karma", RealCivUtil.formatCredits(snapshot.karmaCents()));
+        addLabelRow("Civ members", String.valueOf(snapshot.civMemberCount()));
+        addLabelRow("Contributed item types", String.valueOf(snapshot.contributedItemTypes()));
+        addLabelRow("Pending warrior registrations", String.valueOf(snapshot.pendingWarriorRegistrations()));
 
         addSpacer(4);
 

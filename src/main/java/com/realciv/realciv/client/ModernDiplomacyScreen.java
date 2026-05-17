@@ -42,8 +42,12 @@ public class ModernDiplomacyScreen extends RealCivScreen {
 
     @Override
     protected void addScrollContent(Panel panel) {
-        String pageInfo = "Page " + (snapshot.page() + 1) + "/" + snapshot.totalPages();
-        addLabelRow("", pageInfo, 0xFF9DB0C2);
+        addIdentitySection(snapshot.civDisplayName(), "", snapshot.canManage());
+        addSection("Diplomacy Overview", 0xFFE57373);
+        addLabelRow("Relations listed", String.valueOf(snapshot.relations().size()));
+        addLabelRow("Page", (snapshot.page() + 1) + "/" + Math.max(1, snapshot.totalPages()), 0xFF9DB0C2);
+        addSpacer(4);
+        addSection("Relation Matrix", 0xFFC6D2DE);
 
         panel.add(new LabelWidget(panel, "Civilization", 4, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Status", 160, currentY, 0xFF78909C));
@@ -105,7 +109,9 @@ public class ModernDiplomacyScreen extends RealCivScreen {
             if ("WAR".equals(relation.state())) {
                 casualties = "us:" + relation.ourCasualties() + " them:" + relation.theirCasualties();
             } else if ("ALLY".equals(relation.state())) {
-                casualties = "V allied";
+                casualties = "allied";
+            } else {
+                casualties = "-";
             }
             graphics.drawString(font, Component.literal(font.plainSubstrByWidth(casualties, 100)),
                     x + 260, y + 2, 0xFF78909C, false);

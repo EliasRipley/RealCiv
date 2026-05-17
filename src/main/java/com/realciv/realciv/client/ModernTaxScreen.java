@@ -26,16 +26,16 @@ public class ModernTaxScreen extends RealCivScreen {
     public static final int ACTION_ITEM_CYCLE = 7;
     public static final int ACTION_ITEM_COUNT_DOWN = 8;
     public static final int ACTION_ITEM_COUNT_UP = 9;
-    public static final int ACTION_MEMBER_CLICK = 10;
     public static final int ACTION_PREV_PAGE = 11;
     public static final int ACTION_NEXT_PAGE = 12;
     public static final int ACTION_SET_TAX_ITEM = 13;
 
-    private static final int PAY_Y = 250;
+    private static final int PAY_Y = FOOTER_Y;
     private static final int PAGE_Y = 2;
 
     private TaxSnapshot snapshot;
     private boolean showManagePage;
+    private IntTextBox itemCountInput;
 
     public ModernTaxScreen(TaxSnapshot snapshot) {
         super(Component.literal("Tax Office"), "Upkeep, prepayment, and policy", 0xFFE1B12C);
@@ -44,6 +44,7 @@ public class ModernTaxScreen extends RealCivScreen {
 
     public void refresh(TaxSnapshot newSnapshot) {
         this.snapshot = newSnapshot;
+        this.itemCountInput = null;
         refreshWidgets();
     }
 
@@ -99,24 +100,34 @@ public class ModernTaxScreen extends RealCivScreen {
     }
 
     private void populateViewPage(Panel panel) {
-        addLabelRow("Your plots", String.valueOf(snapshot.ownedPlots()));
-        addLabelRow("Delinquent", String.valueOf(snapshot.delinquentPlots()));
-        addLabelRow("Karma", RealCivUtil.formatCredits(snapshot.playerKarmaCents()));
-        addLabelRow("Civ Treasury", RealCivUtil.formatCredits(snapshot.civTreasuryCents()));
+        addIdentitySection(snapshot.civDisplayName(), snapshot.playerRole(), snapshot.canManage());
+        addSection("Your Upkeep", 0xFFE1B12C);
+        addLabelRow("Owned plots", String.valueOf(snapshot.ownedPlots()));
+        addLabelRow("Delinquent plots", String.valueOf(snapshot.delinquentPlots()),
+                snapshot.delinquentPlots() > 0 ? 0xFFF44336 : 0xFFF4F7FA);
+        addLabelRow("Your karma", RealCivUtil.formatCredits(snapshot.playerKarmaCents()));
+        addLabelRow("Next upkeep tick", String.valueOf(snapshot.nextUpkeepTick()), 0xFF9DB0C2);
+
+        addSpacer(4);
+        addSection("Civilization Tax Policy", 0xFFE1B12C);
+        addLabelRow("Civ treasury", RealCivUtil.formatCredits(snapshot.civTreasuryCents()));
         addLabelRow("Rate", String.format("%.2fx", snapshot.rateMultiplier()));
         addLabelRow("Mode", snapshot.paymentMode());
 
-        int itemColor = "karma".equalsIgnoreCase(snapshot.paymentMode()) ? 0xFF78909C : 0xFFF4F7FA;
+        int itemColor = isKarmaMode() ? 0xFF78909C : 0xFFF4F7FA;
         addLabelRow("Tax item", snapshot.taxItemId() + " x" + snapshot.taxItemCount(), itemColor);
 
-        long perPlotCost = "karma".equalsIgnoreCase(snapshot.paymentMode())
-                ? snapshot.cycleCostCents() : snapshot.taxItemPerPlotRate();
+        long perPlotCost = isKarmaMode()
+                ? (snapshot.ownedPlots() > 0 ? snapshot.cycleCostCents() / snapshot.ownedPlots() : 0L)
+                : snapshot.taxItemPerPlotRate();
         addLabelRow("Per plot/cycle", String.valueOf(perPlotCost), 0xFFB0BEC5);
+        addLabelRow("Cycle cost (you)", String.valueOf(isKarmaMode()
+                ? snapshot.cycleCostCents() : snapshot.cycleItemCost()), 0xFFB0BEC5);
 
         addSpacer(6);
 
         if (snapshot.canManage()) {
-            String pageLabel = "Members (page " + (snapshot.memberPage() + 1) + "/" + snapshot.totalMemberPages() + ")";
+            String pageLabel = "Member Upkeep (page " + (snapshot.memberPage() + 1) + "/" + snapshot.totalMemberPages() + ")";
             addSection(pageLabel, 0xFF9DB0C2);
 
             panel.add(new LabelWidget(panel, "Name", 4, currentY, 0xFF78909C));
@@ -126,14 +137,12 @@ public class ModernTaxScreen extends RealCivScreen {
             currentY += ROW_H;
 
             for (int i = 0; i < snapshot.members().size(); i++) {
-                int idx = i;
                 TaxSnapshot.MemberRow m = snapshot.members().get(i);
-                panel.add(new MemberRowWidget(panel, 4, currentY, m, idx, snapshot.canManage(),
-                        () -> sendAction(ACTION_MEMBER_CLICK * 100 + idx)));
+                panel.add(new MemberRowWidget(panel, 4, currentY, m));
                 currentY += ROW_H;
             }
         } else {
-            addLabelRow("", "Leadership sees all tax records and can adjust policy.", 0xFF78909C);
+            addLabelRow("", "Leadership sees member tax records and can adjust policy.", 0xFF78909C);
         }
     }
 
@@ -153,15 +162,22 @@ public class ModernTaxScreen extends RealCivScreen {
         addSpacer(4);
         addSection("Tax Item", 0xFFE1B12C);
         addLabelRow("Current item", snapshot.taxItemId() + " x" + snapshot.taxItemCount(),
-                "karma".equalsIgnoreCase(snapshot.paymentMode()) ? 0xFF78909C : 0xFFF4F7FA);
+                isKarmaMode() ? 0xFF78909C : 0xFFF4F7FA);
 
         panel.add(new LabelWidget(panel, "Click slot while holding item to set.", COL_LABEL, currentY, 0xFF78909C));
         TaxItemSlot slot = new TaxItemSlot(panel, COL_BTNS, currentY, snapshot);
         panel.add(slot);
         addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_DOWN, "-C", 26, COL_BTNS + 22, currentY);
         addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_UP, "+C", 26, COL_BTNS + 52, currentY);
+        itemCountInput = makeItemCountInput(panel);
+        itemCountInput.setPosAndSize(COL_BTNS + 82, currentY, 40, BTN_H);
+        panel.add(itemCountInput);
+        SimpleTextButton setCountBtn = makePanelBtn(panel, "Set", button -> submitItemCountFromInput());
+        setCountBtn.setPosAndSize(COL_BTNS + 126, currentY, 34, BTN_H);
+        panel.add(setCountBtn);
         currentY += ROW_H + 4;
 
+        addLabelRow("", "Type a quantity and press Enter/Set for direct input.", 0xFF78909C);
         addSpacer(8);
         addLabelRow("", "Use the < > buttons to page through members.", 0xFF78909C);
     }
@@ -172,30 +188,51 @@ public class ModernTaxScreen extends RealCivScreen {
         panel.add(btn);
     }
 
+    private IntTextBox makeItemCountInput(Panel panel) {
+        IntTextBox box = new IntTextBox(panel) {
+            @Override
+            public void onEnterPressed() {
+                submitItemCountFromInput();
+            }
+        };
+        box.setMinMax(1, 9999);
+        box.setAmount(Math.max(1, snapshot.taxItemCount()));
+        box.ghostText = "Qty";
+        return box;
+    }
+
+    private void submitItemCountFromInput() {
+        if (itemCountInput == null) {
+            return;
+        }
+        int next = Math.max(1, Math.min(9999, itemCountInput.getIntValue()));
+        PacketDistributor.sendToServer(new RealCivPayloads.SetTaxItemCountPayload(next));
+    }
+
     @Override
     protected void sendAction(int actionId) {
         PacketDistributor.sendToServer(new RealCivPayloads.RealCivActionPayload(
                 RealCivPayloads.SCREEN_TAX, actionId));
     }
 
+    private boolean isKarmaMode() {
+        return snapshot.paymentMode().toLowerCase(java.util.Locale.ROOT).contains("karma");
+    }
+
     private static class MemberRowWidget extends Widget {
         private final TaxSnapshot.MemberRow member;
-        private final boolean canManage;
-        private final Runnable onClick;
 
-        MemberRowWidget(Panel parent, int x, int y, TaxSnapshot.MemberRow member, int idx, boolean canManage, Runnable onClick) {
+        MemberRowWidget(Panel parent, int x, int y, TaxSnapshot.MemberRow member) {
             super(parent);
             setPosAndSize(x, y, CONTENT_W, ROW_H);
             this.member = member;
-            this.canManage = canManage;
-            this.onClick = onClick;
         }
 
         @Override
         public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
-            boolean hovered = isMouseOver() && canManage;
+            boolean hovered = isMouseOver();
             if (hovered) {
-                graphics.fill(x, y, x + w, y + h, 0x20FFFFFF);
+                graphics.fill(x, y, x + w, y + h, 0x18FFFFFF);
             }
             var font = Minecraft.getInstance().font;
             String prefix = member.isLeader() ? "* " : "  ";
@@ -207,15 +244,6 @@ public class ModernTaxScreen extends RealCivScreen {
                     x + 180, y + 2, member.delinquentPlots() > 0 ? 0xFFF44336 : 0xFFF4F7FA, false);
             graphics.drawString(font, Component.literal(RealCivUtil.formatCredits(member.karmaCents())),
                     x + 230, y + 2, 0xFFF4F7FA, false);
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (isMouseOver() && canManage) {
-                onClick.run();
-                return true;
-            }
-            return false;
         }
     }
 

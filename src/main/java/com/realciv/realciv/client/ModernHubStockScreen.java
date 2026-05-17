@@ -44,10 +44,13 @@ public class ModernHubStockScreen extends RealCivScreen {
 
     @Override
     protected void addScrollContent(Panel panel) {
-        addLabelRow("Distribution mode: " + snapshot.distributionMode(), "", 0xFFF4F7FA);
-
-        String pageInfo = "Page " + (snapshot.page() + 1) + "/" + snapshot.totalPages();
-        addLabelRow("", pageInfo, 0xFF9DB0C2);
+        addIdentitySection(snapshot.civDisplayName(), "", snapshot.canManage());
+        addSection("Hub Distribution", 0xFFFFB074);
+        addLabelRow("Player", snapshot.playerName());
+        addLabelRow("Mode", snapshot.distributionMode());
+        addLabelRow("Page", (snapshot.page() + 1) + "/" + Math.max(1, snapshot.totalPages()), 0xFF9DB0C2);
+        addLabelRow("Stock entries on page", String.valueOf(snapshot.entries().size()), 0xFFB0BEC5);
+        addSpacer(2);
 
         panel.add(new LabelWidget(panel, "Item", 4, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Stock", 110, currentY, 0xFF78909C));
@@ -111,7 +114,7 @@ public class ModernHubStockScreen extends RealCivScreen {
                             x + 310, y + 2, 0xFF90CAF9, false);
                 }
             } else {
-                graphics.drawString(font, Component.literal("oo"),
+                graphics.drawString(font, Component.literal("Inf"),
                         x + 250, y + 2, 0xFF78909C, false);
             }
 

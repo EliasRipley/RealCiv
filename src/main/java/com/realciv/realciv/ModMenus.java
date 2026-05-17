@@ -1,6 +1,7 @@
 package com.realciv.realciv;
 
 import com.realciv.realciv.hub.CommunityHubDepositMenu;
+import com.realciv.realciv.hub.RationDraftMenu;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.world.inventory.MenuType;
 import net.neoforged.bus.api.IEventBus;
@@ -14,6 +15,10 @@ public final class ModMenus {
     public static final DeferredHolder<MenuType<?>, MenuType<CommunityHubDepositMenu>> HUB_DEPOSIT = MENUS.register(
             "hub_deposit",
             () -> IMenuTypeExtension.create(CommunityHubDepositMenu::fromBuffer));
+
+    public static final DeferredHolder<MenuType<?>, MenuType<RationDraftMenu>> RATION_DRAFT = MENUS.register(
+            "ration_draft",
+            () -> IMenuTypeExtension.create(RationDraftMenu::fromBuffer));
 
     private ModMenus() {
     }

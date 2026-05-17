@@ -17,7 +17,7 @@ public record ProfessionLedgerSnapshot(
         List<ProfessionRow> professions) {
 
     public static final int MAX = 96;
-    public static final int MAX_ROWS = 16;
+    public static final int MAX_ROWS = 24;
 
     public record ProfessionRow(String name, int level, int xp, String actionLine) {}
 

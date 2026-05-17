@@ -52,6 +52,7 @@ import net.minecraft.world.level.block.state.BlockState;
 import net.neoforged.neoforge.common.ItemAbilities;
 import net.neoforged.neoforge.common.ItemAbility;
 import net.neoforged.neoforge.common.IShearable;
+import net.neoforged.neoforge.common.util.TriState;
 import net.neoforged.neoforge.event.entity.player.PlayerInteractEvent;
 import net.neoforged.neoforge.event.entity.player.UseItemOnBlockEvent;
 import net.neoforged.neoforge.event.entity.player.BonemealEvent;
@@ -76,7 +77,18 @@ public final class BlockEventHandlers {
     }
 
     public static void handleRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
-        if (event.getHand() != InteractionHand.MAIN_HAND || event.getLevel().isClientSide()) {
+        if (event.getHand() != InteractionHand.MAIN_HAND) {
+            return;
+        }
+
+        BlockState clickedState = event.getLevel().getBlockState(event.getPos());
+        // Civic control blocks open custom dashboards; suppress item-use to prevent
+        // client ghost stack/desync when right-clicking them with placeable items.
+        if (isCivicControlBlock(clickedState)) {
+            event.setUseItem(TriState.FALSE);
+        }
+
+        if (event.getLevel().isClientSide()) {
             return;
         }
         if (!(event.getEntity() instanceof ServerPlayer player) || player.getServer() == null) {
@@ -84,7 +96,6 @@ public final class BlockEventHandlers {
         }
 
         CivSavedData data = CivSavedData.get(player.getServer());
-        BlockState clickedState = event.getLevel().getBlockState(event.getPos());
         ItemStack held = event.getItemStack();
 
         if (held.is(ModBlocks.LAND_WAND.get())) {
@@ -947,11 +958,13 @@ public final class BlockEventHandlers {
         registerPendingWarriorHubProgress(player, data, civId);
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
 
-        player.openMenu(new SimpleMenuProvider(
-                (containerId, playerInventory, p) ->
-                        new CommunityHubDepositMenu(
-                                containerId, playerInventory, new CommunityHubDepositContainer(civId)),
-                Component.literal("Community Hub Deposit")));
+        player.openMenu(
+                new SimpleMenuProvider(
+                        (containerId, playerInventory, p) ->
+                                new CommunityHubDepositMenu(
+                                        containerId, playerInventory, new CommunityHubDepositContainer(civId)),
+                        Component.literal("Community Hub Deposit")),
+                buffer -> buffer.writeUtf(civId, 128));
 
         player.sendSystemMessage(Component.literal(
                 "Deposit mode for civilization '" + civId + "'. "
@@ -1016,7 +1029,7 @@ public final class BlockEventHandlers {
             ServerPlayer player,
             CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        var snapshot = TaxSnapshotBuilder.build(player, data, civId);
+        var snapshot = TaxSnapshotBuilder.build(player, data, civId, 0);
         PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenTaxPayload(snapshot));
         player.sendSystemMessage(Component.literal("Tax Office opened for " + RealCivUtil.civilizationDisplayName(data, civId) + "."));
 

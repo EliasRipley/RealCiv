@@ -18,7 +18,11 @@ public class ModernCensusScreen extends RealCivScreen {
     public static final int ACTION_PREV_PAGE = 1;
     public static final int ACTION_NEXT_PAGE = 2;
 
-    private static final int BTN_Y = 270;
+    private static final int BTN_Y = FOOTER_Y;
+    private static final int MEMBER_ACTION_KICK_X = 350;
+    private static final int MEMBER_ACTION_MANAGER_X = 404;
+    private static final int MEMBER_ACTION_Y_OFFSET = 2;
+    private static final int MEMBER_ACTION_H = 14;
 
     private CensusSnapshot snapshot;
 
@@ -48,44 +52,72 @@ public class ModernCensusScreen extends RealCivScreen {
 
     @Override
     protected void addScrollContent(Panel panel) {
-        String memberLabel = "Members (" + snapshot.totalMembers() + ") page "
-                + (snapshot.memberPage() + 1) + "/" + snapshot.memberPageCount();
-        addSection(memberLabel, 0xFFC6D2DE);
+        addIdentitySection(snapshot.civDisplayName(), "", snapshot.canManage());
+        addSection("Membership Overview", 0xFFA5D6A7);
+        addLabelRow("Members", String.valueOf(snapshot.totalMembers()));
+        addLabelRow("Join requests", String.valueOf(snapshot.totalRequests()));
+        addLabelRow("Open invites", String.valueOf(snapshot.totalInvites()));
+        addLabelRow("Page", (snapshot.memberPage() + 1) + "/" + Math.max(1, snapshot.memberPageCount()), 0xFF9DB0C2);
+
+        addSpacer(4);
+        addSection("Member Directory", 0xFFC6D2DE);
 
         panel.add(new LabelWidget(panel, "Name", 4, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Role", 130, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Profession", 230, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Lv", 320, currentY, 0xFF78909C));
+        panel.add(new LabelWidget(panel, "Actions", 350, currentY, 0xFF78909C));
         currentY += ROW_H;
 
         boolean hasMembers = false;
         for (int i = 0; i < snapshot.members().size(); i++) {
             hasMembers = true;
-            panel.add(new MemberRowWidget(panel, 4, currentY, i, snapshot.members().get(i), snapshot.canManage(), this::sendAction));
+            CensusSnapshot.MemberRow member = snapshot.members().get(i);
+            panel.add(new MemberRowWidget(panel, 4, currentY, member, snapshot.canManage()));
+            if (snapshot.canManage()) {
+                int rowIndex = i;
+                addRowButton(panel, "Kick", MEMBER_ACTION_KICK_X, currentY + MEMBER_ACTION_Y_OFFSET, 50,
+                        () -> confirmKick(member, rowIndex));
+                String managerLabel = isManagerRole(member.role()) ? "Demote" : "Promote";
+                addRowButton(panel, managerLabel, MEMBER_ACTION_MANAGER_X, currentY + MEMBER_ACTION_Y_OFFSET, 74,
+                        () -> sendAction(ACTION_MEMBER_MANAGER + rowIndex));
+            }
             currentY += ROW_H;
         }
         if (hasMembers) addSpacer(4);
 
         if (snapshot.totalRequests() > 0) {
-            addSection("Join requests (" + snapshot.totalRequests() + ")", 0xFFB8E986);
+            addSection("Join Requests (" + snapshot.totalRequests() + ")", 0xFFB8E986);
             for (int i = 0; i < snapshot.requests().size(); i++) {
-                panel.add(new RequestRowWidget(panel, 4, currentY, i, snapshot.requests().get(i), snapshot.canManage(), this::sendAction));
+                panel.add(new RequestRowWidget(panel, 4, currentY, snapshot.requests().get(i), snapshot.canManage()));
+                if (snapshot.canManage()) {
+                    int rowIndex = i;
+                    addRowButton(panel, "Approve", MEMBER_ACTION_KICK_X, currentY + MEMBER_ACTION_Y_OFFSET, 50,
+                            () -> sendAction(ACTION_REQUEST_APPROVE + rowIndex));
+                    addRowButton(panel, "Deny", MEMBER_ACTION_MANAGER_X, currentY + MEMBER_ACTION_Y_OFFSET, 74,
+                            () -> sendAction(ACTION_REQUEST_DENY + rowIndex));
+                }
                 currentY += ROW_H;
             }
             addSpacer(4);
         }
 
         if (snapshot.totalInvites() > 0) {
-            addSection("Invites (" + snapshot.totalInvites() + ")", 0xFF90CAF9);
+            addSection("Outstanding Invites (" + snapshot.totalInvites() + ")", 0xFF90CAF9);
             for (int i = 0; i < snapshot.invites().size(); i++) {
-                panel.add(new InviteRowWidget(panel, 4, currentY, i, snapshot.invites().get(i), snapshot.canManage(), this::sendAction));
+                panel.add(new InviteRowWidget(panel, 4, currentY, snapshot.invites().get(i), snapshot.canManage()));
+                if (snapshot.canManage()) {
+                    int rowIndex = i;
+                    addRowButton(panel, "Revoke", MEMBER_ACTION_KICK_X, currentY + MEMBER_ACTION_Y_OFFSET, 128,
+                            () -> sendAction(ACTION_INVITE_REVOKE + rowIndex));
+                }
                 currentY += ROW_H;
             }
             addSpacer(4);
         }
 
         if (!snapshot.canManage()) {
-            addLabelRow("", "View only -- leadership manages membership.", 0xFF9E9E9E);
+            addLabelRow("", "View only. Leadership manages approvals and removals.", 0xFF9E9E9E);
         }
         if (!hasMembers) {
             addLabelRow("", "No members found.", 0xFF9E9E9E);
@@ -99,20 +131,34 @@ public class ModernCensusScreen extends RealCivScreen {
                 RealCivPayloads.SCREEN_CENSUS, actionId));
     }
 
+    private void confirmKick(CensusSnapshot.MemberRow member, int rowIndex) {
+        openYesNo(
+                Component.literal("Kick " + member.name() + "?"),
+                Component.literal("This will remove the player from your civilization."),
+                () -> sendAction(ACTION_MEMBER_KICK + rowIndex));
+    }
+
+    private void addRowButton(Panel panel, String label, int x, int y, int width, Runnable action) {
+        SimpleTextButton btn = makePanelBtn(panel, label, button -> action.run());
+        btn.setPosAndSize(x, y, width, MEMBER_ACTION_H);
+        panel.add(btn);
+    }
+
+    private boolean isManagerRole(String roleName) {
+        String normalized = roleName == null ? "" : roleName.toLowerCase(java.util.Locale.ROOT);
+        return normalized.contains("manager");
+    }
+
     private static class MemberRowWidget extends Widget {
-        private final int origIndex;
         private final CensusSnapshot.MemberRow member;
         private final boolean canManage;
-        private final java.util.function.IntConsumer actionSender;
 
-        MemberRowWidget(Panel parent, int x, int y, int origIndex, CensusSnapshot.MemberRow member,
-                        boolean canManage, java.util.function.IntConsumer actionSender) {
+        MemberRowWidget(Panel parent, int x, int y, CensusSnapshot.MemberRow member,
+                        boolean canManage) {
             super(parent);
             setPosAndSize(x, y, CONTENT_W, ROW_H);
-            this.origIndex = origIndex;
             this.member = member;
             this.canManage = canManage;
-            this.actionSender = actionSender;
         }
 
         @Override
@@ -130,36 +176,19 @@ public class ModernCensusScreen extends RealCivScreen {
                     x + 230, y + 2, 0xFF8BC34A, false);
             graphics.drawString(font, Component.literal(String.valueOf(member.level())),
                     x + 320, y + 2, 0xFF8BC34A, false);
-            if (hovered) {
-                graphics.drawString(font, Component.literal("Left: kick  |  Right: toggle manager"),
-                        x + 4, y + h, 0x60FFFFFF, false);
-            }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (isMouseOver() && canManage) {
-                actionSender.accept(button == MouseButton.LEFT ? ACTION_MEMBER_KICK + origIndex : ACTION_MEMBER_MANAGER + origIndex);
-                return true;
-            }
-            return false;
         }
     }
 
     private static class RequestRowWidget extends Widget {
-        private final int origIndex;
         private final CensusSnapshot.PendingRow request;
         private final boolean canManage;
-        private final java.util.function.IntConsumer actionSender;
 
-        RequestRowWidget(Panel parent, int x, int y, int origIndex, CensusSnapshot.PendingRow request,
-                         boolean canManage, java.util.function.IntConsumer actionSender) {
+        RequestRowWidget(Panel parent, int x, int y, CensusSnapshot.PendingRow request,
+                         boolean canManage) {
             super(parent);
             setPosAndSize(x, y, CONTENT_W, ROW_H);
-            this.origIndex = origIndex;
             this.request = request;
             this.canManage = canManage;
-            this.actionSender = actionSender;
         }
 
         @Override
@@ -169,35 +198,20 @@ public class ModernCensusScreen extends RealCivScreen {
             graphics.drawString(font, Component.literal(request.name()), x + 4, y + 2, 0xFFE8F5E9, false);
             if (hovered) {
                 graphics.fill(x, y, x + w, y + h, 0x20FFFFFF);
-                graphics.drawString(font, Component.literal("Left: approve  |  Right: deny"),
-                        x + 4, y + h, 0xFFFFD54F, false);
             }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (isMouseOver() && canManage) {
-                actionSender.accept(button == MouseButton.LEFT ? ACTION_REQUEST_APPROVE + origIndex : ACTION_REQUEST_DENY + origIndex);
-                return true;
-            }
-            return false;
         }
     }
 
     private static class InviteRowWidget extends Widget {
-        private final int origIndex;
         private final CensusSnapshot.PendingRow invite;
         private final boolean canManage;
-        private final java.util.function.IntConsumer actionSender;
 
-        InviteRowWidget(Panel parent, int x, int y, int origIndex, CensusSnapshot.PendingRow invite,
-                        boolean canManage, java.util.function.IntConsumer actionSender) {
+        InviteRowWidget(Panel parent, int x, int y, CensusSnapshot.PendingRow invite,
+                        boolean canManage) {
             super(parent);
             setPosAndSize(x, y, CONTENT_W, ROW_H);
-            this.origIndex = origIndex;
             this.invite = invite;
             this.canManage = canManage;
-            this.actionSender = actionSender;
         }
 
         @Override
@@ -207,18 +221,7 @@ public class ModernCensusScreen extends RealCivScreen {
             graphics.drawString(font, Component.literal(invite.name()), x + 4, y + 2, 0xFFE3F2FD, false);
             if (hovered) {
                 graphics.fill(x, y, x + w, y + h, 0x20FFFFFF);
-                graphics.drawString(font, Component.literal("Click to revoke invite"),
-                        x + 4, y + h, 0xFFFFD54F, false);
             }
-        }
-
-        @Override
-        public boolean mousePressed(MouseButton button) {
-            if (isMouseOver() && canManage) {
-                actionSender.accept(ACTION_INVITE_REVOKE + origIndex);
-                return true;
-            }
-            return false;
         }
     }
 }

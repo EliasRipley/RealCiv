@@ -8,7 +8,9 @@ import com.realciv.realciv.client.ModernCivControlPanelScreen;
 import com.realciv.realciv.client.ModernDiplomacyScreen;
 import com.realciv.realciv.client.ModernHubStockScreen;
 import com.realciv.realciv.client.ModernProfessionLedgerScreen;
+import com.realciv.realciv.client.ModernRationEditorScreen;
 import com.realciv.realciv.client.ModernTaxScreen;
+import com.realciv.realciv.client.RealCivScreen;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivicAttribute;
@@ -17,6 +19,10 @@ import com.realciv.realciv.diplomacy.DiplomacySnapshot;
 import com.realciv.realciv.diplomacy.DiplomacySnapshotBuilder;
 import com.realciv.realciv.hub.HubStockSnapshot;
 import com.realciv.realciv.hub.HubStockSnapshotBuilder;
+import com.realciv.realciv.hub.HubRationSnapshot;
+import com.realciv.realciv.hub.HubRationSnapshotBuilder;
+import com.realciv.realciv.hub.RationDraftContainer;
+import com.realciv.realciv.hub.RationDraftMenu;
 import com.realciv.realciv.ledger.ProfessionLedgerSnapshot;
 import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivMessages;
@@ -33,16 +39,21 @@ import dev.ftb.mods.ftbchunks.client.map.MapDimension;
 import dev.ftb.mods.ftbchunks.client.map.MapManager;
 import dev.ftb.mods.ftbchunks.client.map.MapRegion;
 import dev.ftb.mods.ftblibrary.math.XZ;
+import dev.ftb.mods.ftblibrary.ui.ScreenWrapper;
 import java.util.HashMap;
+import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.function.Consumer;
+import java.util.function.Supplier;
 import net.minecraft.client.Minecraft;
 import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
 import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.server.level.ServerPlayer;
+import net.minecraft.world.SimpleMenuProvider;
 import net.minecraft.world.item.Item;
 import net.minecraft.world.item.ItemStack;
 import net.minecraft.world.item.Items;
@@ -58,6 +69,7 @@ public final class RealCivNetwork {
     private static final Map<UUID, Integer> diplomacyPages = new HashMap<>();
     private static final Map<UUID, Integer> hubStockPages = new HashMap<>();
     private static final Map<UUID, Integer> censusPages = new HashMap<>();
+    private static final Map<UUID, Integer> rationPages = new HashMap<>();
 
     private RealCivNetwork() {}
 
@@ -70,34 +82,93 @@ public final class RealCivNetwork {
         registrar.playToClient(RealCivPayloads.OpenCensusPayload.TYPE, RealCivPayloads.OpenCensusPayload.STREAM_CODEC, RealCivNetwork::handleOpenCensus);
         registrar.playToClient(RealCivPayloads.OpenControlPanelPayload.TYPE, RealCivPayloads.OpenControlPanelPayload.STREAM_CODEC, RealCivNetwork::handleOpenControlPanel);
         registrar.playToClient(RealCivPayloads.OpenHubStockPayload.TYPE, RealCivPayloads.OpenHubStockPayload.STREAM_CODEC, RealCivNetwork::handleOpenHubStock);
+        registrar.playToClient(RealCivPayloads.OpenRationEditorPayload.TYPE, RealCivPayloads.OpenRationEditorPayload.STREAM_CODEC, RealCivNetwork::handleOpenRationEditor);
 
         registrar.playToClient(RealCivPayloads.ForceMapRefreshPayload.TYPE, RealCivPayloads.ForceMapRefreshPayload.STREAM_CODEC, RealCivNetwork::handleForceMapRefresh);
         registrar.playToServer(RealCivPayloads.RealCivActionPayload.TYPE, RealCivPayloads.RealCivActionPayload.STREAM_CODEC, RealCivNetwork::handleAction);
         registrar.playToServer(RealCivPayloads.SetTaxItemPayload.TYPE, RealCivPayloads.SetTaxItemPayload.STREAM_CODEC, RealCivNetwork::handleSetTaxItem);
+        registrar.playToServer(RealCivPayloads.SetTaxItemCountPayload.TYPE, RealCivPayloads.SetTaxItemCountPayload.STREAM_CODEC, RealCivNetwork::handleSetTaxItemCount);
+        registrar.playToServer(RealCivPayloads.SetHubAllowancePayload.TYPE, RealCivPayloads.SetHubAllowancePayload.STREAM_CODEC, RealCivNetwork::handleSetHubAllowance);
+        registrar.playToServer(RealCivPayloads.SetHubAllowanceBatchPayload.TYPE, RealCivPayloads.SetHubAllowanceBatchPayload.STREAM_CODEC, RealCivNetwork::handleSetHubAllowanceBatch);
     }
 
     private static void handleOpenTax(RealCivPayloads.OpenTaxPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernTaxScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernTaxScreen.class,
+                    () -> new ModernTaxScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
     }
 
     private static void handleOpenDiplomacy(RealCivPayloads.OpenDiplomacyPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernDiplomacyScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernDiplomacyScreen.class,
+                    () -> new ModernDiplomacyScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
     }
 
     private static void handleOpenProfession(RealCivPayloads.OpenProfessionLedgerPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernProfessionLedgerScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernProfessionLedgerScreen.class,
+                    () -> new ModernProfessionLedgerScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
     }
 
     private static void handleOpenCensus(RealCivPayloads.OpenCensusPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernCensusScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernCensusScreen.class,
+                    () -> new ModernCensusScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
     }
 
     private static void handleOpenControlPanel(RealCivPayloads.OpenControlPanelPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernCivControlPanelScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernCivControlPanelScreen.class,
+                    () -> new ModernCivControlPanelScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
     }
 
     private static void handleOpenHubStock(RealCivPayloads.OpenHubStockPayload payload, IPayloadContext context) {
-        context.enqueueWork(() -> new ModernHubStockScreen(payload.snapshot()).openGui());
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernHubStockScreen.class,
+                    () -> new ModernHubStockScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
+    }
+
+    private static void handleOpenRationEditor(RealCivPayloads.OpenRationEditorPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernRationEditorScreen.class,
+                    () -> new ModernRationEditorScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
+    }
+
+    private static <T extends RealCivScreen> void openOrRefreshRealCivScreen(
+            Class<T> screenType, Supplier<T> screenFactory, Consumer<T> refresher) {
+        Minecraft mc = Minecraft.getInstance();
+        if (mc.screen instanceof ScreenWrapper wrapper && wrapper.getGui() instanceof RealCivScreen openScreen) {
+            if (screenType.isInstance(openScreen)) {
+                refresher.accept(screenType.cast(openScreen));
+                return;
+            }
+
+            // Replace RealCiv screens in-place so ESC closes straight to gameplay
+            // instead of walking a stack of previously-opened block screens.
+            openScreen.closeGui(false);
+        }
+        screenFactory.get().openGui();
     }
 
     private static void handleForceMapRefresh(RealCivPayloads.ForceMapRefreshPayload payload, IPayloadContext context) {
@@ -154,6 +225,7 @@ public final class RealCivNetwork {
             case RealCivPayloads.SCREEN_CENSUS -> handleCensusAction(player, data, civId, payload.actionId());
             case RealCivPayloads.SCREEN_CONTROL_PANEL -> handleControlPanelAction(player, data, civId, payload.actionId());
             case RealCivPayloads.SCREEN_HUB_STOCK -> handleHubStockAction(player, data, civId, payload.actionId());
+            case RealCivPayloads.SCREEN_RATION_EDITOR -> handleRationEditorAction(player, data, civId, payload.actionId());
         }
     }
 
@@ -164,8 +236,47 @@ public final class RealCivNetwork {
     }
 
     private static void sendTaxScreen(ServerPlayer player, CivSavedData data, String civId) {
-        TaxSnapshot snap = TaxSnapshotBuilder.build(player, data, civId);
+        int page = taxPages.getOrDefault(player.getUUID(), 0);
+        TaxSnapshot snap = TaxSnapshotBuilder.build(player, data, civId, page);
         PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenTaxPayload(snap));
+    }
+
+    private static void openRationDraftMenu(ServerPlayer player, CivSavedData data, String civId) {
+        List<RationDraftMenu.AllowancePreviewEntry> allowancePreview = data.hubDailyAllowanceEntriesSorted(civId).stream()
+                .limit(48)
+                .map(entry -> new RationDraftMenu.AllowancePreviewEntry(
+                        entry.getKey(),
+                        Math.max(0, entry.getValue())))
+                .toList();
+        player.openMenu(
+                new SimpleMenuProvider(
+                        (containerId, playerInventory, p) ->
+                                new RationDraftMenu(
+                                        containerId,
+                                        playerInventory,
+                                        new RationDraftContainer(civId),
+                                        allowancePreview),
+                        Component.literal("Ration Draft Editor")),
+                buffer -> {
+                    buffer.writeUtf(civId, 128);
+                    buffer.writeVarInt(allowancePreview.size());
+                    for (RationDraftMenu.AllowancePreviewEntry entry : allowancePreview) {
+                        buffer.writeUtf(entry.itemId(), 128);
+                        buffer.writeVarInt(entry.dailyAllowance());
+                    }
+                });
+        player.sendSystemMessage(Component.literal(
+                "Ration draft opened for '" + civId + "'. Stage items here; stack size sets daily allowance. "
+                        + "Items are returned when you close."));
+    }
+
+    private static void sendRationEditorScreen(ServerPlayer player, CivSavedData data, String civId) {
+        boolean canManage = CivPermissionService.hasCivPermission(
+                player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
+        int page = rationPages.getOrDefault(player.getUUID(), 0);
+        HubRationSnapshot snap = HubRationSnapshotBuilder.build(player, data, civId, canManage, page);
+        rationPages.put(player.getUUID(), snap.page());
+        PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenRationEditorPayload(snap));
     }
 
     private static void handleTaxAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
@@ -192,8 +303,8 @@ public final class RealCivNetwork {
             }
             case ModernTaxScreen.ACTION_NEXT_PAGE -> {
                 int p = taxPages.getOrDefault(player.getUUID(), 0) + 1;
-                TaxSnapshot current = TaxSnapshotBuilder.build(player, data, civId);
-                taxPages.put(player.getUUID(), Math.min(p, current.totalMemberPages() - 1));
+                int nextPage = Math.min(p, TaxSnapshotBuilder.build(player, data, civId, 0).totalMemberPages() - 1);
+                taxPages.put(player.getUUID(), nextPage);
                 sendTaxScreen(player, data, civId);
                 return;
             }
@@ -214,6 +325,122 @@ public final class RealCivNetwork {
                 data.setTaxItemRule(civId, itemId, data.taxItemCountPerPlot(civId), player.getGameProfile().getName());
                 sendTaxScreen(player, data, civId);
             }
+        });
+    }
+
+    private static void handleSetHubAllowance(RealCivPayloads.SetHubAllowancePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            String civId = resolveCivId(player);
+            if (civId == null) {
+                return;
+            }
+            CivSavedData data = CivSavedData.get(player.getServer());
+            if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+                RealCivMessages.deny(player, "You do not have permission to manage hub daily allowances.");
+                sendRationEditorScreen(player, data, civId);
+                return;
+            }
+
+            ResourceLocation itemId = ResourceLocation.parse(payload.itemId());
+            if (!BuiltInRegistries.ITEM.containsKey(itemId)) {
+                RealCivMessages.deny(player, "Unknown item: " + payload.itemId());
+                sendRationEditorScreen(player, data, civId);
+                return;
+            }
+
+            int safeCount = Math.max(0, payload.dailyCount());
+            if (data.setHubDailyAllowanceLimit(civId, itemId, safeCount, player.getGameProfile().getName())) {
+                String action = safeCount <= 0 ? "cleared" : ("set to " + safeCount + "/day");
+                player.sendSystemMessage(Component.literal("Allowance for " + itemId + " " + action + "."));
+            }
+            sendRationEditorScreen(player, data, civId);
+        });
+    }
+
+    private static void handleSetTaxItemCount(RealCivPayloads.SetTaxItemCountPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            String civId = resolveCivId(player);
+            if (civId == null) {
+                return;
+            }
+            CivSavedData data = CivSavedData.get(player.getServer());
+            if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_UPKEEP)) {
+                RealCivMessages.deny(player, "You do not have permission to manage upkeep settings.");
+                sendTaxScreen(player, data, civId);
+                return;
+            }
+
+            int safeCount = Math.max(1, Math.min(9999, payload.itemCount()));
+            if (data.setTaxItemRule(civId, data.taxItemId(civId), safeCount, player.getGameProfile().getName())) {
+                player.sendSystemMessage(Component.literal("Item count: " + safeCount));
+            }
+            sendTaxScreen(player, data, civId);
+        });
+    }
+
+    private static void handleSetHubAllowanceBatch(RealCivPayloads.SetHubAllowanceBatchPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            String civId = resolveCivId(player);
+            if (civId == null) {
+                return;
+            }
+            CivSavedData data = CivSavedData.get(player.getServer());
+            if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+                RealCivMessages.deny(player, "You do not have permission to manage hub daily allowances.");
+                sendRationEditorScreen(player, data, civId);
+                return;
+            }
+
+            int pairCount = Math.min(payload.itemIds().size(), payload.dailyCounts().size());
+            if (pairCount > 256) {
+                pairCount = 256;
+            }
+
+            Map<ResourceLocation, Integer> normalized = new LinkedHashMap<>();
+            int invalidIds = 0;
+            for (int i = 0; i < pairCount; i++) {
+                String rawId = payload.itemIds().get(i);
+                ResourceLocation itemId;
+                try {
+                    itemId = ResourceLocation.parse(rawId);
+                } catch (Exception ignored) {
+                    invalidIds++;
+                    continue;
+                }
+                if (!BuiltInRegistries.ITEM.containsKey(itemId)) {
+                    invalidIds++;
+                    continue;
+                }
+                int safeCount = Math.max(0, Math.min(9999, payload.dailyCounts().get(i)));
+                normalized.put(itemId, safeCount);
+            }
+
+            String actor = player.getGameProfile().getName();
+            int changed = 0;
+            if (payload.replaceExisting()) {
+                changed += data.clearAllHubDailyAllowanceLimits(civId, actor);
+            }
+            for (Map.Entry<ResourceLocation, Integer> entry : normalized.entrySet()) {
+                if (data.setHubDailyAllowanceLimit(civId, entry.getKey(), entry.getValue(), actor)) {
+                    changed++;
+                }
+            }
+
+            if (invalidIds > 0) {
+                RealCivMessages.deny(player, "Skipped " + invalidIds + " invalid ration item entr" + (invalidIds == 1 ? "y." : "ies."));
+            }
+            player.sendSystemMessage(Component.literal(
+                    "Ration draft applied: " + normalized.size() + " item(s), " + changed + " change(s)."));
+            sendRationEditorScreen(player, data, civId);
         });
     }
 
@@ -356,7 +583,13 @@ public final class RealCivNetwork {
     private static void handleCensusAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
         boolean canManage = CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS)
                 || data.isCivicManager(civId, player.getUUID());
-        if (!canManage && actionId != ModernCensusScreen.ACTION_PREV_PAGE && actionId != ModernCensusScreen.ACTION_NEXT_PAGE) return;
+        if (!canManage && actionId != ModernCensusScreen.ACTION_PREV_PAGE && actionId != ModernCensusScreen.ACTION_NEXT_PAGE) {
+            RealCivMessages.deny(player, "Only leadership or civic managers can manage census actions.");
+            int page = currentCensusPage(player);
+            CensusSnapshot snap = CensusSnapshotBuilder.build(player, data, civId, false, page);
+            PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenCensusPayload(snap));
+            return;
+        }
 
         int page;
         if (actionId == ModernCensusScreen.ACTION_PREV_PAGE) {
@@ -369,13 +602,18 @@ public final class RealCivNetwork {
             page = currentCensusPage(player);
         }
 
+        int totalMemberPages = Math.max(1, (data.civilizationMembersSorted(civId).size()
+                + CensusSnapshotBuilder.MEMBERS_PER_PAGE - 1) / CensusSnapshotBuilder.MEMBERS_PER_PAGE);
+        page = Math.max(0, Math.min(page, totalMemberPages - 1));
+        censusPages.put(player.getUUID(), page);
+
         if (actionId >= 100 && actionId < 200) {
             int row = actionId - 100;
-            UUID memberId = memberAtRow(player, data, civId, row);
+            UUID memberId = memberAtRow(data, civId, page * CensusSnapshotBuilder.MEMBERS_PER_PAGE + row);
             if (memberId != null) data.removeMemberToDefault(civId, memberId, player.getGameProfile().getName());
         } else if (actionId >= 200 && actionId < 300) {
             int row = actionId - 200;
-            UUID target = memberAtRow(player, data, civId, row);
+            UUID target = memberAtRow(data, civId, page * CensusSnapshotBuilder.MEMBERS_PER_PAGE + row);
             if (target != null) data.setCivicManager(civId, target, !data.isCivicManager(civId, target), player.getGameProfile().getName());
         } else if (actionId >= 300 && actionId < 400) {
             int row = actionId - 300;
@@ -398,7 +636,7 @@ public final class RealCivNetwork {
     private static int currentCensusPage(ServerPlayer player) { return censusPages.getOrDefault(player.getUUID(), 0); }
 
     @Nullable
-    private static UUID memberAtRow(ServerPlayer player, CivSavedData data, String civId, int row) {
+    private static UUID memberAtRow(CivSavedData data, String civId, int row) {
         var members = data.civilizationMembersSorted(civId);
         return row >= 0 && row < members.size() ? members.get(row) : null;
     }
@@ -420,7 +658,10 @@ public final class RealCivNetwork {
 
         switch (actionId) {
             case ModernCivControlPanelScreen.ACTION_GOVERNANCE_CYCLE -> {
-                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+                    RealCivMessages.deny(player, "You do not have permission to manage governance.");
+                    return;
+                }
                 CivicAttribute current = data.civicAttribute(civId, AttributeCategory.EXECUTIVE);
                 CivicAttribute next = switch (current) {
                     case DIRECT_RULE -> CivicAttribute.COUNCIL_VOTE;
@@ -431,7 +672,10 @@ public final class RealCivNetwork {
                 player.sendSystemMessage(Component.literal("Executive: " + next.displayName()));
             }
             case ModernCivControlPanelScreen.ACTION_DISTRIBUTION_TOGGLE -> {
-                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) return;
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+                    RealCivMessages.deny(player, "You do not have permission to manage hub distribution policy.");
+                    return;
+                }
                 CivicAttribute current = data.civicAttribute(civId, AttributeCategory.RESOURCE);
                 CivicAttribute next = switch (current) {
                     case CONTRIBUTION_SHARE -> CivicAttribute.EQUAL_SHARE;
@@ -442,7 +686,10 @@ public final class RealCivNetwork {
                 player.sendSystemMessage(Component.literal("Resource: " + next.displayName()));
             }
             case ModernCivControlPanelScreen.ACTION_FRIENDLY_FIRE_TOGGLE -> {
-                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE)) return;
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE)) {
+                    RealCivMessages.deny(player, "You do not have permission to toggle friendly PvP.");
+                    return;
+                }
                 boolean next = !data.allowIntraCivPvp(civId);
                 data.setAllowIntraCivPvp(civId, next, name);
                 player.sendSystemMessage(Component.literal("Friendly PvP: " + (next ? "enabled" : "disabled")));
@@ -474,7 +721,10 @@ public final class RealCivNetwork {
                 player.sendSystemMessage(Component.literal("[RealCiv] " + d.message()));
             }
             case ModernCivControlPanelScreen.ACTION_ROLES_CREATE -> {
-                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+                    RealCivMessages.deny(player, "You do not have permission to create roles.");
+                    return;
+                }
                 int count = data.customRolesSorted(civId).size() + 1;
                 String roleId = "custom_role_" + count;
                 String displayName = "Custom Role " + count;
@@ -483,6 +733,14 @@ public final class RealCivNetwork {
                 } else {
                     RealCivMessages.deny(player, "Could not create role (may already exist).");
                 }
+            }
+            case ModernCivControlPanelScreen.ACTION_OPEN_RATION_EDITOR -> {
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
+                    RealCivMessages.deny(player, "You do not have permission to manage ration allowances.");
+                    return;
+                }
+                openRationDraftMenu(player, data, civId);
+                return;
             }
             case ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 1,
                  ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 2, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 3,
@@ -493,7 +751,10 @@ public final class RealCivNetwork {
                  ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 12, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 13,
                  ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 14, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 15,
                  ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 16, ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE + 17 -> {
-                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) return;
+                if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+                    RealCivMessages.deny(player, "You do not have permission to change civic policies.");
+                    return;
+                }
                 int attrOrdinal = actionId - ModernCivControlPanelScreen.ACTION_SET_ATTRIBUTE;
                 CivicAttribute[] attrValues = CivicAttribute.values();
                 if (attrOrdinal >= 0 && attrOrdinal < attrValues.length) {
@@ -535,6 +796,81 @@ public final class RealCivNetwork {
         }
     }
 
+    private static void handleRationEditorAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
+        boolean canManage = CivPermissionService.hasCivPermission(
+                player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
+
+        int page = rationPages.getOrDefault(player.getUUID(), 0);
+        if (actionId == ModernRationEditorScreen.ACTION_PREV_PAGE) {
+            page = Math.max(0, page - 1);
+            rationPages.put(player.getUUID(), page);
+        } else if (actionId == ModernRationEditorScreen.ACTION_NEXT_PAGE) {
+            page = page + 1;
+            rationPages.put(player.getUUID(), page);
+        }
+
+        HubRationSnapshot pageSnapshot = HubRationSnapshotBuilder.build(player, data, civId, canManage, page);
+        rationPages.put(player.getUUID(), pageSnapshot.page());
+
+        boolean isRowAction = actionId >= ModernRationEditorScreen.ACTION_ALLOWANCE_UP
+                && actionId < ModernRationEditorScreen.ACTION_ALLOWANCE_CLEAR + 1000;
+        if (isRowAction && !canManage) {
+            RealCivMessages.deny(player, "You do not have permission to manage ration entries.");
+            sendRationEditorScreen(player, data, civId);
+            return;
+        }
+
+        if (actionId >= ModernRationEditorScreen.ACTION_ALLOWANCE_UP
+                && actionId < ModernRationEditorScreen.ACTION_ALLOWANCE_DOWN) {
+            int row = actionId - ModernRationEditorScreen.ACTION_ALLOWANCE_UP;
+            adjustRationAllowanceRow(player, data, civId, pageSnapshot, row, 1);
+        } else if (actionId >= ModernRationEditorScreen.ACTION_ALLOWANCE_DOWN
+                && actionId < ModernRationEditorScreen.ACTION_ALLOWANCE_CLEAR) {
+            int row = actionId - ModernRationEditorScreen.ACTION_ALLOWANCE_DOWN;
+            adjustRationAllowanceRow(player, data, civId, pageSnapshot, row, -1);
+        } else if (actionId >= ModernRationEditorScreen.ACTION_ALLOWANCE_CLEAR
+                && actionId < ModernRationEditorScreen.ACTION_ALLOWANCE_CLEAR + 1000) {
+            int row = actionId - ModernRationEditorScreen.ACTION_ALLOWANCE_CLEAR;
+            setRationAllowanceRow(player, data, civId, pageSnapshot, row, 0);
+        }
+
+        sendRationEditorScreen(player, data, civId);
+    }
+
+    private static void adjustRationAllowanceRow(ServerPlayer player, CivSavedData data, String civId,
+                                                 HubRationSnapshot snapshot, int rowIndex, int delta) {
+        if (rowIndex < 0 || rowIndex >= snapshot.entries().size()) {
+            return;
+        }
+        String itemKey = snapshot.entries().get(rowIndex).itemId();
+        ResourceLocation itemId = ResourceLocation.parse(itemKey);
+        int current = data.hubDailyAllowanceLimit(civId, itemId);
+        int next = Math.max(0, current + delta);
+        setRationAllowance(player, data, civId, itemId, next);
+    }
+
+    private static void setRationAllowanceRow(ServerPlayer player, CivSavedData data, String civId,
+                                              HubRationSnapshot snapshot, int rowIndex, int count) {
+        if (rowIndex < 0 || rowIndex >= snapshot.entries().size()) {
+            return;
+        }
+        String itemKey = snapshot.entries().get(rowIndex).itemId();
+        ResourceLocation itemId = ResourceLocation.parse(itemKey);
+        setRationAllowance(player, data, civId, itemId, count);
+    }
+
+    private static void setRationAllowance(ServerPlayer player, CivSavedData data, String civId,
+                                           ResourceLocation itemId, int count) {
+        int safeCount = Math.max(0, count);
+        if (data.setHubDailyAllowanceLimit(civId, itemId, safeCount, player.getGameProfile().getName())) {
+            if (safeCount <= 0) {
+                player.sendSystemMessage(Component.literal("Cleared daily allowance for " + itemId + "."));
+            } else {
+                player.sendSystemMessage(Component.literal("Allowance for " + itemId + ": " + safeCount + "/day"));
+            }
+        }
+    }
+
     private static void handleHubStockAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
         boolean canManage = CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION);
         int page = hubStockPages.getOrDefault(player.getUUID(), 0);
@@ -545,17 +881,19 @@ public final class RealCivNetwork {
             HubStockSnapshot s = HubStockSnapshotBuilder.build(player, data, civId, canManage, page + 1);
             hubStockPages.put(player.getUUID(), Math.min(page + 1, Math.max(0, s.totalPages() - 1)));
         } else if (actionId >= 1000 && actionId < 2000) {
-            int index = actionId - 1000;
+            int index = page * HubStockSnapshotBuilder.ROWS_PER_PAGE + (actionId - 1000);
             performWithdrawal(player, data, civId, index, 1);
         } else if (actionId >= 2000 && actionId < 3000) {
-            int index = actionId - 2000;
+            int index = page * HubStockSnapshotBuilder.ROWS_PER_PAGE + (actionId - 2000);
             performWithdrawal(player, data, civId, index, 64);
         } else if (actionId >= 3000 && actionId < 4000 && canManage) {
-            int index = actionId - 3000;
+            int index = page * HubStockSnapshotBuilder.ROWS_PER_PAGE + (actionId - 3000);
             adjustAllowance(player, data, civId, index, 1);
         } else if (actionId >= 4000 && actionId < 5000 && canManage) {
-            int index = actionId - 4000;
+            int index = page * HubStockSnapshotBuilder.ROWS_PER_PAGE + (actionId - 4000);
             adjustAllowance(player, data, civId, index, -1);
+        } else if ((actionId >= 3000 && actionId < 5000) && !canManage) {
+            RealCivMessages.deny(player, "You do not have permission to adjust hub daily allowances.");
         }
 
         page = hubStockPages.getOrDefault(player.getUUID(), 0);

@@ -24,7 +24,13 @@ public final class ProfessionLedgerSnapshotBuilder {
             Profession.CRAFTER,
             Profession.ENCHANTER,
             Profession.BREWER,
-            Profession.TRADER
+            Profession.TRADER,
+            Profession.SHEPHERD,
+            Profession.EXPLORER,
+            Profession.TREASURE_HUNTER,
+            Profession.BREEDER,
+            Profession.SMITHY,
+            Profession.SMELTER
     };
 
     private ProfessionLedgerSnapshotBuilder() {

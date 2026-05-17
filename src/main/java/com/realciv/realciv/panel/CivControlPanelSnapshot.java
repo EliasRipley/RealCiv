@@ -51,13 +51,15 @@ public record CivControlPanelSnapshot(
         int leadershipCoupApprovalCount,
         int leadershipCoupRequiredApprovals,
         long leadershipContestEndsAtMillis,
-        List<String> leadershipCandidateEntries) {
+        List<String> leadershipCandidateEntries,
+        List<String> hubDailyAllowanceEntries) {
 
     private static final int MAX_ID_LEN = 64;
     private static final int MAX_NAME_LEN = 96;
     private static final int MAX_TITLE_LEN = 128;
     private static final int MAX_SUMMARY_LEN = 256;
     private static final int MAX_CANDIDATE_ENTRY_LEN = 160;
+    private static final int MAX_ALLOWANCE_ENTRY_LEN = 160;
 
     public void write(RegistryFriendlyByteBuf buffer) {
         buffer.writeUtf(civilizationId, MAX_ID_LEN);
@@ -71,7 +73,7 @@ public record CivControlPanelSnapshot(
         buffer.writeUtf(landAttribute, MAX_TITLE_LEN);
         buffer.writeUtf(claimDimensionPolicy, MAX_TITLE_LEN);
         buffer.writeUtf(playerRole, MAX_TITLE_LEN);
-        buffer.writeUtf(pendingProposalSummary, MAX_TITLE_LEN);
+        buffer.writeUtf(pendingProposalSummary, MAX_SUMMARY_LEN);
         buffer.writeInt(pendingProposalYesVotes);
         buffer.writeInt(pendingProposalRequiredYesVotes);
         buffer.writeInt(memberCount);
@@ -111,13 +113,18 @@ public record CivControlPanelSnapshot(
         for (String entry : entries) {
             buffer.writeUtf(entry == null ? "" : entry, MAX_CANDIDATE_ENTRY_LEN);
         }
+        List<String> allowanceEntries = hubDailyAllowanceEntries == null ? List.of() : hubDailyAllowanceEntries;
+        buffer.writeInt(allowanceEntries.size());
+        for (String entry : allowanceEntries) {
+            buffer.writeUtf(entry == null ? "" : entry, MAX_ALLOWANCE_ENTRY_LEN);
+        }
     }
 
     public static CivControlPanelSnapshot read(RegistryFriendlyByteBuf buffer) {
         return new CivControlPanelSnapshot(
                 buffer.readUtf(MAX_ID_LEN),
                 buffer.readUtf(MAX_NAME_LEN),
-                buffer.readUtf(MAX_TITLE_LEN),
+                buffer.readUtf(MAX_SUMMARY_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),
                 buffer.readUtf(MAX_TITLE_LEN),
@@ -161,7 +168,8 @@ public record CivControlPanelSnapshot(
                 buffer.readInt(),
                 buffer.readInt(),
                 buffer.readLong(),
-                readCandidateEntries(buffer));
+                readCandidateEntries(buffer),
+                readAllowanceEntries(buffer));
     }
 
     private static List<String> readCandidateEntries(RegistryFriendlyByteBuf buffer) {
@@ -169,6 +177,15 @@ public record CivControlPanelSnapshot(
         List<String> entries = new ArrayList<>(declaredSize);
         for (int i = 0; i < declaredSize; i++) {
             entries.add(buffer.readUtf(MAX_CANDIDATE_ENTRY_LEN));
+        }
+        return List.copyOf(entries);
+    }
+
+    private static List<String> readAllowanceEntries(RegistryFriendlyByteBuf buffer) {
+        int declaredSize = Math.max(0, Math.min(64, buffer.readInt()));
+        List<String> entries = new ArrayList<>(declaredSize);
+        for (int i = 0; i < declaredSize; i++) {
+            entries.add(buffer.readUtf(MAX_ALLOWANCE_ENTRY_LEN));
         }
         return List.copyOf(entries);
     }

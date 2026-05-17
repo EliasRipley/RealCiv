@@ -2,8 +2,11 @@ package com.realciv.realciv.network;
 
 import com.realciv.realciv.RealCivMod;
 import com.realciv.realciv.census.CensusSnapshot;
+import com.realciv.realciv.hub.HubRationSnapshot;
 import com.realciv.realciv.ledger.ProfessionLedgerSnapshot;
 import io.netty.buffer.ByteBuf;
+import java.util.ArrayList;
+import java.util.List;
 import net.minecraft.core.registries.Registries;
 import net.minecraft.network.codec.ByteBufCodecs;
 import net.minecraft.network.codec.StreamCodec;
@@ -21,6 +24,7 @@ public final class RealCivPayloads {
     public static final String SCREEN_CENSUS = "census";
     public static final String SCREEN_CONTROL_PANEL = "control_panel";
     public static final String SCREEN_HUB_STOCK = "hub_stock";
+    public static final String SCREEN_RATION_EDITOR = "ration_editor";
 
     public record RealCivActionPayload(String screenType, int actionId) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<RealCivActionPayload> TYPE =
@@ -127,6 +131,21 @@ public final class RealCivPayloads {
         }
     }
 
+    public record OpenRationEditorPayload(HubRationSnapshot snapshot) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<OpenRationEditorPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "open_ration_editor"));
+
+        public static final StreamCodec<net.minecraft.network.RegistryFriendlyByteBuf, OpenRationEditorPayload> STREAM_CODEC =
+                StreamCodec.of(
+                        (b, p) -> p.snapshot().write(b),
+                        b -> new OpenRationEditorPayload(HubRationSnapshot.read(b)));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public record ForceMapRefreshPayload(String dimension, int chunkX, int chunkZ) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<ForceMapRefreshPayload> TYPE =
                 new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "force_map_refresh"));
@@ -154,6 +173,70 @@ public final class RealCivPayloads {
         public static final StreamCodec<ByteBuf, SetTaxItemPayload> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.STRING_UTF8, SetTaxItemPayload::itemId,
                 SetTaxItemPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SetHubAllowancePayload(String itemId, int dailyCount) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetHubAllowancePayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_hub_allowance"));
+
+        public static final StreamCodec<ByteBuf, SetHubAllowancePayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, SetHubAllowancePayload::itemId,
+                ByteBufCodecs.VAR_INT, SetHubAllowancePayload::dailyCount,
+                SetHubAllowancePayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SetTaxItemCountPayload(int itemCount) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetTaxItemCountPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_tax_item_count"));
+
+        public static final StreamCodec<ByteBuf, SetTaxItemCountPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, SetTaxItemCountPayload::itemCount,
+                SetTaxItemCountPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SetHubAllowanceBatchPayload(
+            List<String> itemIds,
+            List<Integer> dailyCounts,
+            boolean replaceExisting) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetHubAllowanceBatchPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_hub_allowance_batch"));
+
+        public static final StreamCodec<ByteBuf, SetHubAllowanceBatchPayload> STREAM_CODEC = StreamCodec.of(
+                (buf, payload) -> {
+                    int count = Math.min(payload.itemIds().size(), payload.dailyCounts().size());
+                    ByteBufCodecs.VAR_INT.encode(buf, count);
+                    for (int i = 0; i < count; i++) {
+                        ByteBufCodecs.STRING_UTF8.encode(buf, payload.itemIds().get(i));
+                        ByteBufCodecs.VAR_INT.encode(buf, payload.dailyCounts().get(i));
+                    }
+                    buf.writeBoolean(payload.replaceExisting());
+                },
+                buf -> {
+                    int count = ByteBufCodecs.VAR_INT.decode(buf);
+                    List<String> itemIds = new ArrayList<>(count);
+                    List<Integer> dailyCounts = new ArrayList<>(count);
+                    for (int i = 0; i < count; i++) {
+                        itemIds.add(ByteBufCodecs.STRING_UTF8.decode(buf));
+                        dailyCounts.add(ByteBufCodecs.VAR_INT.decode(buf));
+                    }
+                    boolean replaceExisting = buf.readBoolean();
+                    return new SetHubAllowanceBatchPayload(itemIds, dailyCounts, replaceExisting);
+                });
 
         @Override
         public Type<? extends CustomPacketPayload> type() {

@@ -15,7 +15,7 @@ import org.jetbrains.annotations.Nullable;
 public final class TaxSnapshotBuilder {
     private TaxSnapshotBuilder() {}
 
-    public static TaxSnapshot build(ServerPlayer player, CivSavedData data, String civId) {
+    public static TaxSnapshot build(ServerPlayer player, CivSavedData data, String civId, int page) {
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         @Nullable CivilizationRecord civ = data.getCivilization(civId);
         String civName = civ == null ? civId : civ.displayName();
@@ -40,7 +40,7 @@ public final class TaxSnapshotBuilder {
 
         List<UUID> members = data.civilizationMembersSorted(civId);
         int totalPages = Math.max(1, (members.size() + 26) / 27);
-        int page = 0;
+        page = Math.max(0, Math.min(page, totalPages - 1));
 
         int start = page * 27;
         int end = Math.min(members.size(), start + 27);

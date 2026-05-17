@@ -122,6 +122,11 @@ public final class CivControlPanelSnapshotBuilder {
             }
         }
 
+        List<String> hubDailyAllowanceEntries = data.hubDailyAllowanceEntriesSorted(civId).stream()
+                .limit(12)
+                .map(entry -> entry.getKey() + "|" + Math.max(0, entry.getValue()))
+                .toList();
+
         return new CivControlPanelSnapshot(
                 civId,
                 RealCivUtil.civilizationDisplayName(data, civId),
@@ -169,7 +174,8 @@ public final class CivControlPanelSnapshotBuilder {
                 leadershipCoupApprovalCount,
                 leadershipCoupRequiredApprovals,
                 leadershipContestEndsAtMillis,
-                leadershipCandidateEntries);
+                leadershipCandidateEntries,
+                hubDailyAllowanceEntries);
     }
 
     private static String resolveRoleLabel(CivSavedData data, String civId, UUID playerId) {
