@@ -4,6 +4,7 @@ import dev.ftb.mods.ftblibrary.ui.*;
 import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
 import dev.ftb.mods.ftblibrary.icon.Icon;
 import com.realciv.realciv.data.AttributeCategory;
+import com.realciv.realciv.data.CivSavedData;
 import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.network.RealCivPayloads;
@@ -318,24 +319,40 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
             addLabelRow("", "Advanced path: /realciv civ role ...", 0xFF78909C);
             addSpacer(4);
             addSection("Available permissions for roles", 0xFFC6D2DE);
-            String[][] perms = {
-                {"manage_diplomacy", "Manage diplomacy"},
-                {"manage_census", "Manage membership"},
-                {"manage_hub_distribution", "Manage hub policy"},
-                {"manage_upkeep", "Manage tax/upkeep"},
-                {"manage_friendly_fire", "Toggle PvP"},
-                {"manage_leadership", "Manage leadership"},
-                {"manage_land_zoning", "Manage land zones"},
-                {"police_members", "Police members"}
-            };
-            for (String[] p : perms) {
-                addLabelRow("  " + p[1], "", 0xFF9BA9B7);
+            for (String permissionKey : CivSavedData.knownRolePermissions()) {
+                addLabelRow("  " + permissionKey, permissionSummaryLabel(permissionKey), 0xFF9BA9B7);
             }
             addSpacer(4);
             addLabelRow("", "Use /realciv civ role commands to rename, grant permissions, and assign members.", 0xFF78909C);
         } else {
             addLabelRow("", "Role management is available to leadership.", 0xFF78909C);
         }
+    }
+
+    private String permissionSummaryLabel(String permissionKey) {
+        return switch (permissionKey) {
+            case CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE -> "Governance and role configuration";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY -> "Diplomacy and war actions";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_FRIENDLY_FIRE -> "Intra-civ PvP toggle";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_PROFESSION_FOCUS -> "Member profession focus assignment";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_EXPLOSIVES -> "Explosives specialist controls";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_REDSTONERS -> "Redstoner assignment controls";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS -> "CIVIC claim and unclaim";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING -> "Land zoning and private unclaim policy";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_LAND_MANAGERS -> "Civic manager assignment";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE -> "FTB map claim-mode controls";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS -> "Membership/invite/request management";
+            case CivSavedData.ROLE_PERMISSION_POLICE_MEMBERS -> "Member discipline actions";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_CENSUS_ROLES -> "Census role policy controls";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_LEADERSHIP -> "Leadership assignment actions";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_WITHDRAW_RATES -> "Hub withdrawal-rate overrides";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION -> "Hub allowance distribution policy";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_HUB_WITHDRAWALS -> "Hub withdrawal execution controls";
+            case CivSavedData.ROLE_PERMISSION_VIEW_HUB_LOGS -> "View hub audit logs";
+            case CivSavedData.ROLE_PERMISSION_VIEW_HUB_QUOTAS -> "View hub quota details";
+            case CivSavedData.ROLE_PERMISSION_MANAGE_UPKEEP -> "Tax and upkeep management";
+            default -> permissionKey.replace('_', ' ');
+        };
     }
 
     private String displayAttribute(String serializedName) {

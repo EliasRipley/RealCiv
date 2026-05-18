@@ -6,7 +6,8 @@
     "CraftingMenuMixin",
     "InventoryMenuMixin",
     "ResultSlotMixin",
-    "ResultSlotOnTakeMixin"
+    "ResultSlotOnTakeMixin",
+    "UpdatePropertiesRequestMessageMixin"
   ],
   "client": [
     "BaseScreenOpenGuiMixin",

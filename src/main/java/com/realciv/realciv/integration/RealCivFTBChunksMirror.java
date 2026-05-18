@@ -25,6 +25,7 @@ import dev.ftb.mods.ftbteams.data.TeamManagerImpl;
 import java.nio.charset.StandardCharsets;
 import java.util.ArrayList;
 import java.util.HashSet;
+import java.util.Objects;
 import java.util.Set;
 import java.util.UUID;
 import net.minecraft.commands.CommandSourceStack;
@@ -38,12 +39,21 @@ import org.jetbrains.annotations.Nullable;
 
 public final class RealCivFTBChunksMirror {
     private static final String TEAM_DESCRIPTION_PREFIX = "RealCiv civilization team:";
+    private static boolean partyCreationApiOnlyApplied;
 
     private RealCivFTBChunksMirror() {
     }
 
     public static boolean ftbApisReady() {
-        return FTBChunksAPI.api().isManagerLoaded() && FTBTeamsAPI.api().isManagerLoaded();
+        if (FTBChunksAPI.api() == null || FTBTeamsAPI.api() == null) {
+            return false;
+        }
+        boolean ready = FTBChunksAPI.api().isManagerLoaded() && FTBTeamsAPI.api().isManagerLoaded();
+        if (ready && !partyCreationApiOnlyApplied) {
+            FTBTeamsAPI.api().setPartyCreationFromAPIOnly(true);
+            partyCreationApiOnlyApplied = true;
+        }
+        return ready;
     }
 
     public static void syncAll(MinecraftServer server, CivSavedData data) {
@@ -169,7 +179,7 @@ public final class RealCivFTBChunksMirror {
 
         TeamRank rank = data.isMayor(civId, playerId)
                 ? TeamRank.OWNER
-                : (data.isCivicManager(civId, playerId) ? TeamRank.OFFICER : TeamRank.MEMBER);
+                : (hasFtbManagementPermission(data, civId, playerId) ? TeamRank.OFFICER : TeamRank.MEMBER);
         civBase.addMember(playerId, rank);
         civBase.markDirty();
 
@@ -304,6 +314,21 @@ public final class RealCivFTBChunksMirror {
         return ensureCivTeam(server, civ);
     }
 
+    @Nullable
+    public static String findCivilizationIdForTeam(CivSavedData data, Team team) {
+        UUID teamId = team.getTeamId();
+        for (String civId : data.civilizationIdsSorted()) {
+            @Nullable CivilizationRecord civ = data.getCivilization(civId);
+            if (civ == null) {
+                continue;
+            }
+            if (teamId.equals(civTeamId(civ.id())) || Objects.equals(civ.ftbTeamId(), teamId)) {
+                return civ.id();
+            }
+        }
+        return null;
+    }
+
     private static Team ensureCivTeam(MinecraftServer server, CivilizationRecord civ) {
         TeamManager manager = FTBTeamsAPI.api().getManager();
 
@@ -337,7 +362,7 @@ public final class RealCivFTBChunksMirror {
         }
 
         // Persist the actual team UUID back to the civ record for consistent lookups
-        if (!java.util.Objects.equals(civ.ftbTeamId(), team.getTeamId())) {
+        if (!Objects.equals(civ.ftbTeamId(), team.getTeamId())) {
             civ.setFtbTeamId(team.getTeamId());
             CivSavedData.get(server).setDirty();
         }
@@ -424,6 +449,12 @@ public final class RealCivFTBChunksMirror {
         }
         String fallback = ("Civ " + civId).trim();
         return fallback.length() >= 3 ? fallback : "RealCiv-" + civId;
+    }
+
+    private static boolean hasFtbManagementPermission(CivSavedData data, String civId, UUID playerId) {
+        // Keep legacy manager support while prioritizing the new role-permission model.
+        return data.hasCustomRolePermission(civId, playerId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE)
+                || data.isCivicManager(civId, playerId);
     }
 }
 

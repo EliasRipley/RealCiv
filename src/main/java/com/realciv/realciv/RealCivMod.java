@@ -6,6 +6,7 @@ import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.event.RealCivEvents;
 import com.realciv.realciv.integration.RealCivFTBChunksBridge;
 import com.realciv.realciv.network.RealCivNetwork;
+import dev.ftb.mods.ftbteams.api.FTBTeamsAPI;
 import net.minecraft.world.item.CreativeModeTabs;
 import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
@@ -25,6 +26,7 @@ public class RealCivMod {
     public RealCivMod(IEventBus modEventBus, ModContainer modContainer) {
         // Check FTB Chunks version before any integration code runs.
         checkFTBChunksVersion();
+        lockFTBPartyCreationToApiOnly();
 
         // Register blocks, menus, and network payloads on the mod event bus.
         ModBlocks.register(modEventBus);
@@ -92,6 +94,19 @@ public class RealCivMod {
                 LOGGER.warn("FTB Chunks version {} may be incompatible. Expected 2101.1.x (1.21.1 line).", version);
             }
         }, () -> LOGGER.error("FTB Chunks mod (ftbchunks) not found! RealCiv requires FTB Chunks to be installed."));
+    }
+
+    private static void lockFTBPartyCreationToApiOnly() {
+        if (!ModList.get().isLoaded("ftbteams")) {
+            return;
+        }
+        try {
+            if (FTBTeamsAPI.api() != null) {
+                FTBTeamsAPI.api().setPartyCreationFromAPIOnly(true);
+            }
+        } catch (Throwable throwable) {
+            LOGGER.warn("Failed to set FTB Teams party creation to API-only mode.", throwable);
+        }
     }
 
     private void onConfigLoading(ModConfigEvent.Loading event) {

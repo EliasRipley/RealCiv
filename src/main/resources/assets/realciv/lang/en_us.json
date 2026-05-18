@@ -14,5 +14,6 @@
   "tooltip.realciv.profession_ledger": "Track your profession levels, XP, and action limits.",
   "tooltip.realciv.war_table": "View and manage diplomatic relations with other civilizations.",
   "realciv.ftbchunks.claim_denied": "Claim denied by RealCiv rules. See chat for details.",
-  "realciv.ftbchunks.unclaim_denied": "Unclaim denied by RealCiv rules. See chat for details."
+  "realciv.ftbchunks.unclaim_denied": "Unclaim denied by RealCiv rules. See chat for details.",
+  "realciv.ftbteams.settings_locked": "This FTB feature is locked while RealCiv is installed. Ask a civ leader or role with Manage FTB Mode permission."
 }
