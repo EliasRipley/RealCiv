@@ -12,9 +12,7 @@ public record DiplomacySnapshot(
         int totalPages,
         String draftWarType,
         int draftPvpKillTarget,
-        boolean draftWarOfSubmission,
-        boolean draftWarOfLand,
-        boolean draftWarResourceGamble,
+        String draftWarTerm,
         String draftGambleItemId,
         long draftGambleAmount,
         List<IncomingWarRequest> incomingWarRequests,
@@ -45,9 +43,7 @@ public record DiplomacySnapshot(
         buf.writeInt(totalPages);
         buf.writeUtf(draftWarType, MAX_STR);
         buf.writeInt(draftPvpKillTarget);
-        buf.writeBoolean(draftWarOfSubmission);
-        buf.writeBoolean(draftWarOfLand);
-        buf.writeBoolean(draftWarResourceGamble);
+        buf.writeUtf(draftWarTerm == null ? "none" : draftWarTerm, MAX_STR);
         buf.writeUtf(draftGambleItemId == null ? "" : draftGambleItemId, MAX_STR);
         buf.writeLong(draftGambleAmount);
         buf.writeInt(incomingWarRequests.size());
@@ -80,9 +76,7 @@ public record DiplomacySnapshot(
         int pages = buf.readInt();
         String draftWarType = buf.readUtf(MAX_STR);
         int draftPvpKillTarget = buf.readInt();
-        boolean draftWarOfSubmission = buf.readBoolean();
-        boolean draftWarOfLand = buf.readBoolean();
-        boolean draftWarResourceGamble = buf.readBoolean();
+        String draftWarTerm = buf.readUtf(MAX_STR);
         String draftGambleItemId = buf.readUtf(MAX_STR);
         long draftGambleAmount = buf.readLong();
         int incomingCount = buf.readInt();
@@ -117,9 +111,7 @@ public record DiplomacySnapshot(
                 pages,
                 draftWarType,
                 draftPvpKillTarget,
-                draftWarOfSubmission,
-                draftWarOfLand,
-                draftWarResourceGamble,
+                draftWarTerm,
                 draftGambleItemId.isEmpty() ? null : draftGambleItemId,
                 draftGambleAmount,
                 incomingWarRequests,

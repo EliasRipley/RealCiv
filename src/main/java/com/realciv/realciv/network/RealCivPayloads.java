@@ -228,6 +228,34 @@ public final class RealCivPayloads {
         }
     }
 
+    public record SetGambleItemPayload(String itemId) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetGambleItemPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_gamble_item"));
+
+        public static final StreamCodec<ByteBuf, SetGambleItemPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, SetGambleItemPayload::itemId,
+                SetGambleItemPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record SetGambleAmountPayload(int amount) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<SetGambleAmountPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "set_gamble_amount"));
+
+        public static final StreamCodec<ByteBuf, SetGambleAmountPayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.VAR_INT, SetGambleAmountPayload::amount,
+                SetGambleAmountPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public record RenameRolePayload(String roleId, String displayName) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<RenameRolePayload> TYPE =
                 new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "rename_role"));

@@ -20,9 +20,7 @@ public final class DiplomacySnapshotBuilder {
                 page,
                 com.realciv.realciv.data.WarType.DESTRUCTION.displayName(),
                 com.realciv.realciv.config.RealCivConfig.defaultWarPvpKillTarget(),
-                false,
-                false,
-                false,
+                "none",
                 null,
                 0L);
     }
@@ -34,9 +32,7 @@ public final class DiplomacySnapshotBuilder {
             int page,
             String draftWarType,
             int draftPvpKillTarget,
-            boolean draftWarOfSubmission,
-            boolean draftWarOfLand,
-            boolean draftWarResourceGamble,
+            String draftWarTerm,
             @Nullable String draftGambleItemId,
             long draftGambleAmount) {
         boolean canManage = CivPermissionService.hasCivPermission(
@@ -93,9 +89,7 @@ public final class DiplomacySnapshotBuilder {
                 totalPages,
                 draftWarType,
                 Math.max(1, draftPvpKillTarget),
-                draftWarOfSubmission,
-                draftWarOfLand,
-                draftWarResourceGamble,
+                draftWarTerm,
                 draftGambleItemId,
                 Math.max(0L, draftGambleAmount),
                 incomingWarRequests,

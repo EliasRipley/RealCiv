@@ -6,7 +6,12 @@ import com.realciv.realciv.diplomacy.DiplomacySnapshot;
 import com.realciv.realciv.network.RealCivPayloads;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.core.registries.BuiltInRegistries;
 import net.minecraft.network.chat.Component;
+import net.minecraft.resources.ResourceLocation;
+import net.minecraft.world.item.Item;
+import net.minecraft.world.item.ItemStack;
+import net.minecraft.world.item.Items;
 import net.neoforged.neoforge.network.PacketDistributor;
 
 public class ModernDiplomacyScreen extends RealCivScreen {
@@ -16,17 +21,16 @@ public class ModernDiplomacyScreen extends RealCivScreen {
     public static final int ACTION_TOGGLE_WAR_TYPE = 4;
     public static final int ACTION_PVP_TARGET_DOWN = 5;
     public static final int ACTION_PVP_TARGET_UP = 6;
-    public static final int ACTION_TOGGLE_WAR_SUBMISSION = 7;
-    public static final int ACTION_TOGGLE_WAR_LAND = 8;
-    public static final int ACTION_TOGGLE_WAR_GAMBLE = 9;
-    public static final int ACTION_GAMBLE_ITEM_CYCLE = 10;
-    public static final int ACTION_GAMBLE_AMOUNT_DOWN = 11;
-    public static final int ACTION_GAMBLE_AMOUNT_UP = 12;
+    public static final int ACTION_SET_WAR_TERM = 7;
+    public static final int ACTION_GAMBLE_AMOUNT_DOWN = 8;
+    public static final int ACTION_GAMBLE_AMOUNT_UP = 9;
     public static final int ACTION_ACCEPT_WAR_REQUEST = 20_000;
     public static final int ACTION_REJECT_WAR_REQUEST = 21_000;
 
     private DiplomacySnapshot snapshot;
+    private IntTextBox gambleAmountInput;
     private static final int PAGE_Y = FOOTER_Y;
+    private static final int GAMBLE_CTRL_X = 310;
 
     public ModernDiplomacyScreen(DiplomacySnapshot snapshot) {
         super(Component.literal("Diplomacy Table"), "Relations, alliances, war, and casualties", 0xFFD64545);
@@ -35,6 +39,7 @@ public class ModernDiplomacyScreen extends RealCivScreen {
 
     public void refresh(DiplomacySnapshot newSnapshot) {
         this.snapshot = newSnapshot;
+        this.gambleAmountInput = null;
         refreshWidgets();
     }
 
@@ -63,20 +68,7 @@ public class ModernDiplomacyScreen extends RealCivScreen {
             if ("PVP".equalsIgnoreCase(snapshot.draftWarType())) {
                 addLabelRow("PvP kill target", String.valueOf(snapshot.draftPvpKillTarget()), 0xFFF4F7FA);
             }
-            addLabelRow("War of Submission", snapshot.draftWarOfSubmission() ? "ON" : "OFF",
-                    snapshot.draftWarOfSubmission() ? 0xFFFFD54F : 0xFF90A4AE);
-            addLabelRow("War of Land", snapshot.draftWarOfLand() ? "ON" : "OFF",
-                    snapshot.draftWarOfLand() ? 0xFFFFD54F : 0xFF90A4AE);
-            addLabelRow("Resource Gamble", snapshot.draftWarResourceGamble() ? "ON" : "OFF",
-                    snapshot.draftWarResourceGamble() ? 0xFFFFD54F : 0xFF90A4AE);
-            if (snapshot.draftWarResourceGamble()) {
-                String item = snapshot.draftGambleItemId();
-                if (item != null && item.contains(":")) {
-                    item = item.substring(item.lastIndexOf(':') + 1);
-                }
-                addLabelRow("Gamble item", item == null ? "none" : item, 0xFFF4F7FA);
-                addLabelRow("Gamble amount", String.valueOf(snapshot.draftGambleAmount()), 0xFFF4F7FA);
-            }
+
             addRowWithButtons(
                     "War type",
                     "Used when relation request becomes WAR.",
@@ -88,28 +80,40 @@ public class ModernDiplomacyScreen extends RealCivScreen {
                         makeInlineBtn(ACTION_PVP_TARGET_DOWN, "-1", 28),
                         makeInlineBtn(ACTION_PVP_TARGET_UP, "+1", 28));
             }
-            addRowWithButtons(
-                    "Submission term",
-                    "Winner can vassalize loser if checked.",
-                    makeInlineBtn(ACTION_TOGGLE_WAR_SUBMISSION, snapshot.draftWarOfSubmission() ? "ON" : "OFF", 42));
-            addRowWithButtons(
-                    "Land term",
-                    "Winner can take all loser land if checked.",
-                    makeInlineBtn(ACTION_TOGGLE_WAR_LAND, snapshot.draftWarOfLand() ? "ON" : "OFF", 42));
-            addRowWithButtons(
-                    "Resource gamble",
-                    "Both sides wager resources; winner takes loser's wager.",
-                    makeInlineBtn(ACTION_TOGGLE_WAR_GAMBLE, snapshot.draftWarResourceGamble() ? "ON" : "OFF", 42));
-            if (snapshot.draftWarResourceGamble()) {
-                addRowWithButtons(
-                        "Gamble item",
-                        "Item to wager from hub stock.",
-                        makeInlineBtn(ACTION_GAMBLE_ITEM_CYCLE, "Cycle", 48));
-                addRowWithButtons(
-                        "Gamble amount",
-                        "How many of the item to wager.",
-                        makeInlineBtn(ACTION_GAMBLE_AMOUNT_DOWN, "-1", 28),
-                        makeInlineBtn(ACTION_GAMBLE_AMOUNT_UP, "+1", 28));
+
+            addSpacer(2);
+            addSection("War Terms (select one)", 0xFFE57373);
+
+            String currentTerm = snapshot.draftWarTerm();
+            String[] termValues = {"none", "submission", "land", "gamble"};
+            String[] termLabels = {"None", "Vassalage", "Land Claim", "Resource Gamble"};
+            for (int i = 0; i < termValues.length; i++) {
+                boolean isActive = termValues[i].equals(currentTerm);
+                String display = (isActive ? "[x] " : "[  ] ") + termLabels[i];
+                int color = isActive ? 0xFFA5D6A7 : 0xFF9BA9B7;
+                int idx = i;
+                addSelectableRow(display, color, btn -> sendAction(ACTION_SET_WAR_TERM + idx));
+            }
+
+            if ("gamble".equals(currentTerm)) {
+                addSpacer(2);
+                addLabelRow("Gamble item", snapshot.draftGambleItemId() == null ? "none" : snapshot.draftGambleItemId(), 0xFFF4F7FA);
+                addLabelRow("Gamble amount", String.valueOf(snapshot.draftGambleAmount()), 0xFFF4F7FA);
+
+                panel.add(new LabelWidget(panel, "Set item from held", COL_LABEL, currentY, 0xFF78909C));
+                GambleItemSlot slot = new GambleItemSlot(panel, GAMBLE_CTRL_X, currentY, snapshot);
+                panel.add(slot);
+                addInlineBtnToPanel(panel, ACTION_GAMBLE_AMOUNT_DOWN, "-1", 26, GAMBLE_CTRL_X + 22, currentY);
+                addInlineBtnToPanel(panel, ACTION_GAMBLE_AMOUNT_UP, "+1", 26, GAMBLE_CTRL_X + 52, currentY);
+                gambleAmountInput = makeGambleAmountInput(panel);
+                gambleAmountInput.setPosAndSize(GAMBLE_CTRL_X + 82, currentY, 40, BTN_H);
+                panel.add(gambleAmountInput);
+                SimpleTextButton setAmountBtn = makePanelBtn(panel, "Set", button -> submitGambleAmountFromInput());
+                setAmountBtn.setPosAndSize(GAMBLE_CTRL_X + 126, currentY, 34, BTN_H);
+                panel.add(setAmountBtn);
+                currentY += ROW_H + 4;
+
+                addLabelRow("", "Hold item in hand, click slot to set.", 0xFF78909C);
             }
 
             addSpacer(4);
@@ -152,10 +156,85 @@ public class ModernDiplomacyScreen extends RealCivScreen {
         }
     }
 
+    private void addInlineBtnToPanel(Panel panel, int action, String label, int width, int x, int y) {
+        SimpleTextButton btn = makeInlineBtn(action, label, width);
+        btn.setPos(x, y);
+        panel.add(btn);
+    }
+
+    private IntTextBox makeGambleAmountInput(Panel panel) {
+        IntTextBox box = new IntTextBox(panel) {
+            @Override
+            public void onEnterPressed() {
+                submitGambleAmountFromInput();
+            }
+        };
+        box.setMinMax(1, 999999);
+        box.setAmount(Math.max(1, (int) Math.min(Integer.MAX_VALUE, snapshot.draftGambleAmount())));
+        box.ghostText = "Amt";
+        return box;
+    }
+
+    private void submitGambleAmountFromInput() {
+        if (gambleAmountInput == null) return;
+        int next = Math.max(1, Math.min(999999, gambleAmountInput.getIntValue()));
+        PacketDistributor.sendToServer(new RealCivPayloads.SetGambleAmountPayload(next));
+    }
+
     @Override
     protected void sendAction(int actionId) {
         PacketDistributor.sendToServer(new RealCivPayloads.RealCivActionPayload(
                 RealCivPayloads.SCREEN_DIPLOMACY, actionId));
+    }
+
+    private static class GambleItemSlot extends Widget {
+        private final DiplomacySnapshot snapshot;
+
+        GambleItemSlot(Panel parent, int x, int y, DiplomacySnapshot snapshot) {
+            super(parent);
+            setPosAndSize(x, y, 18, 18);
+            this.snapshot = snapshot;
+        }
+
+        @Override
+        public void draw(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
+            graphics.fill(x, y, x + 18, y + 18, 0xFF555555);
+            graphics.fill(x + 1, y + 1, x + 17, y + 17, 0xFF2A2E3A);
+
+            String itemId = snapshot.draftGambleItemId();
+            if (itemId != null && !itemId.isEmpty()) {
+                ResourceLocation id = ResourceLocation.parse(itemId);
+                Item item = BuiltInRegistries.ITEM.getOptional(id).orElse(Items.AIR);
+                if (item != Items.AIR) {
+                    ItemStack stack = new ItemStack(item);
+                    graphics.renderItem(stack, x + 1, y + 1);
+                    long count = snapshot.draftGambleAmount();
+                    if (count > 1) {
+                        graphics.renderItemDecorations(Minecraft.getInstance().font,
+                                new ItemStack(item, (int) Math.min(count, 99)), x + 1, y + 1);
+                    }
+                }
+            }
+            if (isMouseOver()) {
+                graphics.fill(x, y, x + 18, y + 18, 0x40FFFFFF);
+            }
+        }
+
+        @Override
+        public boolean mousePressed(MouseButton button) {
+            if (isMouseOver()) {
+                var player = Minecraft.getInstance().player;
+                if (player != null) {
+                    ItemStack held = player.getMainHandItem();
+                    if (!held.isEmpty()) {
+                        ResourceLocation id = BuiltInRegistries.ITEM.getKey(held.getItem());
+                        PacketDistributor.sendToServer(new RealCivPayloads.SetGambleItemPayload(id.toString()));
+                    }
+                }
+                return true;
+            }
+            return false;
+        }
     }
 
     private static class RelationRowWidget extends Widget {
