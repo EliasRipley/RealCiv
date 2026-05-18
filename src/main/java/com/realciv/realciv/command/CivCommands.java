@@ -769,12 +769,27 @@ public final class CivCommands {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand) {
+        return formatWarSummary(warType, pvpKillTarget, warOfSubmission, warOfLand, false, null, 0L);
+    }
+
+    private static String formatWarSummary(
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount) {
         String base = warType == WarType.PVP
                 ? "PVP (target " + Math.max(1, pvpKillTarget) + ")"
                 : "DESTRUCTION";
+        String gamble = warResourceGamble && warGambleItemId != null && warGambleAmount > 0L
+                ? ", gamble:" + warGambleAmount + "x " + warGambleItemId
+                : "";
         return base
                 + ", submission:" + (warOfSubmission ? "on" : "off")
-                + ", land:" + (warOfLand ? "on" : "off");
+                + ", land:" + (warOfLand ? "on" : "off")
+                + gamble;
     }
 
     public static int civDiplomacySet(CommandSourceStack source, String otherCivRef, String stateRaw) {
@@ -854,6 +869,20 @@ public final class CivCommands {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand) {
+        return civWarDeclare(source, otherCivRef, warTypeRaw, pvpKillTarget,
+                warOfSubmission, warOfLand, false, null, 0L);
+    }
+
+    public static int civWarDeclare(
+            CommandSourceStack source,
+            String otherCivRef,
+            String warTypeRaw,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount) {
         CivSavedData data = CivSavedData.get(source.getServer());
         String actorCiv = RealCivCommands.civOfSource(source, data);
         if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
@@ -884,10 +913,13 @@ public final class CivCommands {
                 safeTarget,
                 warOfSubmission,
                 warOfLand,
+                warResourceGamble,
+                warGambleItemId,
+                warGambleAmount,
                 RealCivCommands.actorName(source));
 
         String otherDisplay = RealCivCommands.civDisplay(data, otherCiv);
-        String warSummary = formatWarSummary(warType, safeTarget, warOfSubmission, warOfLand);
+        String warSummary = formatWarSummary(warType, safeTarget, warOfSubmission, warOfLand, warResourceGamble, warGambleItemId, warGambleAmount);
         if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_SENT
                 || result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_UPDATED) {
             source.sendSuccess(() -> Component.literal(

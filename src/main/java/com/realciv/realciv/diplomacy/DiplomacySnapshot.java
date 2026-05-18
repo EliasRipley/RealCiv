@@ -14,6 +14,9 @@ public record DiplomacySnapshot(
         int draftPvpKillTarget,
         boolean draftWarOfSubmission,
         boolean draftWarOfLand,
+        boolean draftWarResourceGamble,
+        String draftGambleItemId,
+        long draftGambleAmount,
         List<IncomingWarRequest> incomingWarRequests,
         List<RelationRow> relations) {
 
@@ -28,7 +31,10 @@ public record DiplomacySnapshot(
             String warType,
             int pvpKillTarget,
             boolean warOfSubmission,
-            boolean warOfLand) {
+            boolean warOfLand,
+            boolean warResourceGamble,
+            String warGambleItemId,
+            long warGambleAmount) {
     }
 
     public void write(RegistryFriendlyByteBuf buf) {
@@ -41,6 +47,9 @@ public record DiplomacySnapshot(
         buf.writeInt(draftPvpKillTarget);
         buf.writeBoolean(draftWarOfSubmission);
         buf.writeBoolean(draftWarOfLand);
+        buf.writeBoolean(draftWarResourceGamble);
+        buf.writeUtf(draftGambleItemId == null ? "" : draftGambleItemId, MAX_STR);
+        buf.writeLong(draftGambleAmount);
         buf.writeInt(incomingWarRequests.size());
         for (IncomingWarRequest request : incomingWarRequests) {
             buf.writeUtf(request.requesterCivId(), MAX_STR);
@@ -49,6 +58,9 @@ public record DiplomacySnapshot(
             buf.writeInt(request.pvpKillTarget());
             buf.writeBoolean(request.warOfSubmission());
             buf.writeBoolean(request.warOfLand());
+            buf.writeBoolean(request.warResourceGamble());
+            buf.writeUtf(request.warGambleItemId() == null ? "" : request.warGambleItemId(), MAX_STR);
+            buf.writeLong(request.warGambleAmount());
         }
         buf.writeInt(relations.size());
         for (RelationRow r : relations) {
@@ -70,6 +82,9 @@ public record DiplomacySnapshot(
         int draftPvpKillTarget = buf.readInt();
         boolean draftWarOfSubmission = buf.readBoolean();
         boolean draftWarOfLand = buf.readBoolean();
+        boolean draftWarResourceGamble = buf.readBoolean();
+        String draftGambleItemId = buf.readUtf(MAX_STR);
+        long draftGambleAmount = buf.readLong();
         int incomingCount = buf.readInt();
         List<IncomingWarRequest> incomingWarRequests = new ArrayList<>(incomingCount);
         for (int i = 0; i < incomingCount; i++) {
@@ -79,7 +94,10 @@ public record DiplomacySnapshot(
                     buf.readUtf(MAX_STR),
                     buf.readInt(),
                     buf.readBoolean(),
-                    buf.readBoolean()));
+                    buf.readBoolean(),
+                    buf.readBoolean(),
+                    buf.readUtf(MAX_STR),
+                    buf.readLong()));
         }
         int count = buf.readInt();
         List<RelationRow> relations = new ArrayList<>(count);
@@ -101,6 +119,9 @@ public record DiplomacySnapshot(
                 draftPvpKillTarget,
                 draftWarOfSubmission,
                 draftWarOfLand,
+                draftWarResourceGamble,
+                draftGambleItemId.isEmpty() ? null : draftGambleItemId,
+                draftGambleAmount,
                 incomingWarRequests,
                 relations);
     }

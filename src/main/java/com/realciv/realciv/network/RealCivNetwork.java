@@ -73,6 +73,9 @@ public final class RealCivNetwork {
     private static final Map<UUID, Integer> diplomacyDraftPvpKillTarget = new HashMap<>();
     private static final Map<UUID, Boolean> diplomacyDraftWarOfSubmission = new HashMap<>();
     private static final Map<UUID, Boolean> diplomacyDraftWarOfLand = new HashMap<>();
+    private static final Map<UUID, Boolean> diplomacyDraftWarResourceGamble = new HashMap<>();
+    private static final Map<UUID, String> diplomacyDraftGambleItemId = new HashMap<>();
+    private static final Map<UUID, Long> diplomacyDraftGambleAmount = new HashMap<>();
     private static final Map<UUID, Integer> hubStockPages = new HashMap<>();
     private static final Map<UUID, Integer> censusPages = new HashMap<>();
     private static final Map<UUID, Integer> rationPages = new HashMap<>();
@@ -262,7 +265,11 @@ public final class RealCivNetwork {
                 RealCivConfig.defaultWarPvpKillTarget()));
         boolean warOfSubmission = diplomacyDraftWarOfSubmission.getOrDefault(playerId, false);
         boolean warOfLand = diplomacyDraftWarOfLand.getOrDefault(playerId, false);
-        return new WarDraftOptions(warType, pvpKillTarget, warOfSubmission, warOfLand);
+        boolean warResourceGamble = diplomacyDraftWarResourceGamble.getOrDefault(playerId, false);
+        String gambleItemId = diplomacyDraftGambleItemId.get(playerId);
+        long gambleAmount = Math.max(0L, diplomacyDraftGambleAmount.getOrDefault(playerId, 0L));
+        return new WarDraftOptions(warType, pvpKillTarget, warOfSubmission, warOfLand,
+                warResourceGamble, gambleItemId, gambleAmount);
     }
 
     private static void sendDiplomacyScreen(ServerPlayer player, CivSavedData data, String civId) {
@@ -289,7 +296,10 @@ public final class RealCivNetwork {
                 options.warType().displayName(),
                 options.pvpKillTarget(),
                 options.warOfSubmission(),
-                options.warOfLand());
+                options.warOfLand(),
+                options.warResourceGamble(),
+                options.warGambleItemId(),
+                options.warGambleAmount());
         diplomacyPages.put(playerId, snapshot.page());
         return snapshot;
     }
@@ -298,10 +308,12 @@ public final class RealCivNetwork {
         if (options.warType() == WarType.PVP) {
             return "PVP target " + options.pvpKillTarget()
                     + ", submission " + (options.warOfSubmission() ? "on" : "off")
-                    + ", land " + (options.warOfLand() ? "on" : "off");
+                    + ", land " + (options.warOfLand() ? "on" : "off")
+                    + (options.warResourceGamble() ? ", gamble " + options.warGambleAmount() + "x " + options.warGambleItemId() : "");
         }
         return "DESTRUCTION, submission " + (options.warOfSubmission() ? "on" : "off")
-                + ", land " + (options.warOfLand() ? "on" : "off");
+                + ", land " + (options.warOfLand() ? "on" : "off")
+                + (options.warResourceGamble() ? ", gamble " + options.warGambleAmount() + "x " + options.warGambleItemId() : "");
     }
 
     private static void sendTaxScreen(ServerPlayer player, CivSavedData data, String civId) {
@@ -690,6 +702,51 @@ public final class RealCivNetwork {
             boolean updated = !options.warOfLand();
             diplomacyDraftWarOfLand.put(playerId, updated);
             player.sendSystemMessage(Component.literal("War draft land term: " + (updated ? "ON" : "OFF")));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_TOGGLE_WAR_GAMBLE) {
+            boolean updated = !options.warResourceGamble();
+            diplomacyDraftWarResourceGamble.put(playerId, updated);
+            if (updated && options.warGambleItemId() == null) {
+                CivilizationRecord civ = data.getCivilization(civId);
+                if (civ != null) {
+                    String firstItem = civ.hubStock().keySet().stream().findFirst().orElse(null);
+                    if (firstItem != null) {
+                        diplomacyDraftGambleItemId.put(playerId, firstItem);
+                        diplomacyDraftGambleAmount.put(playerId, 1L);
+                    }
+                }
+            }
+            player.sendSystemMessage(Component.literal("War draft resource gamble: " + (updated ? "ON" : "OFF")));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_GAMBLE_ITEM_CYCLE) {
+            if (options.warResourceGamble()) {
+                CivilizationRecord civ = data.getCivilization(civId);
+                if (civ != null) {
+                    var items = civ.hubStock().keySet().stream().filter(k -> civ.availableHubStock(k) > 0L).sorted().toList();
+                    if (!items.isEmpty()) {
+                        String current = options.warGambleItemId();
+                        int idx = current == null ? -1 : items.indexOf(current);
+                        String next = items.get((idx + 1) % items.size());
+                        diplomacyDraftGambleItemId.put(playerId, next);
+                        if (diplomacyDraftGambleAmount.getOrDefault(playerId, 0L) <= 0L) {
+                            diplomacyDraftGambleAmount.put(playerId, 1L);
+                        }
+                        player.sendSystemMessage(Component.literal("War draft gamble item: " + next));
+                    } else {
+                        player.sendSystemMessage(Component.literal("No items available in hub for resource gamble."));
+                    }
+                }
+            }
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_GAMBLE_AMOUNT_DOWN) {
+            if (options.warResourceGamble()) {
+                long updated = Math.max(1L, options.warGambleAmount() - 1L);
+                diplomacyDraftGambleAmount.put(playerId, updated);
+                player.sendSystemMessage(Component.literal("War draft gamble amount: " + updated));
+            }
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_GAMBLE_AMOUNT_UP) {
+            if (options.warResourceGamble()) {
+                long updated = Math.min(1_000_000L, Math.max(1L, options.warGambleAmount() + 1L));
+                diplomacyDraftGambleAmount.put(playerId, updated);
+                player.sendSystemMessage(Component.literal("War draft gamble amount: " + updated));
+            }
         } else if (canManage && actionId >= ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST
                 && actionId < ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST + 1_000) {
             int index = actionId - ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST;
@@ -749,6 +806,9 @@ public final class RealCivNetwork {
                                 options.pvpKillTarget(),
                                 options.warOfSubmission(),
                                 options.warOfLand(),
+                                options.warResourceGamble(),
+                                options.warGambleItemId(),
+                                options.warGambleAmount(),
                                 player.getGameProfile().getName())
                         : data.proposeDiplomacyStateChange(
                                 civId,
@@ -1100,7 +1160,10 @@ public final class RealCivNetwork {
             WarType warType,
             int pvpKillTarget,
             boolean warOfSubmission,
-            boolean warOfLand) {
+            boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount) {
     }
 
     private static void applyAction(ServerPlayer player, CivSavedData data, String civId, CivGovernanceWorkflowService.PanelAction action) {

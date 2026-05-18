@@ -18,6 +18,10 @@ public class ModernDiplomacyScreen extends RealCivScreen {
     public static final int ACTION_PVP_TARGET_UP = 6;
     public static final int ACTION_TOGGLE_WAR_SUBMISSION = 7;
     public static final int ACTION_TOGGLE_WAR_LAND = 8;
+    public static final int ACTION_TOGGLE_WAR_GAMBLE = 9;
+    public static final int ACTION_GAMBLE_ITEM_CYCLE = 10;
+    public static final int ACTION_GAMBLE_AMOUNT_DOWN = 11;
+    public static final int ACTION_GAMBLE_AMOUNT_UP = 12;
     public static final int ACTION_ACCEPT_WAR_REQUEST = 20_000;
     public static final int ACTION_REJECT_WAR_REQUEST = 21_000;
 
@@ -63,6 +67,16 @@ public class ModernDiplomacyScreen extends RealCivScreen {
                     snapshot.draftWarOfSubmission() ? 0xFFFFD54F : 0xFF90A4AE);
             addLabelRow("War of Land", snapshot.draftWarOfLand() ? "ON" : "OFF",
                     snapshot.draftWarOfLand() ? 0xFFFFD54F : 0xFF90A4AE);
+            addLabelRow("Resource Gamble", snapshot.draftWarResourceGamble() ? "ON" : "OFF",
+                    snapshot.draftWarResourceGamble() ? 0xFFFFD54F : 0xFF90A4AE);
+            if (snapshot.draftWarResourceGamble()) {
+                String item = snapshot.draftGambleItemId();
+                if (item != null && item.contains(":")) {
+                    item = item.substring(item.lastIndexOf(':') + 1);
+                }
+                addLabelRow("Gamble item", item == null ? "none" : item, 0xFFF4F7FA);
+                addLabelRow("Gamble amount", String.valueOf(snapshot.draftGambleAmount()), 0xFFF4F7FA);
+            }
             addRowWithButtons(
                     "War type",
                     "Used when relation request becomes WAR.",
@@ -82,6 +96,21 @@ public class ModernDiplomacyScreen extends RealCivScreen {
                     "Land term",
                     "Winner can take all loser land if checked.",
                     makeInlineBtn(ACTION_TOGGLE_WAR_LAND, snapshot.draftWarOfLand() ? "ON" : "OFF", 42));
+            addRowWithButtons(
+                    "Resource gamble",
+                    "Both sides wager resources; winner takes loser's wager.",
+                    makeInlineBtn(ACTION_TOGGLE_WAR_GAMBLE, snapshot.draftWarResourceGamble() ? "ON" : "OFF", 42));
+            if (snapshot.draftWarResourceGamble()) {
+                addRowWithButtons(
+                        "Gamble item",
+                        "Item to wager from hub stock.",
+                        makeInlineBtn(ACTION_GAMBLE_ITEM_CYCLE, "Cycle", 48));
+                addRowWithButtons(
+                        "Gamble amount",
+                        "How many of the item to wager.",
+                        makeInlineBtn(ACTION_GAMBLE_AMOUNT_DOWN, "-1", 28),
+                        makeInlineBtn(ACTION_GAMBLE_AMOUNT_UP, "+1", 28));
+            }
 
             addSpacer(4);
             addSection("Incoming War Requests", 0xFFE57373);
@@ -94,7 +123,8 @@ public class ModernDiplomacyScreen extends RealCivScreen {
                             ? "PVP target " + request.pvpKillTarget()
                             : "DESTRUCTION";
                     String terms = "submission:" + (request.warOfSubmission() ? "on" : "off")
-                            + ", land:" + (request.warOfLand() ? "on" : "off");
+                            + ", land:" + (request.warOfLand() ? "on" : "off")
+                            + (request.warResourceGamble() ? ", gamble:" + request.warGambleAmount() + "x " + request.warGambleItemId() : "");
                     addRowWithButtons(
                             "From " + request.requesterCivName(),
                             mode + " | " + terms,

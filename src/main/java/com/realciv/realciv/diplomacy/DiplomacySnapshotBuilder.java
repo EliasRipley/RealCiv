@@ -21,7 +21,10 @@ public final class DiplomacySnapshotBuilder {
                 com.realciv.realciv.data.WarType.DESTRUCTION.displayName(),
                 com.realciv.realciv.config.RealCivConfig.defaultWarPvpKillTarget(),
                 false,
-                false);
+                false,
+                false,
+                null,
+                0L);
     }
 
     public static DiplomacySnapshot build(
@@ -32,7 +35,10 @@ public final class DiplomacySnapshotBuilder {
             String draftWarType,
             int draftPvpKillTarget,
             boolean draftWarOfSubmission,
-            boolean draftWarOfLand) {
+            boolean draftWarOfLand,
+            boolean draftWarResourceGamble,
+            @Nullable String draftGambleItemId,
+            long draftGambleAmount) {
         boolean canManage = CivPermissionService.hasCivPermission(
                 player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY);
         @Nullable CivilizationRecord civ = data.getCivilization(civId);
@@ -73,7 +79,10 @@ public final class DiplomacySnapshotBuilder {
                     warType,
                     Math.max(1, request.pvpKillTarget()),
                     request.warOfSubmission(),
-                    request.warOfLand()));
+                    request.warOfLand(),
+                    request.warResourceGamble(),
+                    request.warGambleItemId(),
+                    Math.max(0L, request.warGambleAmount())));
         }
 
         return new DiplomacySnapshot(
@@ -86,6 +95,9 @@ public final class DiplomacySnapshotBuilder {
                 Math.max(1, draftPvpKillTarget),
                 draftWarOfSubmission,
                 draftWarOfLand,
+                draftWarResourceGamble,
+                draftGambleItemId,
+                Math.max(0L, draftGambleAmount),
                 incomingWarRequests,
                 rows);
     }

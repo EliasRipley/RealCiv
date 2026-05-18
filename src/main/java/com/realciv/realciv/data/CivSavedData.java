@@ -962,10 +962,11 @@ public class CivSavedData extends SavedData {
         }
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         String key = itemId.toString();
-        long current = civ.hubStock().getOrDefault(key, 0L);
-        if (current < amount) {
+        long available = civ.availableHubStock(key);
+        if (available < amount) {
             return false;
         }
+        long current = civ.hubStock().getOrDefault(key, 0L);
         long remaining = current - amount;
         if (remaining <= 0L) {
             civ.hubStock().remove(key);
@@ -974,6 +975,31 @@ public class CivSavedData extends SavedData {
         }
         setDirty();
         return true;
+    }
+
+    private void lockHubStock(String civIdRaw, String itemId, long amount) {
+        if (amount <= 0L || itemId == null || itemId.isBlank()) {
+            return;
+        }
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.hubLockedForWar().merge(itemId, amount, Long::sum);
+        setDirty();
+    }
+
+    private void unlockHubStock(String civIdRaw, String itemId, long amount) {
+        if (amount <= 0L || itemId == null || itemId.isBlank()) {
+            return;
+        }
+        CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
+        civ.hubLockedForWar().merge(itemId, -amount, (old, delta) -> {
+            long result = old + delta;
+            return result <= 0L ? null : result;
+        });
+        setDirty();
+    }
+
+    public long getAvailableHubStock(String civIdRaw, ResourceLocation itemId) {
+        return getOrCreateCivilization(civIdRaw).availableHubStock(itemId.toString());
     }
 
     public boolean addToHubStock(String civIdRaw, ResourceLocation itemId, long amount, String actorName) {
@@ -2296,12 +2322,10 @@ public class CivSavedData extends SavedData {
                     RealCivConfig.defaultWarPvpKillTarget(),
                     false,
                     false,
+                    false,
+                    null,
+                    0L,
                     civA);
-        } else {
-            clearWarStateBetween(civA, civB);
-            if (state == DiplomacyState.NEUTRAL) {
-                clearVassalLinkBetween(civA, civB);
-            }
         }
 
         addAuditLog(
@@ -2331,6 +2355,9 @@ public class CivSavedData extends SavedData {
                     RealCivConfig.defaultWarPvpKillTarget(),
                     false,
                     false,
+                    false,
+                    null,
+                    0L,
                     actorName);
         }
         return proposeDiplomacyStateChangeInternal(
@@ -2341,6 +2368,9 @@ public class CivSavedData extends SavedData {
                 0,
                 false,
                 false,
+                false,
+                null,
+                0L,
                 actorName);
     }
 
@@ -2352,8 +2382,41 @@ public class CivSavedData extends SavedData {
             boolean warOfSubmission,
             boolean warOfLand,
             String actorName) {
+        return proposeWarDeclaration(
+                requesterCivRaw,
+                responderCivRaw,
+                warTypeRaw,
+                pvpKillTarget,
+                warOfSubmission,
+                warOfLand,
+                false,
+                null,
+                0L,
+                actorName);
+    }
+
+    public DiplomacyRequestResult proposeWarDeclaration(
+            String requesterCivRaw,
+            String responderCivRaw,
+            @Nullable WarType warTypeRaw,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount,
+            String actorName) {
         int safeKillTarget = Math.max(1, pvpKillTarget);
         WarType safeWarType = warTypeRaw == null ? WarType.DESTRUCTION : warTypeRaw;
+        if (warResourceGamble) {
+            if (warGambleItemId == null || warGambleItemId.isBlank() || warGambleAmount <= 0L) {
+                return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+            }
+            long available = getOrCreateCivilization(requesterCivRaw).availableHubStock(warGambleItemId);
+            if (available < warGambleAmount) {
+                return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+            }
+        }
         return proposeDiplomacyStateChangeInternal(
                 requesterCivRaw,
                 responderCivRaw,
@@ -2362,6 +2425,9 @@ public class CivSavedData extends SavedData {
                 safeKillTarget,
                 warOfSubmission,
                 warOfLand,
+                warResourceGamble,
+                warGambleItemId,
+                warGambleAmount,
                 actorName);
     }
 
@@ -2373,6 +2439,9 @@ public class CivSavedData extends SavedData {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount,
             String actorName) {
         String requesterCiv = normalizeCivId(requesterCivRaw);
         String responderCiv = normalizeCivId(responderCivRaw);
@@ -2417,6 +2486,13 @@ public class CivSavedData extends SavedData {
         String incomingKey = diplomacyRequestKey(responderCiv, requesterCiv);
         DiplomacyRequestRecord incoming = incomingKey == null ? null : diplomacyRequests.get(incomingKey);
         if (incoming != null && incoming.requestedState == requestedState) {
+            if (incoming.warResourceGamble && incoming.warGambleItemId != null && incoming.warGambleAmount > 0L) {
+                long currentAvailable = getOrCreateCivilization(requesterCiv).availableHubStock(incoming.warGambleItemId);
+                if (currentAvailable < incoming.warGambleAmount) {
+                    return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+                }
+                lockHubStock(requesterCiv, incoming.warGambleItemId, incoming.warGambleAmount);
+            }
             setDiplomacyStateInternal(requesterCiv, responderCiv, requestedState);
             clearDiplomacyRequestsBetween(requesterCiv, responderCiv);
             if (requestedState == DiplomacyState.WAR) {
@@ -2457,6 +2533,12 @@ public class CivSavedData extends SavedData {
             request.pvpKillTarget = Math.max(1, pvpKillTarget);
             request.warOfSubmission = warOfSubmission;
             request.warOfLand = warOfLand;
+            request.warResourceGamble = warResourceGamble;
+            request.warGambleItemId = warGambleItemId;
+            request.warGambleAmount = Math.max(0L, warGambleAmount);
+            if (warResourceGamble && warGambleItemId != null && warGambleAmount > 0L) {
+                lockHubStock(requesterCiv, warGambleItemId, warGambleAmount);
+            }
         }
         diplomacyRequests.put(outgoingKey, request);
         addAuditLog(
@@ -2498,6 +2580,13 @@ public class CivSavedData extends SavedData {
         DiplomacyState requestedState = request.requestedState;
 
         if (accept) {
+            if (request.warResourceGamble && request.warGambleItemId != null && request.warGambleAmount > 0L) {
+                long responderAvailable = responder.availableHubStock(request.warGambleItemId);
+                if (responderAvailable < request.warGambleAmount) {
+                    return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+                }
+                lockHubStock(responderCiv, request.warGambleItemId, request.warGambleAmount);
+            }
             setDiplomacyStateInternal(requesterCiv, responderCiv, requestedState);
             clearDiplomacyRequestsBetween(requesterCiv, responderCiv);
             if (requestedState == DiplomacyState.WAR) {
@@ -2519,6 +2608,9 @@ public class CivSavedData extends SavedData {
             return new DiplomacyRequestResult(DiplomacyRequestResultType.REQUEST_ACCEPTED, requestedState);
         }
 
+        if (request.warResourceGamble && request.warGambleItemId != null && request.warGambleAmount > 0L) {
+            unlockHubStock(requesterCiv, request.warGambleItemId, request.warGambleAmount);
+        }
         diplomacyRequests.remove(key);
         addAuditLog(
                 responder.id(),
@@ -2733,6 +2825,9 @@ public class CivSavedData extends SavedData {
                 killTarget,
                 request.warOfSubmission,
                 request.warOfLand,
+                request.warResourceGamble,
+                request.warGambleItemId,
+                request.warGambleAmount,
                 declaredByCivRaw);
     }
 
@@ -2743,6 +2838,9 @@ public class CivSavedData extends SavedData {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount,
             @Nullable String declaredByCivRaw) {
         String key = diplomacyKey(civAraw, civBraw);
         if (key == null) {
@@ -2753,6 +2851,9 @@ public class CivSavedData extends SavedData {
         war.pvpKillTarget = Math.max(1, pvpKillTarget);
         war.warOfSubmission = warOfSubmission;
         war.warOfLand = warOfLand;
+        war.warResourceGamble = warResourceGamble;
+        war.warGambleItemId = warGambleItemId;
+        war.warGambleAmount = Math.max(0L, warGambleAmount);
         war.startedAtMillis = System.currentTimeMillis();
         war.declaredByCivId = normalizeCivId(declaredByCivRaw);
         activeWars.put(key, war);
@@ -2764,6 +2865,11 @@ public class CivSavedData extends SavedData {
         String key = diplomacyKey(civAraw, civBraw);
         if (key == null) {
             return;
+        }
+        ActiveWarRecord war = activeWars.get(key);
+        if (war != null && war.warResourceGamble && war.warGambleItemId != null && war.warGambleAmount > 0L) {
+            unlockHubStock(civAraw, war.warGambleItemId, war.warGambleAmount);
+            unlockHubStock(civBraw, war.warGambleItemId, war.warGambleAmount);
         }
         activeWars.remove(key);
         warCasualties.remove(key);
@@ -2809,6 +2915,9 @@ public class CivSavedData extends SavedData {
                 Math.max(1, war.pvpKillTarget),
                 war.warOfSubmission,
                 war.warOfLand,
+                war.warResourceGamble,
+                war.warGambleItemId,
+                Math.max(0L, war.warGambleAmount),
                 Math.max(0L, war.startedAtMillis),
                 war.declaredByCivId,
                 firstCasualties,
@@ -2851,6 +2960,24 @@ public class CivSavedData extends SavedData {
             transferredPlotCount = transferAllPlots(loser.id(), winner.id());
         }
 
+        long gambleTransferred = 0L;
+        if (war.warResourceGamble && war.warGambleItemId != null && war.warGambleAmount > 0L) {
+            String gambleItem = war.warGambleItemId;
+            long gambleAmount = war.warGambleAmount;
+            long loserLocked = loser.hubLockedForWar().getOrDefault(gambleItem, 0L);
+            long actualTransfer = Math.min(loserLocked, gambleAmount);
+            if (actualTransfer > 0L) {
+                winner.hubStock().merge(gambleItem, actualTransfer, Long::sum);
+                loser.hubStock().merge(gambleItem, -actualTransfer, (old, delta) -> {
+                    long result = old + delta;
+                    return result <= 0L ? null : result;
+                });
+                gambleTransferred = actualTransfer;
+            }
+            unlockHubStock(winnerCiv, gambleItem, gambleAmount);
+            unlockHubStock(loserCiv, gambleItem, gambleAmount);
+        }
+
         addAuditLog(
                 winner.id(),
                 "War ended against " + loser.displayName() + " [" + loser.id() + "]"
@@ -2858,6 +2985,7 @@ public class CivSavedData extends SavedData {
                         + " | type: " + warType.displayName()
                         + " | submission: " + (warOfSubmission ? "yes" : "no")
                         + " | land takeover: " + (warOfLand ? ("yes (" + transferredPlotCount + " plots)") : "no")
+                        + (war.warResourceGamble ? (" | resource gamble: " + gambleTransferred + "x " + war.warGambleItemId) : "")
                         + " | reason: " + reason,
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         addAuditLog(
@@ -2867,6 +2995,7 @@ public class CivSavedData extends SavedData {
                         + " | type: " + warType.displayName()
                         + " | submission: " + (warOfSubmission ? "yes" : "no")
                         + " | land takeover: " + (warOfLand ? ("yes (" + transferredPlotCount + " plots)") : "no")
+                        + (war.warResourceGamble ? (" | resource gamble: " + gambleTransferred + "x " + war.warGambleItemId) : "")
                         + " | reason: " + reason,
                 RealCivConfig.MAX_AUDIT_LOGS.get());
 
@@ -2882,7 +3011,10 @@ public class CivSavedData extends SavedData {
                 Math.max(1, war.pvpKillTarget),
                 warOfSubmission,
                 warOfLand,
-                transferredPlotCount);
+                transferredPlotCount,
+                war.warResourceGamble,
+                war.warGambleItemId,
+                gambleTransferred);
     }
 
     private int transferAllPlots(String fromCivRaw, String toCivRaw) {
@@ -2988,7 +3120,10 @@ public class CivSavedData extends SavedData {
                 request.requestedState == DiplomacyState.WAR ? request.warType : null,
                 request.requestedState == DiplomacyState.WAR ? Math.max(1, request.pvpKillTarget) : 0,
                 request.requestedState == DiplomacyState.WAR && request.warOfSubmission,
-                request.requestedState == DiplomacyState.WAR && request.warOfLand);
+                request.requestedState == DiplomacyState.WAR && request.warOfLand,
+                request.requestedState == DiplomacyState.WAR && request.warResourceGamble,
+                request.requestedState == DiplomacyState.WAR ? request.warGambleItemId : null,
+                request.requestedState == DiplomacyState.WAR ? Math.max(0L, request.warGambleAmount) : 0L);
     }
 
     private void clearDiplomacyRequestsBetween(String civAraw, String civBraw) {
@@ -2999,10 +3134,18 @@ public class CivSavedData extends SavedData {
         }
         String aToB = diplomacyRequestKey(civA, civB);
         if (aToB != null) {
+            DiplomacyRequestRecord request = diplomacyRequests.get(aToB);
+            if (request != null && request.warResourceGamble && request.warGambleItemId != null && request.warGambleAmount > 0L) {
+                unlockHubStock(request.requesterCivId, request.warGambleItemId, request.warGambleAmount);
+            }
             diplomacyRequests.remove(aToB);
         }
         String bToA = diplomacyRequestKey(civB, civA);
         if (bToA != null) {
+            DiplomacyRequestRecord request = diplomacyRequests.get(bToA);
+            if (request != null && request.warResourceGamble && request.warGambleItemId != null && request.warGambleAmount > 0L) {
+                unlockHubStock(request.requesterCivId, request.warGambleItemId, request.warGambleAmount);
+            }
             diplomacyRequests.remove(bToA);
         }
     }
@@ -3505,7 +3648,10 @@ public class CivSavedData extends SavedData {
             @Nullable WarType warType,
             int pvpKillTarget,
             boolean warOfSubmission,
-            boolean warOfLand) {
+            boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount) {
     }
 
     public record ActiveWarView(
@@ -3515,6 +3661,9 @@ public class CivSavedData extends SavedData {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmount,
             long startedAtMillis,
             @Nullable String declaredByCivilizationId,
             long firstCivilizationCasualties,
@@ -3528,7 +3677,10 @@ public class CivSavedData extends SavedData {
             int pvpKillTarget,
             boolean warOfSubmission,
             boolean warOfLand,
-            int transferredPlotCount) {
+            int transferredPlotCount,
+            boolean warResourceGamble,
+            @Nullable String warGambleItemId,
+            long warGambleAmountTransferred) {
     }
 
     public enum WarResignResultType {
@@ -3568,6 +3720,10 @@ public class CivSavedData extends SavedData {
         private int pvpKillTarget;
         private boolean warOfSubmission;
         private boolean warOfLand;
+        private boolean warResourceGamble;
+        @Nullable
+        private String warGambleItemId;
+        private long warGambleAmount;
     }
 
     private record DiplomacyPair(String firstCivId, String secondCivId) {
@@ -3579,6 +3735,10 @@ public class CivSavedData extends SavedData {
         private int pvpKillTarget;
         private boolean warOfSubmission;
         private boolean warOfLand;
+        private boolean warResourceGamble;
+        @Nullable
+        private String warGambleItemId;
+        private long warGambleAmount;
         private long startedAtMillis;
         @Nullable
         private String declaredByCivId;

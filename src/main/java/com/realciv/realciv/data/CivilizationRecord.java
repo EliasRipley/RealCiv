@@ -20,6 +20,7 @@ public final class CivilizationRecord {
     private String displayName;
     private long treasuryCents;
     private final Map<String, Long> hubStock = new HashMap<>();
+    private final Map<String, Long> hubLockedForWar = new HashMap<>();
     private final Map<String, PlotRecord> plots = new HashMap<>();
     private final List<String> auditLogs = new ArrayList<>();
     private final Set<UUID> civicManagers = new HashSet<>();
@@ -171,6 +172,16 @@ public final class CivilizationRecord {
         return hubStock;
     }
 
+    public Map<String, Long> hubLockedForWar() {
+        return hubLockedForWar;
+    }
+
+    public long availableHubStock(String itemId) {
+        long stock = hubStock.getOrDefault(itemId, 0L);
+        long locked = hubLockedForWar.getOrDefault(itemId, 0L);
+        return Math.max(0L, stock - locked);
+    }
+
     public Map<String, PlotRecord> plots() {
         return plots;
     }
@@ -278,6 +289,12 @@ public final class CivilizationRecord {
         }
         tag.put("hubStock", stockTag);
 
+        CompoundTag lockedTag = new CompoundTag();
+        for (Map.Entry<String, Long> entry : hubLockedForWar.entrySet()) {
+            lockedTag.putLong(entry.getKey(), Math.max(0L, entry.getValue()));
+        }
+        tag.put("hubLockedForWar", lockedTag);
+
         ListTag plotTags = new ListTag();
         for (PlotRecord plot : plots.values()) {
             plotTags.add(plot.save());
@@ -383,6 +400,11 @@ public final class CivilizationRecord {
         CompoundTag stockTag = tag.getCompound("hubStock");
         for (String key : stockTag.getAllKeys()) {
             record.hubStock.put(key, Math.max(0L, stockTag.getLong(key)));
+        }
+
+        CompoundTag lockedTag = tag.getCompound("hubLockedForWar");
+        for (String key : lockedTag.getAllKeys()) {
+            record.hubLockedForWar.put(key, Math.max(0L, lockedTag.getLong(key)));
         }
 
         ListTag plotTags = tag.getList("plots", Tag.TAG_COMPOUND);
