@@ -111,6 +111,106 @@ public final class ProfessionCommands {
         return 1;
     }
 
+    public static int professionXpAdd(CommandSourceStack source, ServerPlayer target, String professionRaw, int amount) {
+        return professionXpAdjust(source, target, professionRaw, Math.max(0, amount));
+    }
+
+    public static int professionXpReduce(CommandSourceStack source, ServerPlayer target, String professionRaw, int amount) {
+        return professionXpAdjust(source, target, professionRaw, -Math.max(0, amount));
+    }
+
+    public static int professionXpSet(CommandSourceStack source, ServerPlayer target, String professionRaw, int targetXp) {
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        CivSavedData data = CivSavedData.get(source.getServer());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        int beforeXp = record.professionXp(profession);
+        int beforeLevel = record.levelFor(profession);
+        record.setProfessionXp(profession, Math.max(0, targetXp));
+        int afterXp = record.professionXp(profession);
+        int afterLevel = record.levelFor(profession);
+
+        String civId = data.getOrAssignCivilization(target.getUUID());
+        data.addAuditLog(
+                civId,
+                RealCivCommands.actorName(source) + " set " + profession.name()
+                        + " XP for " + target.getGameProfile().getName()
+                        + " from " + beforeXp + " to " + afterXp,
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        source.sendSuccess(() -> Component.literal(
+                "Set " + profession.name() + " XP for " + target.getGameProfile().getName()
+                        + ": " + beforeXp + " -> " + afterXp
+                        + " | level " + beforeLevel + " -> " + afterLevel + "."),
+                true);
+        return 1;
+    }
+
+    public static int professionLevelAdd(CommandSourceStack source, ServerPlayer target, String professionRaw, int deltaLevels) {
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        int currentLevel = CivSavedData.get(source.getServer()).getOrCreatePlayer(target.getUUID()).levelFor(profession);
+        int requested = safeAdd(currentLevel, Math.max(0, deltaLevels));
+        return professionLevelSet(source, target, professionRaw, requested);
+    }
+
+    public static int professionLevelReduce(CommandSourceStack source, ServerPlayer target, String professionRaw, int deltaLevels) {
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        int currentLevel = CivSavedData.get(source.getServer()).getOrCreatePlayer(target.getUUID()).levelFor(profession);
+        int requested = Math.max(0, currentLevel - Math.max(0, deltaLevels));
+        return professionLevelSet(source, target, professionRaw, requested);
+    }
+
+    public static int professionLevelSet(CommandSourceStack source, ServerPlayer target, String professionRaw, int requestedLevel) {
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+
+        CivSavedData data = CivSavedData.get(source.getServer());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        int beforeXp = record.professionXp(profession);
+        int beforeLevel = record.levelFor(profession);
+
+        LevelTarget targetLevel = resolveLevelTarget(profession, requestedLevel);
+        record.setProfessionXp(profession, targetLevel.targetXp());
+        int afterXp = record.professionXp(profession);
+        int afterLevel = record.levelFor(profession);
+
+        String civId = data.getOrAssignCivilization(target.getUUID());
+        data.addAuditLog(
+                civId,
+                RealCivCommands.actorName(source) + " set " + profession.name()
+                        + " level for " + target.getGameProfile().getName()
+                        + " to " + afterLevel + " (XP " + afterXp + ")",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        String clampSuffix = "";
+        if (targetLevel.clampedLevel() != requestedLevel) {
+            clampSuffix = " (requested " + requestedLevel + ", clamped to " + targetLevel.clampedLevel() + ")";
+        }
+        final String finalClampSuffix = clampSuffix;
+        source.sendSuccess(() -> Component.literal(
+                "Set " + profession.name() + " for " + target.getGameProfile().getName()
+                        + ": level " + beforeLevel + " -> " + afterLevel
+                        + " | XP " + beforeXp + " -> " + afterXp + finalClampSuffix + "."),
+                true);
+        return 1;
+    }
+
     public static boolean canManageProfessionFocus(CommandSourceStack source, CivSavedData data, ServerPlayer target) {
         if (source.hasPermission(3)) {
             return true;
@@ -142,5 +242,77 @@ public final class ProfessionCommands {
             }
         }
         return names;
+    }
+
+    private static int professionXpAdjust(CommandSourceStack source, ServerPlayer target, String professionRaw, int deltaXp) {
+        Profession profession = parseFocusableProfession(professionRaw);
+        if (profession == null) {
+            source.sendFailure(Component.literal("Unknown profession. Use one of: " + String.join(", ", focusableProfessionNames()) + "."));
+            return 0;
+        }
+        CivSavedData data = CivSavedData.get(source.getServer());
+        PlayerRecord record = data.getOrCreatePlayer(target.getUUID());
+        int beforeXp = record.professionXp(profession);
+        int beforeLevel = record.levelFor(profession);
+        int applied = record.addProfessionXpRaw(profession, deltaXp);
+        int afterXp = record.professionXp(profession);
+        int afterLevel = record.levelFor(profession);
+
+        String civId = data.getOrAssignCivilization(target.getUUID());
+        String action = deltaXp >= 0 ? "added" : "reduced";
+        data.addAuditLog(
+                civId,
+                RealCivCommands.actorName(source) + " " + action + " " + profession.name()
+                        + " XP for " + target.getGameProfile().getName() + " by " + Math.abs(applied),
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        data.setDirty();
+
+        String clampSuffix = "";
+        if (applied != deltaXp) {
+            clampSuffix = " (clamped by min/max XP bounds)";
+        }
+        final String finalClampSuffix = clampSuffix;
+        source.sendSuccess(() -> Component.literal(
+                (deltaXp >= 0 ? "Added " : "Reduced ")
+                        + Math.abs(applied) + " " + profession.name() + " XP for " + target.getGameProfile().getName()
+                        + ": " + beforeXp + " -> " + afterXp
+                        + " | level " + beforeLevel + " -> " + afterLevel
+                        + finalClampSuffix + "."),
+                true);
+        return 1;
+    }
+
+    private static LevelTarget resolveLevelTarget(Profession profession, int requestedLevel) {
+        int safeRequested = Math.max(0, requestedLevel);
+        List<? extends Integer> thresholds = RealCivConfig.PROFESSION_XP_THRESHOLDS.get();
+        if (thresholds.isEmpty()) {
+            return new LevelTarget(0, 0);
+        }
+
+        int maxFromThresholds = Math.max(0, thresholds.size() - 1);
+        int configuredCap = RealCivConfig.professionLevelCap(profession);
+        int maxLevel = maxFromThresholds;
+        if (configuredCap != Integer.MAX_VALUE) {
+            maxLevel = Math.max(0, Math.min(maxLevel, configuredCap));
+        }
+
+        int clampedLevel = Math.max(0, Math.min(safeRequested, maxLevel));
+        Integer threshold = thresholds.get(clampedLevel);
+        int targetXp = threshold == null ? 0 : Math.max(0, threshold);
+        return new LevelTarget(clampedLevel, targetXp);
+    }
+
+    private static int safeAdd(int left, int right) {
+        long sum = (long) left + (long) right;
+        if (sum > Integer.MAX_VALUE) {
+            return Integer.MAX_VALUE;
+        }
+        if (sum < Integer.MIN_VALUE) {
+            return Integer.MIN_VALUE;
+        }
+        return (int) sum;
+    }
+
+    private record LevelTarget(int clampedLevel, int targetXp) {
     }
 }

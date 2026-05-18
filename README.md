@@ -127,6 +127,12 @@ RealCiv is a server-first civilization/economy progression mod. Players progress
 | `/realciv profession focus clear` | Clears your specialization focus. |
 | `/realciv profession focus assign <player> <profession>` | Leadership/admin assigns focus. |
 | `/realciv profession focus remove <player>` | Leadership/admin clears focus. |
+| `/realciv profession xp add <player> <profession> <amount>` | Admin adds profession XP. |
+| `/realciv profession xp reduce <player> <profession> <amount>` | Admin reduces profession XP. |
+| `/realciv profession xp set <player> <profession> <value>` | Admin sets profession XP exactly. |
+| `/realciv profession level add <player> <profession> <amount>` | Admin increases profession level (maps to threshold XP). |
+| `/realciv profession level reduce <player> <profession> <amount>` | Admin decreases profession level (maps to threshold XP). |
+| `/realciv profession level set <player> <profession> <value>` | Admin sets profession level exactly (clamped to configured caps). |
 | `/realciv hub open` | Opens Community Hub stock/withdraw UI. |
 | `/realciv hub stock [page]` | Chat listing of hub inventory. |
 | `/realciv hub quota [page]` | Shows your personal withdrawal limits. |
@@ -136,7 +142,11 @@ RealCiv is a server-first civilization/economy progression mod. Players progress
 | `/realciv hub coverage [page]` | Admin diagnostics for reward coverage. |
 | `/realciv hub export-items <namespace>` | Admin export of item IDs to config file. |
 | `/realciv credit add <player> <amount>` | Admin adds contribution karma. |
+| `/realciv credit reduce <player> <amount>` | Admin reduces contribution karma. |
 | `/realciv credit set <player> <amount>` | Admin sets exact karma balance. |
+| `/realciv credit collective add <civ> <amount>` | Admin adds collective contribution karma to a civilization treasury. |
+| `/realciv credit collective reduce <civ> <amount>` | Admin reduces collective contribution karma from a civilization treasury. |
+| `/realciv credit collective set <civ> <amount>` | Admin sets civilization collective contribution karma exactly. |
 
 ### Land & Town
 

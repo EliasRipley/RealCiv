@@ -77,7 +77,83 @@ public final class RealCivCommands {
                                         .then(Commands.argument("player", EntityArgument.player())
                                                 .executes(ctx -> ProfessionCommands.professionFocusRemove(
                                                         ctx.getSource(),
-                                                        EntityArgument.getPlayer(ctx, "player")))))))
+                                                        EntityArgument.getPlayer(ctx, "player"))))))
+                        .then(Commands.literal("xp")
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionXpAdd(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "amount")))))))
+                                .then(Commands.literal("reduce")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionXpReduce(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "amount")))))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("value", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionXpSet(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "value"))))))))
+                        .then(Commands.literal("level")
+                                .requires(source -> source.hasPermission(3))
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionLevelAdd(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "amount")))))))
+                                .then(Commands.literal("reduce")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("amount", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionLevelReduce(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "amount")))))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("player", EntityArgument.player())
+                                                .then(Commands.argument("profession", StringArgumentType.word())
+                                                        .suggests((ctx, builder) -> SharedSuggestionProvider.suggest(
+                                                                ProfessionCommands.focusableProfessionNames(),
+                                                                builder))
+                                                        .then(Commands.argument("value", IntegerArgumentType.integer(0))
+                                                                .executes(ctx -> ProfessionCommands.professionLevelSet(
+                                                                        ctx.getSource(),
+                                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                                        StringArgumentType.getString(ctx, "profession"),
+                                                                        IntegerArgumentType.getInteger(ctx, "value")))))))))
                 .then(Commands.literal("civ")
                         .then(Commands.literal("info")
                                 .executes(ctx -> CivCommands.civInfo(ctx.getSource(), ctx.getSource().getPlayerOrException()))
@@ -758,13 +834,42 @@ public final class RealCivCommands {
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
                                                         DoubleArgumentType.getDouble(ctx, "amount"))))))
+                        .then(Commands.literal("reduce")
+                                .then(Commands.argument("player", EntityArgument.player())
+                                        .then(Commands.argument("amount", DoubleArgumentType.doubleArg(0.0D))
+                                                .executes(ctx -> CreditCommands.creditReduce(
+                                                        ctx.getSource(),
+                                                        EntityArgument.getPlayer(ctx, "player"),
+                                                        DoubleArgumentType.getDouble(ctx, "amount"))))))
                         .then(Commands.literal("set")
                                 .then(Commands.argument("player", EntityArgument.player())
                                         .then(Commands.argument("amount", DoubleArgumentType.doubleArg(0.0D))
                                                 .executes(ctx -> CreditCommands.creditSet(
                                                         ctx.getSource(),
                                                         EntityArgument.getPlayer(ctx, "player"),
-                                                        DoubleArgumentType.getDouble(ctx, "amount")))))))
+                                                        DoubleArgumentType.getDouble(ctx, "amount"))))))
+                        .then(Commands.literal("collective")
+                                .then(Commands.literal("add")
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .then(Commands.argument("amount", DoubleArgumentType.doubleArg(0.0D))
+                                                        .executes(ctx -> CreditCommands.collectiveAdd(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "civ"),
+                                                                DoubleArgumentType.getDouble(ctx, "amount"))))))
+                                .then(Commands.literal("reduce")
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .then(Commands.argument("amount", DoubleArgumentType.doubleArg(0.0D))
+                                                        .executes(ctx -> CreditCommands.collectiveReduce(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "civ"),
+                                                                DoubleArgumentType.getDouble(ctx, "amount"))))))
+                                .then(Commands.literal("set")
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .then(Commands.argument("amount", DoubleArgumentType.doubleArg(0.0D))
+                                                        .executes(ctx -> CreditCommands.collectiveSet(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "civ"),
+                                                                DoubleArgumentType.getDouble(ctx, "amount"))))))))
                 .then(Commands.literal("mayor")
                         .then(Commands.literal("show")
                                 .executes(ctx -> MayorCommands.mayorShow(ctx.getSource(), null))

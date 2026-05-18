@@ -1039,6 +1039,39 @@ public final class PlayerRecord {
             recordProfessionLevelGain(profession, Math.max(0, endLevel - startLevel));
         }
 
+        public int professionXp(Profession profession) {
+            if (profession == null || profession == Profession.NONE) {
+                return 0;
+            }
+            return professionXpValue(profession);
+        }
+
+        public int setProfessionXp(Profession profession, int xp) {
+            if (profession == null || profession == Profession.NONE) {
+                return 0;
+            }
+            int before = professionXpValue(profession);
+            setProfessionXpValue(profession, xp);
+            int after = professionXpValue(profession);
+            return after - before;
+        }
+
+        public int addProfessionXpRaw(Profession profession, int delta) {
+            if (profession == null || profession == Profession.NONE || delta == 0) {
+                return 0;
+            }
+            int before = professionXpValue(profession);
+            long target = (long) before + (long) delta;
+            if (target < 0L) {
+                target = 0L;
+            } else if (target > Integer.MAX_VALUE) {
+                target = Integer.MAX_VALUE;
+            }
+            setProfessionXpValue(profession, (int) target);
+            int after = professionXpValue(profession);
+            return after - before;
+        }
+
         public void addGeneralXp(int delta) {
             if (delta <= 0) {
                 return;
