@@ -260,13 +260,36 @@ public final class CivCommands {
             source.sendFailure(Component.literal("Only leadership/admin can rename custom roles."));
             return 0;
         }
-        if (!data.renameCustomRole(civId, roleRaw, nameRaw, RealCivCommands.actorName(source))) {
-            source.sendFailure(Component.literal("Role rename failed. Check role id and new name."));
-            return 0;
+        String actorName = RealCivCommands.actorName(source);
+
+        @Nullable String customRoleId = resolveCustomRoleId(data, civId, roleRaw);
+        if (customRoleId != null) {
+            if (!data.renameCustomRole(civId, customRoleId, nameRaw, actorName)) {
+                source.sendFailure(Component.literal("Role rename failed. New display name may already match."));
+                return 0;
+            }
+            String resolvedRoleId = customRoleId;
+            source.sendSuccess(() -> Component.literal(
+                    "Renamed role [" + resolvedRoleId + "] to '" + nameRaw + "' for "
+                            + RealCivCommands.civDisplay(data, civId) + "."),
+                    true);
+            return 1;
         }
-        source.sendSuccess(() -> Component.literal(
-                "Renamed role [" + roleRaw + "] to '" + nameRaw + "'."), true);
-        return 1;
+
+        if (isLeaderTitleAlias(data, civId, roleRaw)) {
+            if (!data.setLeaderTitle(civId, nameRaw, actorName)) {
+                source.sendFailure(Component.literal("Leader title rename failed. New title may already match."));
+                return 0;
+            }
+            source.sendSuccess(() -> Component.literal(
+                    "Leadership title for " + RealCivCommands.civDisplay(data, civId)
+                            + " set to '" + data.leaderTitle(civId) + "'."), true);
+            return 1;
+        }
+
+        source.sendFailure(Component.literal(
+                "Role rename failed. Use /realciv civ role list for role ids, or /realciv civ title set <name> to rename leadership title."));
+        return 0;
     }
 
     public static int civRoleDelete(CommandSourceStack source, String roleRaw)
@@ -284,6 +307,36 @@ public final class CivCommands {
         }
         source.sendSuccess(() -> Component.literal("Deleted role [" + roleRaw + "]."), true);
         return 1;
+    }
+
+    @Nullable
+    private static String resolveCustomRoleId(CivSavedData data, String civId, String roleRaw) {
+        @Nullable String canonical = CivSavedData.canonicalRoleId(roleRaw);
+        if (canonical != null && data.customRoleExists(civId, canonical)) {
+            return canonical;
+        }
+        String requested = roleRaw == null ? "" : roleRaw.trim();
+        if (requested.isEmpty()) {
+            return null;
+        }
+        for (CivRoleView role : data.customRolesSorted(civId)) {
+            if (role.displayName().equalsIgnoreCase(requested)) {
+                return role.roleId();
+            }
+        }
+        return null;
+    }
+
+    private static boolean isLeaderTitleAlias(CivSavedData data, String civId, String roleRaw) {
+        @Nullable String requested = CivSavedData.canonicalRoleId(roleRaw);
+        if (requested == null) {
+            return false;
+        }
+        @Nullable String currentTitle = CivSavedData.canonicalRoleId(data.leaderTitle(civId));
+        if (currentTitle != null && currentTitle.equals(requested)) {
+            return true;
+        }
+        return "mayor".equals(requested) || "leader".equals(requested);
     }
 
     public static int civRolePermissionList(CommandSourceStack source, String roleRaw)

@@ -228,13 +228,18 @@ public final class LandCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
         boolean mayorOrAdmin = RealCivCommands.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_FTB_MODE);
+        boolean canManageLandZoning = RealCivCommands.hasCivPermission(
+                source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING);
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
         String storedMode = RealCivFTBChunksBridge.normalizeClaimModeOrAuto(record.ftbClaimModeOverride());
         String effectiveMode = RealCivFTBChunksBridge.effectiveClaimModeLabel(mayorOrAdmin, record.ftbClaimModeOverride());
 
         if (!mayorOrAdmin) {
+            String suffix = canManageLandZoning
+                    ? "you can assign PRIVATE plots with land-zoning permission."
+                    : "new PRIVATE assignments require leadership approval.";
             source.sendSuccess(() -> Component.literal(
-                    "FTB map claim mode: PRIVATE (non-leadership players always claim PRIVATE plots)."), false);
+                    "FTB map claim mode: PRIVATE (" + suffix + ")"), false);
             return 1;
         }
 

@@ -15,6 +15,13 @@ public class ModernHubStockScreen extends RealCivScreen {
     public static final int ACTION_WITHDRAW_64 = 2;
     public static final int ACTION_PREV_PAGE = 3;
     public static final int ACTION_NEXT_PAGE = 4;
+    private static final int PAGE_Y = FOOTER_Y;
+    private static final int ROW_BTN_Y_OFFSET = 2;
+    private static final int ROW_BTN_H = 14;
+    private static final int TAKE_ONE_X = 340;
+    private static final int TAKE_STACK_X = 380;
+    private static final int ALLOW_DOWN_X = 430;
+    private static final int ALLOW_UP_X = 456;
 
     private HubStockSnapshot snapshot;
 
@@ -30,16 +37,13 @@ public class ModernHubStockScreen extends RealCivScreen {
 
     @Override
     protected void addFixedWidgets() {
-        {
-            SimpleTextButton btn = makeFixedBtn(ACTION_PREV_PAGE, "<", 18);
-            btn.setPos(2, 2);
-            add(btn);
-        }
-        {
-            SimpleTextButton btn = makeFixedBtn(ACTION_NEXT_PAGE, ">", 18);
-            btn.setPos(PANEL_W - 20, 2);
-            add(btn);
-        }
+        SimpleTextButton prev = makeFixedBtn(ACTION_PREV_PAGE, "< Prev", 50);
+        prev.setPos(10, PAGE_Y);
+        add(prev);
+
+        SimpleTextButton next = makeFixedBtn(ACTION_NEXT_PAGE, "Next >", 50);
+        next.setPos(PANEL_W - 60, PAGE_Y);
+        add(next);
     }
 
     @Override
@@ -57,10 +61,22 @@ public class ModernHubStockScreen extends RealCivScreen {
         panel.add(new LabelWidget(panel, "Yours", 170, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Allow/d", 250, currentY, 0xFF78909C));
         panel.add(new LabelWidget(panel, "Days", 310, currentY, 0xFF78909C));
+        panel.add(new LabelWidget(panel, "Actions", TAKE_ONE_X, currentY, 0xFF78909C));
         currentY += ROW_H;
 
         for (int i = 0; i < snapshot.entries().size(); i++) {
             panel.add(new StockRowWidget(panel, 4, currentY, i, snapshot.entries().get(i), snapshot.canManage(), this::sendAction));
+            int rowIndex = i;
+            addRowButton(panel, "1", TAKE_ONE_X, currentY + ROW_BTN_Y_OFFSET, 34,
+                    () -> sendAction(1000 + rowIndex));
+            addRowButton(panel, "64", TAKE_STACK_X, currentY + ROW_BTN_Y_OFFSET, 40,
+                    () -> sendAction(2000 + rowIndex));
+            if (snapshot.canManage()) {
+                addRowButton(panel, "-", ALLOW_DOWN_X, currentY + ROW_BTN_Y_OFFSET, 22,
+                        () -> sendAction(4000 + rowIndex));
+                addRowButton(panel, "+", ALLOW_UP_X, currentY + ROW_BTN_Y_OFFSET, 22,
+                        () -> sendAction(3000 + rowIndex));
+            }
             currentY += ROW_H;
         }
 
@@ -73,6 +89,12 @@ public class ModernHubStockScreen extends RealCivScreen {
     protected void sendAction(int actionId) {
         PacketDistributor.sendToServer(new RealCivPayloads.RealCivActionPayload(
                 RealCivPayloads.SCREEN_HUB_STOCK, actionId));
+    }
+
+    private void addRowButton(Panel panel, String label, int x, int y, int width, Runnable action) {
+        SimpleTextButton btn = makePanelBtn(panel, label, button -> action.run());
+        btn.setPosAndSize(x, y, width, ROW_BTN_H);
+        panel.add(btn);
     }
 
     private static class StockRowWidget extends Widget {
@@ -119,10 +141,9 @@ public class ModernHubStockScreen extends RealCivScreen {
             }
 
             if (hovered) {
-                String tip = "Left: withdraw 64 | Right: withdraw 1";
-                if (canManage && row.dailyAllowance() > 0) {
-                    tip += " | Shift: adjust allowance";
-                }
+                String tip = canManage
+                        ? "Use action buttons to withdraw or adjust allowance."
+                        : "Use action buttons to withdraw from hub stock.";
                 graphics.drawString(font, Component.literal(font.plainSubstrByWidth(tip, 300)),
                         x + 4, y + h, 0x60FFFFFF, false);
             }

@@ -34,10 +34,12 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     public static final int ACTION_VOTE_CANDIDATE_5 = 14;
     public static final int ACTION_ROLES_CREATE = 15;
     public static final int ACTION_OPEN_RATION_EDITOR = 16;
+    public static final int ACTION_ROLES_MANAGE = 17;
     public static final int ACTION_SET_ATTRIBUTE = 1000;
 
     private static final int TAB_W = 90;
-    private static final int TAB_H = 16;
+    private static final int TAB_H = 14;
+    private static final int TAB_Y = 30;
     private static final int BTN_Y = FOOTER_Y;
     private static final int VOTE_Y = FOOTER_Y + 16;
 
@@ -93,48 +95,15 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
                 graphics.drawString(font, getTitle(), textX, textY,
                         active ? 0xFFFFFFFF : 0xFF9BA9B7, true);
             }
-        }.setPosAndSize(x, 2, TAB_W, TAB_H);
+        }.setPosAndSize(x, TAB_Y, TAB_W, TAB_H);
     }
 
     private void addBottomButtons() {
-        switch (selectedTab) {
-            case "GOVERNANCE" -> {
-                addBtn(ACTION_PROPOSAL_YES, "Approve", 50, 10, BTN_Y);
-                addBtn(ACTION_PROPOSAL_NO, "Reject", 50, 64, BTN_Y);
-                boolean hasElection = "Election".equals(snapshot.leadershipContestType());
-                boolean hasCoup = "Coup".equals(snapshot.leadershipContestType());
-
-                int bx = 118;
-                if (!hasElection && !hasCoup) {
-                    addBtn(ACTION_START_ELECTION, "Elect", 50, bx, BTN_Y);
-                    addBtn(ACTION_START_COUP, "Coup", 40, bx + 54, BTN_Y);
-                }
-                if (hasElection) {
-                    addBtn(ACTION_JOIN_ELECTION, "Join", 50, bx, BTN_Y);
-                    addBtn(ACTION_START_COUP, "Coup", 50, bx + 54, BTN_Y);
-                }
-                if (hasCoup) {
-                    addBtn(ACTION_APPROVE_COUP, "Join", 50, bx, BTN_Y);
-                    addBtn(ACTION_START_ELECTION, "Elect", 50, bx + 54, BTN_Y);
-                }
-            }
-            case "ROLES" -> {
-                addBtn(ACTION_DISTRIBUTION_TOGGLE, "Policy", 60, 10, BTN_Y);
-                addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
-                addBtn(ACTION_ROLES_CREATE, "Create Role", 80, 158, BTN_Y);
-            }
-            case "ECONOMY" -> {
-                addBtn(ACTION_DISTRIBUTION_TOGGLE, "Policy", 60, 10, BTN_Y);
-                addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
-                if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
-                    addBtn(ACTION_OPEN_RATION_EDITOR, "Rations", 70, 158, BTN_Y);
-                }
-            }
-            default -> {
-                addBtn(ACTION_DISTRIBUTION_TOGGLE, "Policy", 60, 10, BTN_Y);
-                addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 80, 74, BTN_Y);
-                addBtn(ACTION_PROPOSAL_YES, "Approve", 50, 158, BTN_Y);
-                addBtn(ACTION_PROPOSAL_NO, "Reject", 50, 212, BTN_Y);
+        if ("OVERVIEW".equals(selectedTab)) {
+            addBtn(ACTION_FRIENDLY_FIRE_TOGGLE, "Friendly PvP", 90, PANEL_W - 106, BTN_Y);
+        } else if ("ECONOMY".equals(selectedTab)) {
+            if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
+                addBtn(ACTION_OPEN_RATION_EDITOR, "Rations", 74, PANEL_W - 112, BTN_Y);
             }
         }
     }
@@ -184,6 +153,12 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
         addLabelRow("Open invites", String.valueOf(snapshot.inviteCount()));
         addLabelRow("Friendly fire", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
         addSpacer(4);
+        addSection("Quick Actions", 0xFFC6D2DE);
+        addRowWithButtons(
+                "Friendly PvP",
+                "Toggle member PvP.",
+                makeActionButton("Toggle", ACTION_FRIENDLY_FIRE_TOGGLE, 62));
+        addSpacer(4);
         addSection("Proposal");
         addLabelRow("Summary", snapshot.pendingProposalSummary(), 0xFF9BA9B7);
         String votes = snapshot.pendingProposalRequiredYesVotes() <= 0 ? "-"
@@ -221,11 +196,13 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
                 ? "Unlimited" : RealCivUtil.formatCredits(snapshot.maxContributionKarmaGainPerDayCents());
         addLabelRow("Karma cap/day", cap);
         addSpacer(4);
-        if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
-            addLabelRow("", "Rationed mode active. Use the Rations button below to edit daily allowances.", 0xFF80CBC4);
-            addSpacer(2);
-        }
         addSection("Resource Policy", 0xFFC6D2DE);
+        if (snapshot.canManageHubDistribution() && isRationedPolicy()) {
+            addRowWithButtons(
+                    "Rations",
+                    "Open ration limits editor.",
+                    makeActionButton("Open", ACTION_OPEN_RATION_EDITOR, 62));
+        }
         addAttributeSelectorButtons(AttributeCategory.RESOURCE, snapshot.resourceAttribute());
     }
 
@@ -235,6 +212,14 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
         addLabelRow("Leader", snapshot.leaderTitle());
         addLabelRow("Workflow", snapshot.governanceApprovalWorkflowEnabled() ? "Enabled" : "Disabled");
         addLabelRow("Friendly fire", snapshot.allowIntraCivPvp() ? "Enabled" : "Disabled");
+        addSpacer(4);
+        addSection("Proposal Decision", 0xFFC6D2DE);
+        addLabelRow("Proposal", snapshot.pendingProposalSummary(), 0xFF9BA9B7);
+        addRowWithButtons(
+                "Vote",
+                "Approve/reject proposal.",
+                makeActionButton("Approve", ACTION_PROPOSAL_YES, 68),
+                makeActionButton("Reject", ACTION_PROPOSAL_NO, 62));
         addSpacer(4);
 
         for (AttributeCategory cat : AttributeCategory.values()) {
@@ -263,15 +248,30 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
                 if (snapshot.leadershipCandidateCount() > 0) {
                     addLabelRow("", "Use V1-V5 buttons below to vote", 0xFF78909C);
                 }
+                addRowWithButtons(
+                        "Election actions",
+                        "Join ballot or start coup.",
+                        makeActionButton("Join Election", ACTION_JOIN_ELECTION, 92),
+                        makeActionButton("Start Coup", ACTION_START_COUP, 78));
             } else if ("Coup".equals(snapshot.leadershipContestType())) {
                 addLabelRow("Coup leader", snapshot.leadershipCoupLeaderName());
                 String approvals = snapshot.leadershipCoupRequiredApprovals() <= 0 ? "-"
                         : snapshot.leadershipCoupApprovalCount() + "/" + snapshot.leadershipCoupRequiredApprovals();
                 addLabelRow("Approvals", approvals);
+                addRowWithButtons(
+                        "Coup actions",
+                        "Approve coup or elect.",
+                        makeActionButton("Approve Coup", ACTION_APPROVE_COUP, 88),
+                        makeActionButton("Start Election", ACTION_START_ELECTION, 90));
             }
         } else {
             addLabelRow("Contest", "None");
             addLabelRow("", "Start an election or coup to change leadership.", 0xFF78909C);
+            addRowWithButtons(
+                    "Contest actions",
+                    "Start leadership process.",
+                    makeActionButton("Start Election", ACTION_START_ELECTION, 90),
+                    makeActionButton("Start Coup", ACTION_START_COUP, 78));
         }
     }
 
@@ -310,6 +310,13 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
         addSpacer(4);
 
         if (snapshot.canManageGovernance()) {
+            addSection("Role Actions", 0xFFC6D2DE);
+            addRowWithButtons(
+                    "Role tools",
+                    "Open role manager.",
+                    makeActionButton("Manage Roles", ACTION_ROLES_MANAGE, 102));
+            addLabelRow("", "Advanced path: /realciv civ role ...", 0xFF78909C);
+            addSpacer(4);
             addSection("Available permissions for roles", 0xFFC6D2DE);
             String[][] perms = {
                 {"manage_diplomacy", "Manage diplomacy"},
@@ -325,7 +332,7 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
                 addLabelRow("  " + p[1], "", 0xFF9BA9B7);
             }
             addSpacer(4);
-            addLabelRow("", "Use 'Create Role' button below to add a new role.", 0xFF78909C);
+            addLabelRow("", "Use /realciv civ role commands to rename, grant permissions, and assign members.", 0xFF78909C);
         } else {
             addLabelRow("", "Role management is available to leadership.", 0xFF78909C);
         }
@@ -366,6 +373,12 @@ public class ModernCivControlPanelScreen extends RealCivScreen {
     private boolean isRationedPolicy() {
         CivicAttribute attr = CivicAttribute.fromSerializedName(snapshot.resourceAttribute());
         return attr == CivicAttribute.RATIONED;
+    }
+
+    private Widget makeActionButton(String label, int actionId, int width) {
+        Widget btn = makeInlineBtn(actionId, label, width);
+        btn.setPos(0, 0);
+        return btn;
     }
 
     @Override

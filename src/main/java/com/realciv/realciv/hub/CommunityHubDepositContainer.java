@@ -41,6 +41,7 @@ public class CommunityHubDepositContainer extends SimpleContainer {
         processed = true;
 
         CivSavedData data = CivSavedData.get(serverPlayer.getServer());
+        boolean grantDepositGeneralXp = RealCivConfig.hubDepositGeneralXpEnabled();
         int acceptedItemCount = 0;
         int acceptedWithoutRewardCount = 0;
         long earnedCreditsCents = 0L;
@@ -64,7 +65,9 @@ public class CommunityHubDepositContainer extends SimpleContainer {
             }
             acceptedItemCount += count;
             earnedCreditsCents += rewardRule.creditsPerItemCents() * count;
-            earnedGeneralXp += rewardRule.generalXpPerItem() * count;
+            if (grantDepositGeneralXp) {
+                earnedGeneralXp += rewardRule.generalXpPerItem() * count;
+            }
             int restoredActions = HubResetResolver.resolveActionsRestored(copy, rewardRule.profession());
             restoredActionsTotal += Math.max(0, restoredActions);
             data.applyDeposit(
@@ -80,7 +83,9 @@ public class CommunityHubDepositContainer extends SimpleContainer {
         }
 
         if (acceptedItemCount > 0) {
-            serverPlayer.giveExperiencePoints(earnedGeneralXp);
+            if (grantDepositGeneralXp && earnedGeneralXp > 0) {
+                serverPlayer.giveExperiencePoints(earnedGeneralXp);
+            }
             serverPlayer.sendSystemMessage(Component.literal(
                     "Community Hub accepted " + acceptedItemCount + " items. +"
                             + RealCivUtil.formatCredits(earnedCreditsCents)

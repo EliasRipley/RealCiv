@@ -121,9 +121,12 @@ public abstract class RealCivScreen extends BaseScreen {
     protected final void addRowWithButtons(String label, String desc, Widget... buttons) {
         scrollPanel.add(new LabelWidget(scrollPanel, label, COL_LABEL, currentY, 0xFF9BA9B7));
         scrollPanel.add(new LabelWidget(scrollPanel, desc, COL_VALUE, currentY, 0xFF78909C));
+        int nextButtonX = COL_BTNS;
         for (Widget btn : buttons) {
-            btn.setPos(btn.posX + COL_BTNS, btn.posY + currentY);
+            int localX = btn.posX > 0 ? (btn.posX + COL_BTNS) : nextButtonX;
+            btn.setPos(localX, btn.posY + currentY);
             scrollPanel.add(btn);
+            nextButtonX = localX + btn.width + 4;
         }
         currentY += ROW_H + 2;
     }

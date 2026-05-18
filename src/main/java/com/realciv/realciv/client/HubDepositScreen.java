@@ -11,14 +11,15 @@ import net.minecraft.world.entity.player.Inventory;
 
 public class HubDepositScreen extends AbstractContainerScreen<CommunityHubDepositMenu> {
     private static final int BG_W = 420;
-    private static final int BG_H = 266;
+    private static final int BG_H = 276;
 
     private static final int SLOTS_LEFT = 8;
     private static final int SLOT_SIZE = 18;
     private static final int COLS = 9;
     private static final int DEPOSIT_ROWS = 6;
-    private static final int INV_Y = 140;
-    private static final int HOTBAR_Y = 198;
+    private static final int DEPOSIT_Y = 54;
+    private static final int INV_Y = 168;
+    private static final int HOTBAR_Y = 226;
     private static final int LABEL_X = 190;
     private static final int LABEL_W = BG_W - LABEL_X - 18;
 
@@ -44,12 +45,12 @@ public class HubDepositScreen extends AbstractContainerScreen<CommunityHubDeposi
         graphics.fill(0, 0, width, height, 0xB0111318);
         graphics.fill(leftPos, topPos, leftPos + BG_W, topPos + BG_H, 0xFF0F141C);
         graphics.fill(leftPos + 3, topPos + 3, leftPos + BG_W - 3, topPos + BG_H - 3, 0xFF1E2734);
-        graphics.fill(leftPos + 8, topPos + 40, leftPos + BG_W - 8, topPos + BG_H - 8, 0xFF141B25);
-        graphics.fill(leftPos + 8, topPos + 40, leftPos + BG_W - 8, topPos + 42, 0xFFFF8A3D);
-        graphics.fill(leftPos + 190, topPos + 18, leftPos + BG_W - 14, topPos + BG_H - 14, 0x181B2534);
-        graphics.fill(leftPos + 190, topPos + 122, leftPos + BG_W - 14, topPos + 124, 0xFF2B3545);
+        graphics.fill(leftPos + 8, topPos + 50, leftPos + BG_W - 8, topPos + BG_H - 8, 0xFF141B25);
+        graphics.fill(leftPos + 8, topPos + 50, leftPos + BG_W - 8, topPos + 52, 0xFFFF8A3D);
+        graphics.fill(leftPos + 190, topPos + 54, leftPos + BG_W - 14, topPos + BG_H - 14, 0x181B2534);
+        graphics.fill(leftPos + 190, topPos + 154, leftPos + BG_W - 14, topPos + 156, 0xFF2B3545);
 
-        drawSlotGrid(graphics, leftPos + SLOTS_LEFT, topPos + 18, COLS, DEPOSIT_ROWS);
+        drawSlotGrid(graphics, leftPos + SLOTS_LEFT, topPos + DEPOSIT_Y, COLS, DEPOSIT_ROWS);
         drawSlotGrid(graphics, leftPos + SLOTS_LEFT, topPos + INV_Y, COLS, 3);
         drawSlotGrid(graphics, leftPos + SLOTS_LEFT, topPos + HOTBAR_Y, COLS, 1);
     }
@@ -65,7 +66,7 @@ public class HubDepositScreen extends AbstractContainerScreen<CommunityHubDeposi
         graphics.drawString(font, Component.literal("Civilization: " + civLabel),
                 14, 32, 0xFF90CAF9, false);
 
-        int infoY = 18;
+        int infoY = 56;
         graphics.drawString(font, Component.literal("Deposit Rules"),
                 LABEL_X, infoY, 0xFFF2F6FB, false);
         infoY += 14;
@@ -73,7 +74,7 @@ public class HubDepositScreen extends AbstractContainerScreen<CommunityHubDeposi
         infoY = drawWrapped(graphics, "Profession actions are restored based on reward tables.", LABEL_X, infoY + 2, LABEL_W, 0xFF9DB0C2);
         infoY = drawWrapped(graphics, "Unaccepted stacks return to your inventory when this closes.", LABEL_X, infoY + 6, LABEL_W, 0xFF78909C);
 
-        int tipsY = 132;
+        int tipsY = 162;
         graphics.drawString(font, Component.literal("Quick Tips"),
                 LABEL_X, tipsY, 0xFF9DB0C2, false);
         tipsY += 14;

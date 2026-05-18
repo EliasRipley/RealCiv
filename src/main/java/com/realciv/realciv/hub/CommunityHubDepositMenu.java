@@ -19,14 +19,15 @@ public class CommunityHubDepositMenu extends AbstractContainerMenu {
         this.deposit = deposit;
         this.civilizationId = deposit.civilizationId();
 
+        int depositStartY = 54;
         int slotIndex = 0;
         for (int row = 0; row < 6; row++) {
             for (int col = 0; col < 9; col++) {
-                this.addSlot(new Slot(deposit, slotIndex++, 8 + col * 18, 18 + row * 18));
+                this.addSlot(new Slot(deposit, slotIndex++, 8 + col * 18, depositStartY + row * 18));
             }
         }
 
-        int invStartY = 140;
+        int invStartY = 168;
         for (int row = 0; row < 3; row++) {
             for (int col = 0; col < 9; col++) {
                 this.addSlot(new Slot(inventory, col + row * 9 + 9, 8 + col * 18, invStartY + row * 18));

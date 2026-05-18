@@ -13,8 +13,11 @@ import net.minecraft.world.item.Items;
 
 public class RationDraftScreen extends net.minecraft.client.gui.screens.inventory.AbstractContainerScreen<RationDraftMenu> {
     private static final int BG_W = 420;
-    private static final int BG_H = 266;
+    private static final int BG_H = 276;
     private static final int SLOT_SIZE = 18;
+    private static final int DRAFT_Y = 54;
+    private static final int INV_Y = 168;
+    private static final int HOTBAR_Y = 226;
 
     public RationDraftScreen(RationDraftMenu menu, Inventory playerInventory, Component title) {
         super(menu, playerInventory, title);
@@ -46,14 +49,14 @@ public class RationDraftScreen extends net.minecraft.client.gui.screens.inventor
         graphics.fill(0, 0, width, height, 0xB0111318);
         graphics.fill(leftPos, topPos, leftPos + BG_W, topPos + BG_H, 0xFF0F141C);
         graphics.fill(leftPos + 3, topPos + 3, leftPos + BG_W - 3, topPos + BG_H - 3, 0xFF1E2734);
-        graphics.fill(leftPos + 8, topPos + 40, leftPos + BG_W - 8, topPos + BG_H - 8, 0xFF141B25);
-        graphics.fill(leftPos + 8, topPos + 40, leftPos + BG_W - 8, topPos + 42, 0xFF4DB6AC);
-        graphics.fill(leftPos + 190, topPos + 18, leftPos + BG_W - 14, topPos + 136, 0x181B2534);
-        graphics.fill(leftPos + 190, topPos + 122, leftPos + BG_W - 14, topPos + 124, 0xFF2B3545);
+        graphics.fill(leftPos + 8, topPos + 50, leftPos + BG_W - 8, topPos + BG_H - 8, 0xFF141B25);
+        graphics.fill(leftPos + 8, topPos + 50, leftPos + BG_W - 8, topPos + 52, 0xFF4DB6AC);
+        graphics.fill(leftPos + 190, topPos + 54, leftPos + BG_W - 14, topPos + BG_H - 14, 0x181B2534);
+        graphics.fill(leftPos + 190, topPos + 166, leftPos + BG_W - 14, topPos + 168, 0xFF2B3545);
 
-        drawSlotGrid(graphics, leftPos + 8, topPos + 18, 9, 6);
-        drawSlotGrid(graphics, leftPos + 8, topPos + 140, 9, 3);
-        drawSlotGrid(graphics, leftPos + 8, topPos + 198, 9, 1);
+        drawSlotGrid(graphics, leftPos + 8, topPos + DRAFT_Y, 9, 6);
+        drawSlotGrid(graphics, leftPos + 8, topPos + INV_Y, 9, 3);
+        drawSlotGrid(graphics, leftPos + 8, topPos + HOTBAR_Y, 9, 1);
     }
 
     @Override
@@ -64,16 +67,15 @@ public class RationDraftScreen extends net.minecraft.client.gui.screens.inventor
         String civLabel = menu.civilizationId().isBlank() ? "-" : menu.civilizationId();
         graphics.drawString(font, Component.literal("Civilization: " + civLabel), 14, 32, 0xFF90CAF9, false);
 
-        graphics.drawString(font, Component.literal("How It Works"), 190, 18, 0xFFF2F6FB, false);
-        graphics.drawString(font, Component.literal("1. Move items into the draft grid."), 190, 32, 0xFF9DB0C2, false);
-        graphics.drawString(font, Component.literal("2. Stack size = allowance per day."), 190, 44, 0xFF9DB0C2, false);
-        graphics.drawString(font, Component.literal("3. Click Apply + Close to save."), 190, 56, 0xFF9DB0C2, false);
-        graphics.drawString(font, Component.literal("Items are always returned to you."), 190, 68, 0xFF80CBC4, false);
-        graphics.drawString(font, Component.literal("Shift-click works for quick staging."), 190, 80, 0xFF78909C, false);
-        graphics.drawString(font, Component.literal("Apply replaces the full allowance set."), 190, 92, 0xFF78909C, false);
+        graphics.drawString(font, Component.literal("How It Works"), 190, 58, 0xFFF2F6FB, false);
+        graphics.drawString(font, Component.literal("1. Move items into the draft grid."), 190, 72, 0xFF9DB0C2, false);
+        graphics.drawString(font, Component.literal("2. Stack size = allowance per day."), 190, 84, 0xFF9DB0C2, false);
+        graphics.drawString(font, Component.literal("3. Click Apply + Close to save."), 190, 96, 0xFF9DB0C2, false);
+        graphics.drawString(font, Component.literal("Items are always returned to you."), 190, 108, 0xFF80CBC4, false);
+        graphics.drawString(font, Component.literal("Apply replaces the full allowance set."), 190, 120, 0xFF78909C, false);
 
-        graphics.drawString(font, Component.literal("Current Allowances"), 190, 106, 0xFFF2F6FB, false);
-        int y = 118;
+        graphics.drawString(font, Component.literal("Current Allowances"), 190, 136, 0xFFF2F6FB, false);
+        int y = 148;
         if (menu.allowancePreview().isEmpty()) {
             graphics.drawString(font, Component.literal("- none configured"), 190, y, 0xFF78909C, false);
             return;

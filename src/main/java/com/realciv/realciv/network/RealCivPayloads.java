@@ -25,6 +25,7 @@ public final class RealCivPayloads {
     public static final String SCREEN_CONTROL_PANEL = "control_panel";
     public static final String SCREEN_HUB_STOCK = "hub_stock";
     public static final String SCREEN_RATION_EDITOR = "ration_editor";
+    public static final String SCREEN_ROLE_MANAGER = "role_manager";
 
     public record RealCivActionPayload(String screenType, int actionId) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<RealCivActionPayload> TYPE =
@@ -146,6 +147,21 @@ public final class RealCivPayloads {
         }
     }
 
+    public record OpenRoleManagerPayload(com.realciv.realciv.panel.CivRoleManagerSnapshot snapshot) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<OpenRoleManagerPayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "open_role_manager"));
+
+        public static final StreamCodec<net.minecraft.network.RegistryFriendlyByteBuf, OpenRoleManagerPayload> STREAM_CODEC =
+                StreamCodec.of(
+                        (b, p) -> p.snapshot().write(b),
+                        b -> new OpenRoleManagerPayload(com.realciv.realciv.panel.CivRoleManagerSnapshot.read(b)));
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
     public record ForceMapRefreshPayload(String dimension, int chunkX, int chunkZ) implements CustomPacketPayload {
         public static final CustomPacketPayload.Type<ForceMapRefreshPayload> TYPE =
                 new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "force_map_refresh"));
@@ -202,6 +218,21 @@ public final class RealCivPayloads {
         public static final StreamCodec<ByteBuf, SetTaxItemCountPayload> STREAM_CODEC = StreamCodec.composite(
                 ByteBufCodecs.VAR_INT, SetTaxItemCountPayload::itemCount,
                 SetTaxItemCountPayload::new);
+
+        @Override
+        public Type<? extends CustomPacketPayload> type() {
+            return TYPE;
+        }
+    }
+
+    public record RenameRolePayload(String roleId, String displayName) implements CustomPacketPayload {
+        public static final CustomPacketPayload.Type<RenameRolePayload> TYPE =
+                new CustomPacketPayload.Type<>(ResourceLocation.fromNamespaceAndPath(RealCivMod.MOD_ID, "rename_role"));
+
+        public static final StreamCodec<ByteBuf, RenameRolePayload> STREAM_CODEC = StreamCodec.composite(
+                ByteBufCodecs.STRING_UTF8, RenameRolePayload::roleId,
+                ByteBufCodecs.STRING_UTF8, RenameRolePayload::displayName,
+                RenameRolePayload::new);
 
         @Override
         public Type<? extends CustomPacketPayload> type() {

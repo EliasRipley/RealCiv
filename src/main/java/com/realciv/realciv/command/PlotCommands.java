@@ -1,9 +1,7 @@
 package com.realciv.realciv.command;
 
 import com.realciv.realciv.config.RealCivConfig;
-import com.realciv.realciv.data.AttributeCategory;
 import com.realciv.realciv.data.CivSavedData;
-import com.realciv.realciv.data.CivicAttribute;
 import com.realciv.realciv.data.LandClass;
 import com.realciv.realciv.data.PlayerRecord;
 import com.realciv.realciv.data.PlotLookup;
@@ -24,6 +22,15 @@ public final class PlotCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        boolean canManageLandZoning = RealCivCommands.hasCivPermission(
+                source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING);
+
+        if (!canManageLandZoning) {
+            source.sendFailure(Component.literal(
+                    "PRIVATE plot assignment requires leadership approval."
+                            + " Ask a leader with land-zoning permission to allot it."));
+            return 0;
+        }
 
         String dimension = player.serverLevel().dimension().location().toString();
         if (!RealCivCommands.ensureClaimDimensionAllowed(source, dimension)) {
@@ -37,14 +44,6 @@ public final class PlotCommands {
         if (!RealCivCommands.isWithinOrAdjacentToTown(data, civId, dimension, chunkX, chunkZ)) {
             source.sendFailure(Component.literal(
                     "PRIVATE plots must be adjacent to your civilization's CIVIC territory."));
-            return 0;
-        }
-
-        CivicAttribute landAttr = data.civicAttribute(civId, AttributeCategory.LAND);
-        if (landAttr == CivicAttribute.LEADER_CLAIM && !source.hasPermission(3)
-                && !data.isCivicManager(civId, player.getUUID())
-                && !player.getUUID().equals(data.getMayorId(civId))) {
-            source.sendFailure(Component.literal("Only leadership can claim private plots (Land: Leader Claim)."));
             return 0;
         }
 
@@ -155,6 +154,8 @@ public final class PlotCommands {
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(player.getUUID());
         PlayerRecord record = data.getOrCreatePlayer(player.getUUID());
+        boolean canManageLandZoning = RealCivCommands.hasCivPermission(
+                source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING);
 
         String dimension = player.serverLevel().dimension().location().toString();
         if (!RealCivCommands.ensureClaimDimensionAllowed(source, dimension)) {
@@ -175,6 +176,16 @@ public final class PlotCommands {
         if (lookup != null && !lookup.civilizationId().equals(civId) && !source.hasPermission(3)) {
             source.sendFailure(Component.literal(
                     "This chunk is claimed by civilization '" + lookup.civilizationId() + "' and cannot be rented here."));
+            return 0;
+        }
+        boolean renewingOwnPrivate = lookup != null
+                && lookup.civilizationId().equals(civId)
+                && lookup.plot().landClass() == LandClass.PRIVATE
+                && player.getUUID().equals(lookup.plot().ownerId());
+        if (!renewingOwnPrivate && !canManageLandZoning) {
+            source.sendFailure(Component.literal(
+                    "PRIVATE plot assignment requires leadership approval."
+                            + " Ask a leader with land-zoning permission to allot it."));
             return 0;
         }
 

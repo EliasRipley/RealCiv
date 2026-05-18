@@ -15,6 +15,7 @@ public class ModernDiplomacyScreen extends RealCivScreen {
     public static final int ACTION_NEXT_PAGE = 3;
 
     private DiplomacySnapshot snapshot;
+    private static final int PAGE_Y = FOOTER_Y;
 
     public ModernDiplomacyScreen(DiplomacySnapshot snapshot) {
         super(Component.literal("Diplomacy Table"), "Relations, alliances, war, and casualties", 0xFFD64545);
@@ -28,16 +29,13 @@ public class ModernDiplomacyScreen extends RealCivScreen {
 
     @Override
     protected void addFixedWidgets() {
-        {
-            SimpleTextButton btn = makeFixedBtn(ACTION_PREV_PAGE, "<", 18);
-            btn.setPos(2, 2);
-            add(btn);
-        }
-        {
-            SimpleTextButton btn = makeFixedBtn(ACTION_NEXT_PAGE, ">", 18);
-            btn.setPos(PANEL_W - 20, 2);
-            add(btn);
-        }
+        SimpleTextButton prev = makeFixedBtn(ACTION_PREV_PAGE, "< Prev", 50);
+        prev.setPos(10, PAGE_Y);
+        add(prev);
+
+        SimpleTextButton next = makeFixedBtn(ACTION_NEXT_PAGE, "Next >", 50);
+        next.setPos(PANEL_W - 60, PAGE_Y);
+        add(next);
     }
 
     @Override

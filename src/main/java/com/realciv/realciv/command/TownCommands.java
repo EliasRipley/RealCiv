@@ -71,7 +71,8 @@ public final class TownCommands {
                 "Legend: @=you, C=your town(CIVIC), P=your private, p=other member private, m=your COMMUNITY zoning, x=other civ claim, .=wilderness"),
                 false);
         source.sendSuccess(() -> Component.literal(
-                "Chunk claiming: mayor uses /realciv town claim (CIVIC), citizens use /realciv plot claim (PRIVATE)."),
+                "Chunk claiming: leadership uses /realciv town claim (CIVIC)."
+                        + " PRIVATE plots require leadership approval (for example via /realciv town allot <player>)."),
                 false);
         return 1;
     }
@@ -194,8 +195,9 @@ public final class TownCommands {
         ServerPlayer actor = source.getPlayerOrException();
         CivSavedData data = CivSavedData.get(source.getServer());
         String civId = data.getOrAssignCivilization(actor.getUUID());
-        if (!RealCivCommands.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS)) {
-            source.sendFailure(Component.literal("Only leadership/admin can allot PRIVATE plots."));
+        if (!RealCivCommands.hasCivPermission(source, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING)) {
+            source.sendFailure(Component.literal(
+                    "Only leadership/admin with land-zoning permission can allot PRIVATE plots."));
             return 0;
         }
 

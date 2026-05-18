@@ -88,6 +88,32 @@ public final class LandConfig {
         return (long) Math.round(Math.max(0.0D, RealCivConfig.LAND_TOWN_CLAIM_COST_ADDED_PER_OWNED.get()));
     }
 
+    public static long townClaimMaxCostCents() {
+        return (long) Math.round(Math.max(0.0D, RealCivConfig.LAND_TOWN_CLAIM_MAX_COST.get()));
+    }
+
+    public static double townClaimGrowthFactor() {
+        return Math.max(1.0D, RealCivConfig.LAND_TOWN_CLAIM_GROWTH_FACTOR.get());
+    }
+
+    public static long nextTownClaimCostCents(int civicChunksOwned) {
+        int ownedChunks = Math.max(0, civicChunksOwned);
+        long base = townClaimCostCents();
+        double rawCost;
+        if (townClaimScalingMode() == TownClaimScalingMode.EXPONENTIAL) {
+            rawCost = base * Math.pow(townClaimGrowthFactor(), ownedChunks);
+        } else {
+            rawCost = base + (townClaimCostAddedPerOwnedCents() * (double) ownedChunks);
+        }
+
+        long roundedCost = clampCostToLong(rawCost);
+        long maxCost = townClaimMaxCostCents();
+        if (maxCost > 0L) {
+            roundedCost = Math.min(roundedCost, maxCost);
+        }
+        return roundedCost;
+    }
+
     public static long rentCostCents() {
         return (long) Math.round(Math.max(0.0D, RealCivConfig.LAND_RENT_COST.get()));
     }
@@ -98,6 +124,28 @@ public final class LandConfig {
 
     public static int hubStarterAreaBlocks() {
         return Math.max(1, RealCivConfig.LAND_HUB_STARTER_AREA_BLOCKS.get());
+    }
+
+    private static TownClaimScalingMode townClaimScalingMode() {
+        String raw = RealCivConfig.LAND_TOWN_CLAIM_SCALING_MODE.get();
+        if (raw == null) {
+            return TownClaimScalingMode.LINEAR;
+        }
+        String mode = raw.trim().toLowerCase(Locale.ROOT);
+        if ("exponential".equals(mode) || "exp".equals(mode)) {
+            return TownClaimScalingMode.EXPONENTIAL;
+        }
+        return TownClaimScalingMode.LINEAR;
+    }
+
+    private static long clampCostToLong(double rawCost) {
+        if (Double.isNaN(rawCost) || rawCost <= 0.0D) {
+            return 0L;
+        }
+        if (!Double.isFinite(rawCost) || rawCost >= Long.MAX_VALUE) {
+            return Long.MAX_VALUE;
+        }
+        return Math.max(0L, Math.round(rawCost));
     }
 
     @Nullable
@@ -130,5 +178,10 @@ public final class LandConfig {
         ALLOW_ALL,
         ALLOWLIST,
         DENYLIST
+    }
+
+    private enum TownClaimScalingMode {
+        LINEAR,
+        EXPONENTIAL
     }
 }

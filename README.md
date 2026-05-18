@@ -9,7 +9,7 @@ Core Player Loop
 
 1. Gather and fight within your current profession limits (farmer/miner/terraformer/lumberjack/fisher/hunter/warrior/explosives_expert/crafter/enchanter/brewer/trader).
 2. Contribute goods to your civilization's Community Hub.
-3. Gain profession XP, general XP, and contribution karma.
+3. Gain profession XP and contribution karma (hub deposit general XP is optional by config).
 4. Unlock better tools and higher limits.
 5. Rent/own legal land, build inside legal zones, and participate in civic governance.
 
@@ -278,6 +278,7 @@ Key areas:
 - Hub rewards:
   - `hub.useProfessionRuleFiles`
   - `hub.professionRuleDirectory`
+  - `hub.depositGeneralXpEnabled`
   - `hub.rewardRules`
   - `hub.tagRewardRules`
   - `hub.tagResetRules`
@@ -293,6 +294,9 @@ Key areas:
   - `land.rentDays`
   - `land.townClaimCost`
   - `land.townClaimCostAddedPerOwned`
+  - `land.townClaimScalingMode` (`linear` or `exponential`)
+  - `land.townClaimGrowthFactor` (used when mode is `exponential`)
+  - `land.townClaimMaxCost` (`0` disables cap)
   - `land.hubStarterAreaBlocks`
   - `land.upkeepCost`
   - `land.upkeepIntervalDays`
@@ -448,6 +452,7 @@ Examples:
 Legacy fallback:
 
 - Set `hub.useProfessionRuleFiles=false` to keep using legacy list configs:
+- Set `hub.depositGeneralXpEnabled=true` if you want hub deposits to grant RealCiv general XP + vanilla Minecraft XP from each rule's `general_xp` value.
 - `hub.rewardRules` format: `item_id|profession|credits|profession_xp|general_xp`
 - `hub.tagRewardRules` format: `selector_type|tag_id|profession|credits|profession_xp|general_xp`
 - `hub.tagResetRules` format: `selector_type|tag_id|profession|actions_per_item`

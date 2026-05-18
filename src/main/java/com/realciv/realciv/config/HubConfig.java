@@ -28,6 +28,10 @@ public final class HubConfig {
         return Math.max(0.0D, Math.min(1.0D, RealCivConfig.DEFAULT_PERSONAL_WITHDRAW_PERCENT.get() / 100.0D));
     }
 
+    public static boolean hubDepositGeneralXpEnabled() {
+        return RealCivConfig.HUB_DEPOSIT_GENERAL_XP_ENABLED.get();
+    }
+
     public static boolean useProfessionRuleFiles() {
         return RealCivConfig.HUB_USE_PROFESSION_RULE_FILES.get();
     }

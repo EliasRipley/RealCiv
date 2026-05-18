@@ -31,7 +31,8 @@ public class ModernTaxScreen extends RealCivScreen {
     public static final int ACTION_SET_TAX_ITEM = 13;
 
     private static final int PAY_Y = FOOTER_Y;
-    private static final int PAGE_Y = 2;
+    private static final int PAGE_Y = FOOTER_Y + 18;
+    private static final int TAX_CTRL_X = 322;
 
     private TaxSnapshot snapshot;
     private boolean showManagePage;
@@ -50,11 +51,11 @@ public class ModernTaxScreen extends RealCivScreen {
 
     @Override
     protected void addFixedWidgets() {
-        addFixedBtn(ACTION_PREV_PAGE, "<", 18, 2, PAGE_Y);
-        addFixedBtn(ACTION_NEXT_PAGE, ">", 18, PANEL_W - 20, PAGE_Y);
+        addFixedBtn(ACTION_PREV_PAGE, "< Prev", 50, 10, PAGE_Y);
+        addFixedBtn(ACTION_NEXT_PAGE, "Next >", 50, PANEL_W - 60, PAGE_Y);
 
         if (snapshot.canManage()) {
-            String label = showManagePage ? "View" : "Admin";
+            String label = showManagePage ? "Overview" : "Leader";
             add(makeManageToggleBtn(label));
         }
 
@@ -86,7 +87,7 @@ public class ModernTaxScreen extends RealCivScreen {
                         theme.getContentColor(getWidgetType()), Theme.SHADOW);
             }
         };
-        btn.setPosAndSize(PANEL_W / 2 - 22, PAGE_Y, 44, 14);
+        btn.setPosAndSize(PANEL_W / 2 - 34, PAGE_Y, 68, 14);
         return btn;
     }
 
@@ -147,16 +148,21 @@ public class ModernTaxScreen extends RealCivScreen {
     }
 
     private void populateManagePage(Panel panel) {
+        addIdentitySection(snapshot.civDisplayName(), snapshot.playerRole(), true);
+        addSection("Leader Controls", 0xFFE1B12C);
+        addLabelRow("Member page", (snapshot.memberPage() + 1) + "/" + Math.max(1, snapshot.totalMemberPages()), 0xFF9DB0C2);
+        addSpacer(2);
+
         addSection("Tax Rate", 0xFFE1B12C);
         addLabelRow("Current rate", String.format("%.2fx", snapshot.rateMultiplier()));
-        addRowWithButtons("Adjust rate", "Adjust the tax multiplier applied to all plots.",
+        addRowWithButtons("Adjust rate", "Adjust plot tax multiplier.",
                 makeInlineBtn(ACTION_RATE_DOWN, "-10%", 46),
                 makeInlineBtn(ACTION_RATE_UP, "+10%", 46));
 
         addSpacer(4);
         addSection("Payment Mode", 0xFFE1B12C);
         addLabelRow("Current mode", snapshot.paymentMode());
-        addRowWithButtons("Toggle mode", "Switch between karma and item-based tax collection.",
+        addRowWithButtons("Toggle mode", "Switch karma/item mode.",
                 makeInlineBtn(ACTION_MODE_TOGGLE, "Toggle", 48));
 
         addSpacer(4);
@@ -164,22 +170,22 @@ public class ModernTaxScreen extends RealCivScreen {
         addLabelRow("Current item", snapshot.taxItemId() + " x" + snapshot.taxItemCount(),
                 isKarmaMode() ? 0xFF78909C : 0xFFF4F7FA);
 
-        panel.add(new LabelWidget(panel, "Click slot while holding item to set.", COL_LABEL, currentY, 0xFF78909C));
-        TaxItemSlot slot = new TaxItemSlot(panel, COL_BTNS, currentY, snapshot);
+        panel.add(new LabelWidget(panel, "Set from held item", COL_LABEL, currentY, 0xFF78909C));
+        TaxItemSlot slot = new TaxItemSlot(panel, TAX_CTRL_X, currentY, snapshot);
         panel.add(slot);
-        addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_DOWN, "-C", 26, COL_BTNS + 22, currentY);
-        addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_UP, "+C", 26, COL_BTNS + 52, currentY);
+        addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_DOWN, "-C", 26, TAX_CTRL_X + 22, currentY);
+        addInlineBtnToPanel(panel, ACTION_ITEM_COUNT_UP, "+C", 26, TAX_CTRL_X + 52, currentY);
         itemCountInput = makeItemCountInput(panel);
-        itemCountInput.setPosAndSize(COL_BTNS + 82, currentY, 40, BTN_H);
+        itemCountInput.setPosAndSize(TAX_CTRL_X + 82, currentY, 40, BTN_H);
         panel.add(itemCountInput);
         SimpleTextButton setCountBtn = makePanelBtn(panel, "Set", button -> submitItemCountFromInput());
-        setCountBtn.setPosAndSize(COL_BTNS + 126, currentY, 34, BTN_H);
+        setCountBtn.setPosAndSize(TAX_CTRL_X + 126, currentY, 34, BTN_H);
         panel.add(setCountBtn);
         currentY += ROW_H + 4;
 
-        addLabelRow("", "Type a quantity and press Enter/Set for direct input.", 0xFF78909C);
-        addSpacer(8);
-        addLabelRow("", "Use the < > buttons to page through members.", 0xFF78909C);
+        addLabelRow("", "Hold item, click slot to set.", 0xFF78909C);
+        addLabelRow("", "Use Qty + Enter/Set to apply.", 0xFF78909C);
+        addLabelRow("", "Use Prev/Next below for members.", 0xFF78909C);
     }
 
     private void addInlineBtnToPanel(Panel panel, int action, String label, int width, int x, int y) {

@@ -9,6 +9,7 @@ import com.realciv.realciv.client.ModernDiplomacyScreen;
 import com.realciv.realciv.client.ModernHubStockScreen;
 import com.realciv.realciv.client.ModernProfessionLedgerScreen;
 import com.realciv.realciv.client.ModernRationEditorScreen;
+import com.realciv.realciv.client.ModernRoleManagerScreen;
 import com.realciv.realciv.client.ModernTaxScreen;
 import com.realciv.realciv.client.RealCivScreen;
 import com.realciv.realciv.config.RealCivConfig;
@@ -29,6 +30,7 @@ import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.panel.CivControlPanelSnapshotBuilder;
 import com.realciv.realciv.panel.CivGovernanceWorkflowService;
+import com.realciv.realciv.panel.CivRoleManagerSnapshotBuilder;
 import com.realciv.realciv.tax.TaxSnapshot;
 import com.realciv.realciv.tax.TaxSnapshotBuilder;
 import com.mojang.blaze3d.platform.NativeImage;
@@ -70,6 +72,8 @@ public final class RealCivNetwork {
     private static final Map<UUID, Integer> hubStockPages = new HashMap<>();
     private static final Map<UUID, Integer> censusPages = new HashMap<>();
     private static final Map<UUID, Integer> rationPages = new HashMap<>();
+    private static final Map<UUID, Integer> roleManagerPages = new HashMap<>();
+    private static final Map<UUID, String> roleManagerSelectedRoleIds = new HashMap<>();
 
     private RealCivNetwork() {}
 
@@ -83,6 +87,7 @@ public final class RealCivNetwork {
         registrar.playToClient(RealCivPayloads.OpenControlPanelPayload.TYPE, RealCivPayloads.OpenControlPanelPayload.STREAM_CODEC, RealCivNetwork::handleOpenControlPanel);
         registrar.playToClient(RealCivPayloads.OpenHubStockPayload.TYPE, RealCivPayloads.OpenHubStockPayload.STREAM_CODEC, RealCivNetwork::handleOpenHubStock);
         registrar.playToClient(RealCivPayloads.OpenRationEditorPayload.TYPE, RealCivPayloads.OpenRationEditorPayload.STREAM_CODEC, RealCivNetwork::handleOpenRationEditor);
+        registrar.playToClient(RealCivPayloads.OpenRoleManagerPayload.TYPE, RealCivPayloads.OpenRoleManagerPayload.STREAM_CODEC, RealCivNetwork::handleOpenRoleManager);
 
         registrar.playToClient(RealCivPayloads.ForceMapRefreshPayload.TYPE, RealCivPayloads.ForceMapRefreshPayload.STREAM_CODEC, RealCivNetwork::handleForceMapRefresh);
         registrar.playToServer(RealCivPayloads.RealCivActionPayload.TYPE, RealCivPayloads.RealCivActionPayload.STREAM_CODEC, RealCivNetwork::handleAction);
@@ -90,6 +95,7 @@ public final class RealCivNetwork {
         registrar.playToServer(RealCivPayloads.SetTaxItemCountPayload.TYPE, RealCivPayloads.SetTaxItemCountPayload.STREAM_CODEC, RealCivNetwork::handleSetTaxItemCount);
         registrar.playToServer(RealCivPayloads.SetHubAllowancePayload.TYPE, RealCivPayloads.SetHubAllowancePayload.STREAM_CODEC, RealCivNetwork::handleSetHubAllowance);
         registrar.playToServer(RealCivPayloads.SetHubAllowanceBatchPayload.TYPE, RealCivPayloads.SetHubAllowanceBatchPayload.STREAM_CODEC, RealCivNetwork::handleSetHubAllowanceBatch);
+        registrar.playToServer(RealCivPayloads.RenameRolePayload.TYPE, RealCivPayloads.RenameRolePayload.STREAM_CODEC, RealCivNetwork::handleRenameRole);
     }
 
     private static void handleOpenTax(RealCivPayloads.OpenTaxPayload payload, IPayloadContext context) {
@@ -151,6 +157,15 @@ public final class RealCivNetwork {
             openOrRefreshRealCivScreen(
                     ModernRationEditorScreen.class,
                     () -> new ModernRationEditorScreen(payload.snapshot()),
+                    screen -> screen.refresh(payload.snapshot()));
+        });
+    }
+
+    private static void handleOpenRoleManager(RealCivPayloads.OpenRoleManagerPayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            openOrRefreshRealCivScreen(
+                    ModernRoleManagerScreen.class,
+                    () -> new ModernRoleManagerScreen(payload.snapshot()),
                     screen -> screen.refresh(payload.snapshot()));
         });
     }
@@ -226,6 +241,7 @@ public final class RealCivNetwork {
             case RealCivPayloads.SCREEN_CONTROL_PANEL -> handleControlPanelAction(player, data, civId, payload.actionId());
             case RealCivPayloads.SCREEN_HUB_STOCK -> handleHubStockAction(player, data, civId, payload.actionId());
             case RealCivPayloads.SCREEN_RATION_EDITOR -> handleRationEditorAction(player, data, civId, payload.actionId());
+            case RealCivPayloads.SCREEN_ROLE_MANAGER -> handleRoleManagerAction(player, data, civId, payload.actionId());
         }
     }
 
@@ -441,6 +457,48 @@ public final class RealCivNetwork {
             player.sendSystemMessage(Component.literal(
                     "Ration draft applied: " + normalized.size() + " item(s), " + changed + " change(s)."));
             sendRationEditorScreen(player, data, civId);
+        });
+    }
+
+    private static void handleRenameRole(RealCivPayloads.RenameRolePayload payload, IPayloadContext context) {
+        context.enqueueWork(() -> {
+            if (!(context.player() instanceof ServerPlayer player)) {
+                return;
+            }
+            String civId = resolveCivId(player);
+            if (civId == null) {
+                return;
+            }
+            CivSavedData data = CivSavedData.get(player.getServer());
+            if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE)) {
+                RealCivMessages.deny(player, "You do not have permission to rename roles.");
+                openRoleManager(player, data, civId);
+                return;
+            }
+
+            String roleIdRaw = payload.roleId() == null ? "" : payload.roleId().trim();
+            String displayName = payload.displayName() == null ? "" : payload.displayName().trim();
+            if (roleIdRaw.isBlank()) {
+                RealCivMessages.deny(player, "Select a role first.");
+                openRoleManager(player, data, civId);
+                return;
+            }
+            if (displayName.isBlank()) {
+                RealCivMessages.deny(player, "Role name cannot be empty.");
+                openRoleManager(player, data, civId);
+                return;
+            }
+
+            if (!data.renameCustomRole(civId, roleIdRaw, displayName, player.getGameProfile().getName())) {
+                RealCivMessages.deny(player, "Role rename failed. Ensure the role exists and the name is different.");
+            } else {
+                @Nullable String canonical = CivSavedData.canonicalRoleId(roleIdRaw);
+                if (canonical != null) {
+                    roleManagerSelectedRoleIds.put(player.getUUID(), canonical);
+                }
+                player.sendSystemMessage(Component.literal("Renamed role [" + roleIdRaw + "] to '" + displayName + "'."));
+            }
+            openRoleManager(player, data, civId);
         });
     }
 
@@ -729,10 +787,14 @@ public final class RealCivNetwork {
                 String roleId = "custom_role_" + count;
                 String displayName = "Custom Role " + count;
                 if (data.createCustomRole(civId, roleId, displayName, name)) {
-                    player.sendSystemMessage(Component.literal("Created role: " + displayName + ". Use /realciv role to configure."));
+                    player.sendSystemMessage(Component.literal("Created role: " + displayName + ". Open Manage Roles to configure."));
                 } else {
                     RealCivMessages.deny(player, "Could not create role (may already exist).");
                 }
+            }
+            case ModernCivControlPanelScreen.ACTION_ROLES_MANAGE -> {
+                openRoleManager(player, data, civId);
+                return;
             }
             case ModernCivControlPanelScreen.ACTION_OPEN_RATION_EDITOR -> {
                 if (!CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_HUB_DISTRIBUTION)) {
@@ -780,6 +842,118 @@ public final class RealCivNetwork {
 
         var snap = CivControlPanelSnapshotBuilder.build(player, data, civId);
         PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenControlPanelPayload(snap));
+    }
+
+    private static void openRoleManager(ServerPlayer player, CivSavedData data, String civId) {
+        int page = roleManagerPages.getOrDefault(player.getUUID(), 0);
+        String selectedRoleId = roleManagerSelectedRoleIds.getOrDefault(player.getUUID(), "");
+        var snap = CivRoleManagerSnapshotBuilder.build(player, data, civId, page, selectedRoleId);
+        roleManagerPages.put(player.getUUID(), snap.rolePage());
+        roleManagerSelectedRoleIds.put(player.getUUID(), snap.selectedRoleId());
+        PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenRoleManagerPayload(snap));
+    }
+
+    private static void handleRoleManagerAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
+        UUID playerId = player.getUUID();
+        int page = roleManagerPages.getOrDefault(playerId, 0);
+        String selectedRoleId = roleManagerSelectedRoleIds.getOrDefault(playerId, "");
+        boolean canManage = CivPermissionService.hasCivPermission(
+                player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_GOVERNANCE);
+        List<CivRoleView> roles = data.customRolesSorted(civId);
+
+        if (actionId == ModernRoleManagerScreen.ACTION_PREV_PAGE) {
+            page = Math.max(0, page - 1);
+        } else if (actionId == ModernRoleManagerScreen.ACTION_NEXT_PAGE) {
+            page = page + 1;
+        } else if (actionId == ModernRoleManagerScreen.ACTION_BACK_TO_CONTROL_PANEL) {
+            var snap = CivControlPanelSnapshotBuilder.build(player, data, civId);
+            PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenControlPanelPayload(snap));
+            return;
+        } else if (actionId >= ModernRoleManagerScreen.ACTION_SELECT_ROLE
+                && actionId < ModernRoleManagerScreen.ACTION_SELECT_ROLE + CivRoleManagerSnapshotBuilder.ROLES_PER_PAGE) {
+            int rowIndex = actionId - ModernRoleManagerScreen.ACTION_SELECT_ROLE;
+            int absoluteIndex = page * CivRoleManagerSnapshotBuilder.ROLES_PER_PAGE + rowIndex;
+            if (absoluteIndex >= 0 && absoluteIndex < roles.size()) {
+                selectedRoleId = roles.get(absoluteIndex).roleId();
+            }
+        } else if (actionId == ModernRoleManagerScreen.ACTION_CREATE_ROLE) {
+            if (!canManage) {
+                RealCivMessages.deny(player, "You do not have permission to create roles.");
+            } else {
+                int count = data.customRolesSorted(civId).size() + 1;
+                String roleId = "custom_role_" + count;
+                String displayName = "Custom Role " + count;
+                if (data.createCustomRole(civId, roleId, displayName, player.getGameProfile().getName())) {
+                    selectedRoleId = roleId;
+                } else {
+                    RealCivMessages.deny(player, "Could not create role (may already exist).");
+                }
+            }
+        } else if (actionId == ModernRoleManagerScreen.ACTION_DELETE_SELECTED) {
+            if (!canManage) {
+                RealCivMessages.deny(player, "You do not have permission to delete roles.");
+            } else if (selectedRoleId == null || selectedRoleId.isBlank()) {
+                RealCivMessages.deny(player, "Select a role first.");
+            } else if (!data.deleteCustomRole(civId, selectedRoleId, player.getGameProfile().getName())) {
+                RealCivMessages.deny(player, "Could not delete selected role.");
+            } else {
+                selectedRoleId = "";
+            }
+        } else if (actionId >= ModernRoleManagerScreen.ACTION_DELETE_ROLE
+                && actionId < ModernRoleManagerScreen.ACTION_DELETE_ROLE + CivRoleManagerSnapshotBuilder.ROLES_PER_PAGE) {
+            if (!canManage) {
+                RealCivMessages.deny(player, "You do not have permission to delete roles.");
+            } else {
+                int rowIndex = actionId - ModernRoleManagerScreen.ACTION_DELETE_ROLE;
+                int absoluteIndex = page * CivRoleManagerSnapshotBuilder.ROLES_PER_PAGE + rowIndex;
+                if (absoluteIndex >= 0 && absoluteIndex < roles.size()) {
+                    String roleId = roles.get(absoluteIndex).roleId();
+                    if (!data.deleteCustomRole(civId, roleId, player.getGameProfile().getName())) {
+                        RealCivMessages.deny(player, "Could not delete selected role.");
+                    } else if (roleId.equals(selectedRoleId)) {
+                        selectedRoleId = "";
+                    }
+                }
+            }
+        } else if (actionId >= ModernRoleManagerScreen.ACTION_TOGGLE_PERMISSION
+                && actionId < ModernRoleManagerScreen.ACTION_DELETE_ROLE) {
+            int permissionIndex = actionId - ModernRoleManagerScreen.ACTION_TOGGLE_PERMISSION;
+            List<String> knownPermissions = CivSavedData.knownRolePermissions();
+            if (permissionIndex >= 0 && permissionIndex < knownPermissions.size()) {
+                if (!canManage) {
+                    RealCivMessages.deny(player, "You do not have permission to manage role permissions.");
+                } else if (selectedRoleId == null || selectedRoleId.isBlank()) {
+                    RealCivMessages.deny(player, "Select a role first.");
+                } else {
+                    @Nullable CivRoleView selectedRole = null;
+                    for (CivRoleView role : roles) {
+                        if (role.roleId().equals(selectedRoleId)) {
+                            selectedRole = role;
+                            break;
+                        }
+                    }
+                    if (selectedRole == null) {
+                        RealCivMessages.deny(player, "Selected role no longer exists.");
+                        selectedRoleId = "";
+                    } else {
+                        String permissionKey = knownPermissions.get(permissionIndex);
+                        boolean currentlyGranted = selectedRole.permissions().contains(permissionKey);
+                        if (!data.setCustomRolePermission(
+                                civId,
+                                selectedRoleId,
+                                permissionKey,
+                                !currentlyGranted,
+                                player.getGameProfile().getName())) {
+                            RealCivMessages.deny(player, "No role-permission change was applied.");
+                        }
+                    }
+                }
+            }
+        }
+
+        roleManagerPages.put(playerId, page);
+        roleManagerSelectedRoleIds.put(playerId, selectedRoleId == null ? "" : selectedRoleId);
+        openRoleManager(player, data, civId);
     }
 
     private static void applyAction(ServerPlayer player, CivSavedData data, String civId, CivGovernanceWorkflowService.PanelAction action) {

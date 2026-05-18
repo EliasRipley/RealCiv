@@ -383,7 +383,11 @@ public class CivSavedData extends SavedData {
         while (out.length() > 0 && out.charAt(out.length() - 1) == '_') {
             out.deleteCharAt(out.length() - 1);
         }
-        return out.isEmpty() ? null : out.toString();
+        if (out.isEmpty()) {
+            return null;
+        }
+        String normalized = out.toString();
+        return KNOWN_ROLE_PERMISSIONS.contains(normalized) ? normalized : null;
     }
 
     static String sanitizeLeaderTitle(@Nullable String raw) {
@@ -920,7 +924,9 @@ public class CivSavedData extends SavedData {
         }
         record.addProfessionXp(rewardRule.profession(), professionGain);
 
-        record.addGeneralXp(rewardRule.generalXpPerItem() * itemCount);
+        if (RealCivConfig.hubDepositGeneralXpEnabled()) {
+            record.addGeneralXp(rewardRule.generalXpPerItem() * itemCount);
+        }
         addAuditLog(
                 civ.id(),
                 actorName + " deposited " + itemCount + "x " + itemId

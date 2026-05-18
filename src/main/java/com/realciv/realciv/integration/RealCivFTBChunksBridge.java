@@ -291,6 +291,12 @@ public final class RealCivFTBChunksBridge {
             return ClaimDecision.denied("PRIVATE plots must be adjacent to your civilization's CIVIC territory.");
         }
 
+        if (!canManageLandZoning(source, data, civId)) {
+            return ClaimDecision.denied(
+                    "PRIVATE plot assignment requires leadership approval."
+                            + " Ask a leader with land-zoning permission to allot it.");
+        }
+
         if (existing != null
                 && existing.civilizationId().equals(civId)
                 && existing.plot().landClass() == LandClass.PRIVATE
@@ -497,9 +503,7 @@ public final class RealCivFTBChunksBridge {
     }
 
     private static long nextTownClaimCostCents(int civicChunksOwned) {
-        long base = RealCivConfig.townClaimCostCents();
-        long extra = RealCivConfig.townClaimCostAddedPerOwnedCents() * Math.max(0, civicChunksOwned);
-        return Math.max(0L, base + extra);
+        return RealCivConfig.nextTownClaimCostCents(civicChunksOwned);
     }
 
     private static long nextPrivateClaimCostCents(int privateOwnedByPlayer) {

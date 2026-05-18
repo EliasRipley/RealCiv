@@ -819,9 +819,7 @@ public final class RealCivCommands {
 
 
     public static long nextTownClaimCostCents(int civicChunksOwned) {
-        long base = RealCivConfig.townClaimCostCents();
-        long extra = RealCivConfig.townClaimCostAddedPerOwnedCents() * Math.max(0, civicChunksOwned);
-        return Math.max(0L, base + extra);
+        return RealCivConfig.nextTownClaimCostCents(civicChunksOwned);
     }
 
     public static boolean ensureClaimDimensionAllowed(CommandSourceStack source, String dimension) {

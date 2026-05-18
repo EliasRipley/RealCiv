@@ -3,6 +3,7 @@ package com.realciv.realciv.command;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
+import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.network.RealCivPayloads;
@@ -42,7 +43,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
     private final CivSavedData data;
     private final String civId;
     private final boolean admin;
-    private final boolean mayor;
+    private final boolean canManageTownClaims;
+    private final boolean canManageLandZoning;
     private final Map<Integer, ChunkRef> mapSlots = new HashMap<>();
     private long centerChunkX;
     private long centerChunkZ;
@@ -54,10 +56,13 @@ public class LandClaimMenu extends AbstractContainerMenu {
         this.data = data;
         this.civId = civId;
         this.admin = viewer.hasPermissions(3);
-        this.mayor = data.isMayor(civId, viewer.getUUID());
+        this.canManageTownClaims = CivPermissionService.hasCivPermission(
+                viewer, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_TOWN_CLAIMS);
+        this.canManageLandZoning = CivPermissionService.hasCivPermission(
+                viewer, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_LAND_ZONING);
         this.centerChunkX = viewer.chunkPosition().x;
         this.centerChunkZ = viewer.chunkPosition().z;
-        if (admin || mayor) {
+        if (canManageTownClaims) {
             this.mode = ViewMode.TOWN;
         }
 
@@ -115,10 +120,13 @@ public class LandClaimMenu extends AbstractContainerMenu {
                 centerChunkZ = viewer.chunkPosition().z;
             }
             case MODE_SLOT -> {
-                if (mode == ViewMode.TOWN && !(admin || mayor)) {
+                if (mode == ViewMode.TOWN) {
                     mode = ViewMode.PRIVATE;
+                } else if (canManageTownClaims) {
+                    mode = ViewMode.TOWN;
                 } else {
-                    mode = mode == ViewMode.TOWN ? ViewMode.PRIVATE : ViewMode.TOWN;
+                    RealCivMessages.deny(viewer, "Only leadership/admin can manage CIVIC claims.");
+                    mode = ViewMode.PRIVATE;
                 }
             }
             case INFO_SLOT, HELP_SLOT, REFRESH_SLOT -> {
@@ -136,8 +144,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
     private void handleChunkAction(long chunkX, long chunkZ, int button, ClickType clickType) {
         boolean rightClick = clickType == ClickType.PICKUP && button == 1;
         if (mode == ViewMode.TOWN) {
-            if (!(admin || mayor)) {
-                RealCivMessages.deny(viewer, "Only the mayor/admin can manage CIVIC claims.");
+            if (!canManageTownClaims) {
+                RealCivMessages.deny(viewer, "Only leadership/admin can manage CIVIC claims.");
                 return;
             }
             if (rightClick) {
@@ -274,6 +282,17 @@ public class LandClaimMenu extends AbstractContainerMenu {
             RealCivMessages.deny(viewer, "This chunk is CIVIC territory. Ask your mayor to allot it.");
             return;
         }
+        boolean renewingOwnPrivate = lookup != null
+                && lookup.civilizationId().equals(civId)
+                && lookup.plot().landClass() == LandClass.PRIVATE
+                && viewer.getUUID().equals(lookup.plot().ownerId());
+        if (!renewingOwnPrivate && !canManageLandZoning) {
+            RealCivMessages.deny(
+                    viewer,
+                    "PRIVATE plot assignment requires leadership approval."
+                            + " Ask a leader with land-zoning permission to allot it.");
+            return;
+        }
 
         int ownedPrivate = data.privatePlotCountForOwner(civId, viewer.getUUID());
         long cost = nextPrivateClaimCostCents(ownedPrivate);
@@ -341,9 +360,8 @@ public class LandClaimMenu extends AbstractContainerMenu {
         }
         if (lookup.plot().ownerId() != null
                 && !lookup.plot().ownerId().equals(viewer.getUUID())
-                && !admin
-                && !mayor) {
-            RealCivMessages.deny(viewer, "Only owner/mayor/admin can unclaim this PRIVATE plot.");
+                && !canManageLandZoning) {
+            RealCivMessages.deny(viewer, "Only owner/leadership/admin can unclaim this PRIVATE plot.");
             return;
         }
 
@@ -421,8 +439,10 @@ public class LandClaimMenu extends AbstractContainerMenu {
 
         ItemStack help = new ItemStack(Items.PAPER);
         String clickHelp = mode == ViewMode.TOWN
-                ? "CIVIC mode: L-claim, R-unclaim (mayor/admin)"
-                : "PRIVATE mode: L-claim/renew self, R-unclaim";
+                ? "CIVIC mode: L-claim, R-unclaim (leadership/admin)"
+                : (canManageLandZoning
+                ? "PRIVATE mode: L-assign/renew, R-unclaim"
+                : "PRIVATE mode: L-renew own, R-unclaim own (new claims need leadership approval)");
         help.set(DataComponents.CUSTOM_NAME, Component.literal(clickHelp + " | Click mode button to switch."));
         display.setItem(HELP_SLOT, help);
 
@@ -478,9 +498,7 @@ public class LandClaimMenu extends AbstractContainerMenu {
     }
 
     private long nextTownClaimCostCents(int civicChunksOwned) {
-        long base = RealCivConfig.townClaimCostCents();
-        long extra = RealCivConfig.townClaimCostAddedPerOwnedCents() * Math.max(0, civicChunksOwned);
-        return Math.max(0L, base + extra);
+        return RealCivConfig.nextTownClaimCostCents(civicChunksOwned);
     }
 
     private long nextPrivateClaimCostCents(int privateOwnedByPlayer) {
