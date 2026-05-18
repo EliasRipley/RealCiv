@@ -912,6 +912,19 @@ public final class RealCivConfig {
             .comment("When true, breaking is denied in wilderness/unzoned chunks. Placement is always denied there.")
             .define("land.blockUnclaimedBuilding", false);
 
+    public static final ModConfigSpec.BooleanValue LAND_ALLOW_NEUTRAL_CIV_BUILD_BREAK = BUILDER
+            .comment("When true, NEUTRAL cross-civilization players can place/break blocks in claimed land.")
+            .define("land.allowNeutralCivBuildBreak", false);
+
+    public static final ModConfigSpec.BooleanValue LAND_ALLOW_ALLY_CIV_BUILD_BREAK = BUILDER
+            .comment("When true, ALLY cross-civilization players can place/break blocks in claimed land.")
+            .define("land.allowAllyCivBuildBreak", true);
+
+    public static final ModConfigSpec.BooleanValue LAND_ALLOW_WAR_CIV_BUILD_BREAK = BUILDER
+            .comment("When true, WAR cross-civilization players can place/break blocks in claimed land.")
+            .comment("Keep false until war-mode rules (destruction vs PvP) are configured as desired.")
+            .define("land.allowWarCivBuildBreak", false);
+
     public static final ModConfigSpec.ConfigValue<String> LAND_CLAIM_DIMENSION_POLICY = BUILDER
             .comment("Land-claim policy for dimensions.")
             .comment("Valid: allow_all, allowlist, denylist")
@@ -958,6 +971,10 @@ public final class RealCivConfig {
     public static final ModConfigSpec.BooleanValue REQUIRE_FOUNDER_APPROVAL = BUILDER
             .comment("When true, only approved players (or admins) can found new civilizations.")
             .define("civ.requireFounderApproval", true);
+
+    public static final ModConfigSpec.IntValue WAR_DEFAULT_PVP_KILL_TARGET = BUILDER
+            .comment("Default kill target used for PvP war declarations when no explicit target is provided.")
+            .defineInRange("civ.war.defaultPvpKillTarget", 10, 1, 100_000);
 
     public static final ModConfigSpec.BooleanValue GOVERNANCE_APPROVAL_WORKFLOW_ENABLED = BUILDER
             .comment("When true, council/democratic civ policy changes can require in-game proposal votes.")
@@ -1237,6 +1254,18 @@ public final class RealCivConfig {
         return LandConfig.blockUnclaimedBuilding();
     }
 
+    public static boolean allowNeutralCivBuildBreak() {
+        return LandConfig.allowNeutralCivBuildBreak();
+    }
+
+    public static boolean allowAllyCivBuildBreak() {
+        return LandConfig.allowAllyCivBuildBreak();
+    }
+
+    public static boolean allowWarCivBuildBreak() {
+        return LandConfig.allowWarCivBuildBreak();
+    }
+
     public static boolean canClaimDimension(@Nullable String dimensionIdRaw) {
         return LandConfig.canClaimDimension(dimensionIdRaw);
     }
@@ -1275,6 +1304,10 @@ public final class RealCivConfig {
 
     public static boolean requireFounderApproval() {
         return CivConfig.requireFounderApproval();
+    }
+
+    public static int defaultWarPvpKillTarget() {
+        return CivConfig.defaultWarPvpKillTarget();
     }
 
     public static int maxExplosivesExpertsPerCivilization() {

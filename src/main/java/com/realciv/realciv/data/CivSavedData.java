@@ -84,7 +84,10 @@ public class CivSavedData extends SavedData {
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
     private final Map<UUID, String> playerCivilization = new HashMap<>();
     private final Map<String, DiplomacyState> diplomacy = new HashMap<>();
+    private final Map<String, DiplomacyRequestRecord> diplomacyRequests = new HashMap<>();
+    private final Map<String, ActiveWarRecord> activeWars = new HashMap<>();
     private final Map<String, WarCasualtyRecord> warCasualties = new HashMap<>();
+    private final Map<String, String> vassalOverlord = new HashMap<>();
     private final Set<UUID> founderApprovals = new HashSet<>();
     @Nullable
     private transient MinecraftServer attachedServer;
@@ -174,6 +177,41 @@ public class CivSavedData extends SavedData {
             data.setDiplomacyStateInternal(civA, civB, state);
         }
 
+        ListTag diplomacyRequestTags = tag.getList("diplomacyRequests", Tag.TAG_COMPOUND);
+        for (Tag entry : diplomacyRequestTags) {
+            if (!(entry instanceof CompoundTag requestTag)) {
+                continue;
+            }
+            String requesterCiv = normalizeCivId(requestTag.getString("requesterCiv"));
+            String responderCiv = normalizeCivId(requestTag.getString("responderCiv"));
+            DiplomacyState requestedState = DiplomacyState.fromSerializedName(requestTag.getString("requestedState"));
+            if (requesterCiv == null || responderCiv == null || requestedState == null || requestedState == DiplomacyState.NEUTRAL) {
+                continue;
+            }
+            String key = diplomacyRequestKey(requesterCiv, responderCiv);
+            if (key == null) {
+                continue;
+            }
+            DiplomacyRequestRecord request = new DiplomacyRequestRecord();
+            request.requesterCivId = requesterCiv;
+            request.responderCivId = responderCiv;
+            request.requestedState = requestedState;
+            request.createdAtMillis = Math.max(0L, requestTag.getLong("createdAtMillis"));
+            if (requestedState == DiplomacyState.WAR) {
+                request.warType = WarType.fromSerializedName(requestTag.getString("warType"));
+                if (request.warType == null) {
+                    request.warType = WarType.DESTRUCTION;
+                }
+                int configuredTarget = requestTag.contains("pvpKillTarget")
+                        ? Math.max(1, requestTag.getInt("pvpKillTarget"))
+                        : RealCivConfig.defaultWarPvpKillTarget();
+                request.pvpKillTarget = configuredTarget;
+                request.warOfSubmission = requestTag.getBoolean("warOfSubmission");
+                request.warOfLand = requestTag.getBoolean("warOfLand");
+            }
+            data.diplomacyRequests.put(key, request);
+        }
+
         ListTag warCasualtyTags = tag.getList("warCasualties", Tag.TAG_COMPOUND);
         for (Tag entry : warCasualtyTags) {
             if (!(entry instanceof CompoundTag casualtyTag)) {
@@ -195,6 +233,47 @@ public class CivSavedData extends SavedData {
                 continue;
             }
             data.warCasualties.put(key, casualtyRecord);
+        }
+
+        ListTag activeWarTags = tag.getList("activeWars", Tag.TAG_COMPOUND);
+        for (Tag entry : activeWarTags) {
+            if (!(entry instanceof CompoundTag warTag)) {
+                continue;
+            }
+            String civA = normalizeCivId(warTag.getString("civA"));
+            String civB = normalizeCivId(warTag.getString("civB"));
+            WarType warType = WarType.fromSerializedName(warTag.getString("warType"));
+            if (civA == null || civB == null || civA.equals(civB) || warType == null) {
+                continue;
+            }
+            String key = diplomacyKey(civA, civB);
+            if (key == null) {
+                continue;
+            }
+            ActiveWarRecord war = new ActiveWarRecord();
+            war.warType = warType;
+            war.pvpKillTarget = Math.max(1, warTag.getInt("pvpKillTarget"));
+            if (warType == WarType.DESTRUCTION) {
+                war.pvpKillTarget = Math.max(1, RealCivConfig.defaultWarPvpKillTarget());
+            }
+            war.warOfSubmission = warTag.getBoolean("warOfSubmission");
+            war.warOfLand = warTag.getBoolean("warOfLand");
+            war.startedAtMillis = Math.max(0L, warTag.getLong("startedAtMillis"));
+            war.declaredByCivId = normalizeCivId(warTag.getString("declaredByCivId"));
+            data.activeWars.put(key, war);
+        }
+
+        CompoundTag vassalTag = tag.getCompound("vassalOverlord");
+        for (String vassalIdRaw : vassalTag.getAllKeys()) {
+            String vassalId = normalizeCivId(vassalIdRaw);
+            String overlordId = normalizeCivId(vassalTag.getString(vassalIdRaw));
+            if (vassalId == null || overlordId == null || vassalId.equals(overlordId)) {
+                continue;
+            }
+            if (!data.civilizations.containsKey(vassalId) || !data.civilizations.containsKey(overlordId)) {
+                continue;
+            }
+            data.vassalOverlord.put(vassalId, overlordId);
         }
 
         CompoundTag membershipTag = tag.getCompound("playerCivilization");
@@ -270,6 +349,35 @@ public class CivSavedData extends SavedData {
         }
         tag.put("diplomacy", diplomacyTags);
 
+        ListTag diplomacyRequestTags = new ListTag();
+        for (DiplomacyRequestRecord request : diplomacyRequests.values()) {
+            if (request == null
+                    || request.requesterCivId == null
+                    || request.responderCivId == null
+                    || request.requestedState == null
+                    || request.requestedState == DiplomacyState.NEUTRAL) {
+                continue;
+            }
+            String key = diplomacyRequestKey(request.requesterCivId, request.responderCivId);
+            if (key == null) {
+                continue;
+            }
+            CompoundTag requestTag = new CompoundTag();
+            requestTag.putString("requesterCiv", request.requesterCivId);
+            requestTag.putString("responderCiv", request.responderCivId);
+            requestTag.putString("requestedState", request.requestedState.serializedName());
+            requestTag.putLong("createdAtMillis", Math.max(0L, request.createdAtMillis));
+            if (request.requestedState == DiplomacyState.WAR) {
+                WarType requestWarType = request.warType == null ? WarType.DESTRUCTION : request.warType;
+                requestTag.putString("warType", requestWarType.serializedName());
+                requestTag.putInt("pvpKillTarget", Math.max(1, request.pvpKillTarget));
+                requestTag.putBoolean("warOfSubmission", request.warOfSubmission);
+                requestTag.putBoolean("warOfLand", request.warOfLand);
+            }
+            diplomacyRequestTags.add(requestTag);
+        }
+        tag.put("diplomacyRequests", diplomacyRequestTags);
+
         ListTag casualtyTags = new ListTag();
         for (Map.Entry<String, WarCasualtyRecord> entry : warCasualties.entrySet()) {
             DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
@@ -293,6 +401,42 @@ public class CivSavedData extends SavedData {
             casualtyTags.add(casualtyTag);
         }
         tag.put("warCasualties", casualtyTags);
+
+        ListTag activeWarTags = new ListTag();
+        for (Map.Entry<String, ActiveWarRecord> entry : activeWars.entrySet()) {
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                continue;
+            }
+            ActiveWarRecord war = entry.getValue();
+            if (war == null || war.warType == null) {
+                continue;
+            }
+            CompoundTag warTag = new CompoundTag();
+            warTag.putString("civA", pair.firstCivId());
+            warTag.putString("civB", pair.secondCivId());
+            warTag.putString("warType", war.warType.serializedName());
+            warTag.putInt("pvpKillTarget", Math.max(1, war.pvpKillTarget));
+            warTag.putBoolean("warOfSubmission", war.warOfSubmission);
+            warTag.putBoolean("warOfLand", war.warOfLand);
+            warTag.putLong("startedAtMillis", Math.max(0L, war.startedAtMillis));
+            if (war.declaredByCivId != null) {
+                warTag.putString("declaredByCivId", war.declaredByCivId);
+            }
+            activeWarTags.add(warTag);
+        }
+        tag.put("activeWars", activeWarTags);
+
+        CompoundTag vassalTag = new CompoundTag();
+        for (Map.Entry<String, String> entry : vassalOverlord.entrySet()) {
+            String vassalId = normalizeCivId(entry.getKey());
+            String overlordId = normalizeCivId(entry.getValue());
+            if (vassalId == null || overlordId == null || vassalId.equals(overlordId)) {
+                continue;
+            }
+            vassalTag.putString(vassalId, overlordId);
+        }
+        tag.put("vassalOverlord", vassalTag);
 
         return tag;
     }
@@ -426,6 +570,16 @@ public class CivSavedData extends SavedData {
             return null;
         }
         return civA.compareTo(civB) < 0 ? civA + "|" + civB : civB + "|" + civA;
+    }
+
+    @Nullable
+    private static String diplomacyRequestKey(String requesterCivRaw, String responderCivRaw) {
+        String requesterCiv = normalizeCivId(requesterCivRaw);
+        String responderCiv = normalizeCivId(responderCivRaw);
+        if (requesterCiv == null || responderCiv == null || requesterCiv.equals(responderCiv)) {
+            return null;
+        }
+        return requesterCiv + "->" + responderCiv;
     }
 
     @Nullable
@@ -598,7 +752,10 @@ public class CivSavedData extends SavedData {
             return null;
         }
         removeDiplomacyLinksForCivilization(civId);
+        removeDiplomacyRequestsForCivilization(civId);
+        removeActiveWarsForCivilization(civId);
         removeWarCasualtiesForCivilization(civId);
+        removeVassalLinksForCivilization(civId);
 
         CivilizationRecord fallback = getOrCreateCivilization(fallbackId);
         int reassignedMembers = 0;
@@ -2061,6 +2218,58 @@ public class CivSavedData extends SavedData {
         return diplomacy.getOrDefault(key, DiplomacyState.NEUTRAL);
     }
 
+    @Nullable
+    public DiplomacyRequestView diplomacyRequest(String requesterCivRaw, String responderCivRaw) {
+        String key = diplomacyRequestKey(requesterCivRaw, responderCivRaw);
+        if (key == null) {
+            return null;
+        }
+        DiplomacyRequestRecord request = diplomacyRequests.get(key);
+        return toDiplomacyRequestView(request);
+    }
+
+    public List<DiplomacyRequestView> incomingDiplomacyRequestsFor(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return List.of();
+        }
+        List<DiplomacyRequestView> out = new ArrayList<>();
+        for (DiplomacyRequestRecord request : diplomacyRequests.values()) {
+            if (request == null || !civId.equals(request.responderCivId)) {
+                continue;
+            }
+            DiplomacyRequestView view = toDiplomacyRequestView(request);
+            if (view != null) {
+                out.add(view);
+            }
+        }
+        out.sort(Comparator
+                .comparingLong(DiplomacyRequestView::createdAtMillis)
+                .thenComparing(DiplomacyRequestView::requesterCivilizationId));
+        return out;
+    }
+
+    public List<DiplomacyRequestView> outgoingDiplomacyRequestsFor(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return List.of();
+        }
+        List<DiplomacyRequestView> out = new ArrayList<>();
+        for (DiplomacyRequestRecord request : diplomacyRequests.values()) {
+            if (request == null || !civId.equals(request.requesterCivId)) {
+                continue;
+            }
+            DiplomacyRequestView view = toDiplomacyRequestView(request);
+            if (view != null) {
+                out.add(view);
+            }
+        }
+        out.sort(Comparator
+                .comparingLong(DiplomacyRequestView::createdAtMillis)
+                .thenComparing(DiplomacyRequestView::responderCivilizationId));
+        return out;
+    }
+
     public boolean setDiplomacyState(String civAraw, String civBraw, DiplomacyState state, String actorName) {
         String civA = normalizeCivId(civAraw);
         String civB = normalizeCivId(civBraw);
@@ -2078,6 +2287,22 @@ public class CivSavedData extends SavedData {
             return false;
         }
         setDiplomacyStateInternal(civA, civB, state);
+        clearDiplomacyRequestsBetween(civA, civB);
+        if (state == DiplomacyState.WAR) {
+            startWarInternal(
+                    civA,
+                    civB,
+                    WarType.DESTRUCTION,
+                    RealCivConfig.defaultWarPvpKillTarget(),
+                    false,
+                    false,
+                    civA);
+        } else {
+            clearWarStateBetween(civA, civB);
+            if (state == DiplomacyState.NEUTRAL) {
+                clearVassalLinkBetween(civA, civB);
+            }
+        }
 
         addAuditLog(
                 civARecord.id(),
@@ -2091,6 +2316,222 @@ public class CivSavedData extends SavedData {
                 RealCivConfig.MAX_AUDIT_LOGS.get());
         setDirty();
         return true;
+    }
+
+    public DiplomacyRequestResult proposeDiplomacyStateChange(
+            String requesterCivRaw,
+            String responderCivRaw,
+            DiplomacyState requestedState,
+            String actorName) {
+        if (requestedState == DiplomacyState.WAR) {
+            return proposeWarDeclaration(
+                    requesterCivRaw,
+                    responderCivRaw,
+                    WarType.DESTRUCTION,
+                    RealCivConfig.defaultWarPvpKillTarget(),
+                    false,
+                    false,
+                    actorName);
+        }
+        return proposeDiplomacyStateChangeInternal(
+                requesterCivRaw,
+                responderCivRaw,
+                requestedState,
+                null,
+                0,
+                false,
+                false,
+                actorName);
+    }
+
+    public DiplomacyRequestResult proposeWarDeclaration(
+            String requesterCivRaw,
+            String responderCivRaw,
+            @Nullable WarType warTypeRaw,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            String actorName) {
+        int safeKillTarget = Math.max(1, pvpKillTarget);
+        WarType safeWarType = warTypeRaw == null ? WarType.DESTRUCTION : warTypeRaw;
+        return proposeDiplomacyStateChangeInternal(
+                requesterCivRaw,
+                responderCivRaw,
+                DiplomacyState.WAR,
+                safeWarType,
+                safeKillTarget,
+                warOfSubmission,
+                warOfLand,
+                actorName);
+    }
+
+    private DiplomacyRequestResult proposeDiplomacyStateChangeInternal(
+            String requesterCivRaw,
+            String responderCivRaw,
+            DiplomacyState requestedState,
+            @Nullable WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            String actorName) {
+        String requesterCiv = normalizeCivId(requesterCivRaw);
+        String responderCiv = normalizeCivId(responderCivRaw);
+        if (requesterCiv == null
+                || responderCiv == null
+                || requesterCiv.equals(responderCiv)
+                || requestedState == null) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+        }
+        CivilizationRecord requester = getCivilization(requesterCiv);
+        CivilizationRecord responder = getCivilization(responderCiv);
+        if (requester == null || responder == null) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+        }
+
+        if (requestedState == DiplomacyState.NEUTRAL) {
+            DiplomacyState current = diplomacyState(requesterCiv, responderCiv);
+            if (current == DiplomacyState.NEUTRAL) {
+                return new DiplomacyRequestResult(DiplomacyRequestResultType.NO_CHANGE_ALREADY_SET, DiplomacyState.NEUTRAL);
+            }
+            setDiplomacyStateInternal(requesterCiv, responderCiv, DiplomacyState.NEUTRAL);
+            clearDiplomacyRequestsBetween(requesterCiv, responderCiv);
+            clearWarStateBetween(requesterCiv, responderCiv);
+            clearVassalLinkBetween(requesterCiv, responderCiv);
+            addAuditLog(
+                    requester.id(),
+                    actorName + " set diplomacy with " + responder.displayName() + " [" + responder.id() + "] to NEUTRAL",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            addAuditLog(
+                    responder.id(),
+                    actorName + " set diplomacy with " + requester.displayName() + " [" + requester.id() + "] to NEUTRAL",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            setDirty();
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.STATE_SET, DiplomacyState.NEUTRAL);
+        }
+
+        DiplomacyState current = diplomacyState(requesterCiv, responderCiv);
+        if (current == requestedState) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.NO_CHANGE_ALREADY_SET, requestedState);
+        }
+
+        String incomingKey = diplomacyRequestKey(responderCiv, requesterCiv);
+        DiplomacyRequestRecord incoming = incomingKey == null ? null : diplomacyRequests.get(incomingKey);
+        if (incoming != null && incoming.requestedState == requestedState) {
+            setDiplomacyStateInternal(requesterCiv, responderCiv, requestedState);
+            clearDiplomacyRequestsBetween(requesterCiv, responderCiv);
+            if (requestedState == DiplomacyState.WAR) {
+                startWarInternal(requesterCiv, responderCiv, incoming, responderCiv);
+            } else {
+                clearWarStateBetween(requesterCiv, responderCiv);
+            }
+            addAuditLog(
+                    requester.id(),
+                    actorName + " accepted a " + requestedState.displayName() + " request from "
+                            + responder.displayName() + " [" + responder.id() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            addAuditLog(
+                    responder.id(),
+                    actorName + " accepted your " + requestedState.displayName() + " request for "
+                            + requester.displayName() + " [" + requester.id() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            setDirty();
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.REQUEST_ACCEPTED, requestedState);
+        }
+
+        String outgoingKey = diplomacyRequestKey(requesterCiv, responderCiv);
+        if (outgoingKey == null) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, requestedState);
+        }
+        DiplomacyRequestRecord existing = diplomacyRequests.get(outgoingKey);
+        if (existing != null && existing.requestedState == requestedState) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.REQUEST_ALREADY_PENDING, requestedState);
+        }
+
+        DiplomacyRequestRecord request = new DiplomacyRequestRecord();
+        request.requesterCivId = requesterCiv;
+        request.responderCivId = responderCiv;
+        request.requestedState = requestedState;
+        request.createdAtMillis = System.currentTimeMillis();
+        if (requestedState == DiplomacyState.WAR) {
+            request.warType = warType == null ? WarType.DESTRUCTION : warType;
+            request.pvpKillTarget = Math.max(1, pvpKillTarget);
+            request.warOfSubmission = warOfSubmission;
+            request.warOfLand = warOfLand;
+        }
+        diplomacyRequests.put(outgoingKey, request);
+        addAuditLog(
+                requester.id(),
+                actorName + " sent a " + requestedState.displayName() + " request to "
+                        + responder.displayName() + " [" + responder.id() + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        addAuditLog(
+                responder.id(),
+                actorName + " received a " + requestedState.displayName() + " request from "
+                        + requester.displayName() + " [" + requester.id() + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return new DiplomacyRequestResult(
+                existing == null ? DiplomacyRequestResultType.REQUEST_SENT : DiplomacyRequestResultType.REQUEST_UPDATED,
+                requestedState);
+    }
+
+    public DiplomacyRequestResult respondToDiplomacyRequest(
+            String responderCivRaw,
+            String requesterCivRaw,
+            boolean accept,
+            String actorName) {
+        String responderCiv = normalizeCivId(responderCivRaw);
+        String requesterCiv = normalizeCivId(requesterCivRaw);
+        if (requesterCiv == null || responderCiv == null || requesterCiv.equals(responderCiv)) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+        }
+        CivilizationRecord requester = getCivilization(requesterCiv);
+        CivilizationRecord responder = getCivilization(responderCiv);
+        if (requester == null || responder == null) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.INVALID, DiplomacyState.NEUTRAL);
+        }
+        String key = diplomacyRequestKey(requesterCiv, responderCiv);
+        DiplomacyRequestRecord request = key == null ? null : diplomacyRequests.get(key);
+        if (request == null || request.requestedState == null || request.requestedState == DiplomacyState.NEUTRAL) {
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.NO_PENDING_REQUEST, DiplomacyState.NEUTRAL);
+        }
+        DiplomacyState requestedState = request.requestedState;
+
+        if (accept) {
+            setDiplomacyStateInternal(requesterCiv, responderCiv, requestedState);
+            clearDiplomacyRequestsBetween(requesterCiv, responderCiv);
+            if (requestedState == DiplomacyState.WAR) {
+                startWarInternal(requesterCiv, responderCiv, request, requesterCiv);
+            } else {
+                clearWarStateBetween(requesterCiv, responderCiv);
+            }
+            addAuditLog(
+                    responder.id(),
+                    actorName + " accepted a " + requestedState.displayName() + " request from "
+                            + requester.displayName() + " [" + requester.id() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            addAuditLog(
+                    requester.id(),
+                    actorName + " accepted your " + requestedState.displayName() + " request for "
+                            + responder.displayName() + " [" + responder.id() + "]",
+                    RealCivConfig.MAX_AUDIT_LOGS.get());
+            setDirty();
+            return new DiplomacyRequestResult(DiplomacyRequestResultType.REQUEST_ACCEPTED, requestedState);
+        }
+
+        diplomacyRequests.remove(key);
+        addAuditLog(
+                responder.id(),
+                actorName + " rejected a " + requestedState.displayName() + " request from "
+                        + requester.displayName() + " [" + requester.id() + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        addAuditLog(
+                requester.id(),
+                actorName + " rejected your " + requestedState.displayName() + " request for "
+                        + responder.displayName() + " [" + responder.id() + "]",
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        setDirty();
+        return new DiplomacyRequestResult(DiplomacyRequestResultType.REQUEST_REJECTED, requestedState);
     }
 
     public WarCasualtyView warCasualtiesBetween(String civAraw, String civBraw) {
@@ -2129,12 +2570,348 @@ public class CivSavedData extends SavedData {
             return;
         }
         WarCasualtyRecord record = warCasualties.computeIfAbsent(key, ignored -> new WarCasualtyRecord());
+        boolean firstSideHit = false;
+        boolean secondSideHit = false;
         if (victimCiv.equals(pair.firstCivId())) {
             record.firstCasualties = Math.min(Long.MAX_VALUE, record.firstCasualties + 1L);
+            firstSideHit = true;
         } else if (victimCiv.equals(pair.secondCivId())) {
             record.secondCasualties = Math.min(Long.MAX_VALUE, record.secondCasualties + 1L);
+            secondSideHit = true;
+        }
+        ActiveWarRecord war = activeWars.get(key);
+        if (war != null && war.warType == WarType.PVP) {
+            int target = Math.max(1, war.pvpKillTarget);
+            if (firstSideHit && record.firstCasualties >= target) {
+                concludeWarWithWinner(
+                        pair.secondCivId(),
+                        pair.firstCivId(),
+                        war,
+                        "PvP kill target reached");
+                return;
+            }
+            if (secondSideHit && record.secondCasualties >= target) {
+                concludeWarWithWinner(
+                        pair.firstCivId(),
+                        pair.secondCivId(),
+                        war,
+                        "PvP kill target reached");
+                return;
+            }
         }
         setDirty();
+    }
+
+    @Nullable
+    public ActiveWarView activeWarBetween(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return null;
+        }
+        String key = diplomacyKey(civA, civB);
+        if (key == null) {
+            return null;
+        }
+        if (diplomacyState(civA, civB) != DiplomacyState.WAR) {
+            return null;
+        }
+        ActiveWarRecord war = activeWars.get(key);
+        if (war == null || war.warType == null) {
+            return null;
+        }
+        return toActiveWarView(key, war);
+    }
+
+    public List<ActiveWarView> activeWarsFor(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return List.of();
+        }
+        List<ActiveWarView> out = new ArrayList<>();
+        for (Map.Entry<String, ActiveWarRecord> entry : activeWars.entrySet()) {
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            ActiveWarRecord war = entry.getValue();
+            if (pair == null || war == null || war.warType == null) {
+                continue;
+            }
+            if (!civId.equals(pair.firstCivId()) && !civId.equals(pair.secondCivId())) {
+                continue;
+            }
+            if (diplomacyState(pair.firstCivId(), pair.secondCivId()) != DiplomacyState.WAR) {
+                continue;
+            }
+            ActiveWarView view = toActiveWarView(entry.getKey(), war);
+            if (view != null) {
+                out.add(view);
+            }
+        }
+        out.sort(Comparator
+                .comparingLong(ActiveWarView::startedAtMillis)
+                .thenComparing(ActiveWarView::firstCivilizationId)
+                .thenComparing(ActiveWarView::secondCivilizationId));
+        return out;
+    }
+
+    @Nullable
+    public String overlordOf(String vassalCivRaw) {
+        String vassalCiv = normalizeCivId(vassalCivRaw);
+        if (vassalCiv == null) {
+            return null;
+        }
+        String overlordCiv = normalizeCivId(vassalOverlord.get(vassalCiv));
+        if (overlordCiv == null || !civilizations.containsKey(overlordCiv)) {
+            return null;
+        }
+        return overlordCiv;
+    }
+
+    public boolean isOverlordOf(String overlordCivRaw, String vassalCivRaw) {
+        String overlordCiv = normalizeCivId(overlordCivRaw);
+        String vassalCiv = normalizeCivId(vassalCivRaw);
+        if (overlordCiv == null || vassalCiv == null || overlordCiv.equals(vassalCiv)) {
+            return false;
+        }
+        return overlordCiv.equals(overlordOf(vassalCiv));
+    }
+
+    public List<String> vassalsOf(String overlordCivRaw) {
+        String overlordCiv = normalizeCivId(overlordCivRaw);
+        if (overlordCiv == null) {
+            return List.of();
+        }
+        List<String> out = new ArrayList<>();
+        for (Map.Entry<String, String> entry : vassalOverlord.entrySet()) {
+            String vassalCiv = normalizeCivId(entry.getKey());
+            String mappedOverlord = normalizeCivId(entry.getValue());
+            if (vassalCiv == null || mappedOverlord == null || vassalCiv.equals(mappedOverlord)) {
+                continue;
+            }
+            if (overlordCiv.equals(mappedOverlord) && civilizations.containsKey(vassalCiv)) {
+                out.add(vassalCiv);
+            }
+        }
+        out.sort(String::compareTo);
+        return out;
+    }
+
+    public WarResignResult resignWar(String loserCivRaw, String winnerCivRaw, String actorName) {
+        String loserCiv = normalizeCivId(loserCivRaw);
+        String winnerCiv = normalizeCivId(winnerCivRaw);
+        if (loserCiv == null || winnerCiv == null || loserCiv.equals(winnerCiv)) {
+            return new WarResignResult(WarResignResultType.INVALID, null);
+        }
+        if (diplomacyState(loserCiv, winnerCiv) != DiplomacyState.WAR) {
+            return new WarResignResult(WarResignResultType.NOT_AT_WAR, null);
+        }
+        String key = diplomacyKey(loserCiv, winnerCiv);
+        ActiveWarRecord war = key == null ? null : activeWars.get(key);
+        if (war == null) {
+            war = new ActiveWarRecord();
+            war.warType = WarType.DESTRUCTION;
+            war.pvpKillTarget = Math.max(1, RealCivConfig.defaultWarPvpKillTarget());
+        }
+        WarOutcomeView outcome = concludeWarWithWinner(
+                winnerCiv,
+                loserCiv,
+                war,
+                actorName + " accepted surrender");
+        return new WarResignResult(WarResignResultType.RESIGNED, outcome);
+    }
+
+    private void startWarInternal(
+            String civAraw,
+            String civBraw,
+            DiplomacyRequestRecord request,
+            @Nullable String declaredByCivRaw) {
+        WarType warType = request.warType == null ? WarType.DESTRUCTION : request.warType;
+        int killTarget = Math.max(1, request.pvpKillTarget);
+        startWarInternal(
+                civAraw,
+                civBraw,
+                warType,
+                killTarget,
+                request.warOfSubmission,
+                request.warOfLand,
+                declaredByCivRaw);
+    }
+
+    private void startWarInternal(
+            String civAraw,
+            String civBraw,
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            @Nullable String declaredByCivRaw) {
+        String key = diplomacyKey(civAraw, civBraw);
+        if (key == null) {
+            return;
+        }
+        ActiveWarRecord war = new ActiveWarRecord();
+        war.warType = warType == null ? WarType.DESTRUCTION : warType;
+        war.pvpKillTarget = Math.max(1, pvpKillTarget);
+        war.warOfSubmission = warOfSubmission;
+        war.warOfLand = warOfLand;
+        war.startedAtMillis = System.currentTimeMillis();
+        war.declaredByCivId = normalizeCivId(declaredByCivRaw);
+        activeWars.put(key, war);
+        warCasualties.remove(key);
+        clearVassalLinkBetween(civAraw, civBraw);
+    }
+
+    private void clearWarStateBetween(String civAraw, String civBraw) {
+        String key = diplomacyKey(civAraw, civBraw);
+        if (key == null) {
+            return;
+        }
+        activeWars.remove(key);
+        warCasualties.remove(key);
+    }
+
+    private void clearVassalLinkBetween(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return;
+        }
+        if (civB.equals(vassalOverlord.get(civA))) {
+            vassalOverlord.remove(civA);
+        }
+        if (civA.equals(vassalOverlord.get(civB))) {
+            vassalOverlord.remove(civB);
+        }
+    }
+
+    private void setVassalOverlord(String vassalCivRaw, String overlordCivRaw) {
+        String vassalCiv = normalizeCivId(vassalCivRaw);
+        String overlordCiv = normalizeCivId(overlordCivRaw);
+        if (vassalCiv == null || overlordCiv == null || vassalCiv.equals(overlordCiv)) {
+            return;
+        }
+        vassalOverlord.remove(overlordCiv);
+        vassalOverlord.put(vassalCiv, overlordCiv);
+    }
+
+    @Nullable
+    private ActiveWarView toActiveWarView(String key, ActiveWarRecord war) {
+        DiplomacyPair pair = diplomacyPairFromKey(key);
+        if (pair == null || war.warType == null) {
+            return null;
+        }
+        WarCasualtyRecord casualty = warCasualties.get(key);
+        long firstCasualties = casualty == null ? 0L : Math.max(0L, casualty.firstCasualties);
+        long secondCasualties = casualty == null ? 0L : Math.max(0L, casualty.secondCasualties);
+        return new ActiveWarView(
+                pair.firstCivId(),
+                pair.secondCivId(),
+                war.warType,
+                Math.max(1, war.pvpKillTarget),
+                war.warOfSubmission,
+                war.warOfLand,
+                Math.max(0L, war.startedAtMillis),
+                war.declaredByCivId,
+                firstCasualties,
+                secondCasualties);
+    }
+
+    @Nullable
+    private WarOutcomeView concludeWarWithWinner(
+            String winnerCivRaw,
+            String loserCivRaw,
+            ActiveWarRecord war,
+            String reason) {
+        String winnerCiv = normalizeCivId(winnerCivRaw);
+        String loserCiv = normalizeCivId(loserCivRaw);
+        if (winnerCiv == null || loserCiv == null || winnerCiv.equals(loserCiv)) {
+            return null;
+        }
+        CivilizationRecord winner = getCivilization(winnerCiv);
+        CivilizationRecord loser = getCivilization(loserCiv);
+        if (winner == null || loser == null) {
+            return null;
+        }
+        WarType warType = war.warType == null ? WarType.DESTRUCTION : war.warType;
+        boolean warOfSubmission = war.warOfSubmission;
+        boolean warOfLand = war.warOfLand;
+
+        clearDiplomacyRequestsBetween(winnerCiv, loserCiv);
+        clearWarStateBetween(winnerCiv, loserCiv);
+
+        if (warOfSubmission) {
+            setVassalOverlord(loserCiv, winnerCiv);
+            setDiplomacyStateInternal(winnerCiv, loserCiv, DiplomacyState.ALLY);
+        } else {
+            clearVassalLinkBetween(winnerCiv, loserCiv);
+            setDiplomacyStateInternal(winnerCiv, loserCiv, DiplomacyState.NEUTRAL);
+        }
+
+        int transferredPlotCount = 0;
+        if (warOfLand) {
+            transferredPlotCount = transferAllPlots(loser.id(), winner.id());
+        }
+
+        addAuditLog(
+                winner.id(),
+                "War ended against " + loser.displayName() + " [" + loser.id() + "]"
+                        + " | winner: " + winner.displayName()
+                        + " | type: " + warType.displayName()
+                        + " | submission: " + (warOfSubmission ? "yes" : "no")
+                        + " | land takeover: " + (warOfLand ? ("yes (" + transferredPlotCount + " plots)") : "no")
+                        + " | reason: " + reason,
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+        addAuditLog(
+                loser.id(),
+                "War ended against " + winner.displayName() + " [" + winner.id() + "]"
+                        + " | winner: " + winner.displayName()
+                        + " | type: " + warType.displayName()
+                        + " | submission: " + (warOfSubmission ? "yes" : "no")
+                        + " | land takeover: " + (warOfLand ? ("yes (" + transferredPlotCount + " plots)") : "no")
+                        + " | reason: " + reason,
+                RealCivConfig.MAX_AUDIT_LOGS.get());
+
+        if (attachedServer != null) {
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, winner.id());
+            RealCivFTBChunksMirror.syncCivilization(attachedServer, this, loser.id());
+        }
+        setDirty();
+        return new WarOutcomeView(
+                winner.id(),
+                loser.id(),
+                warType,
+                Math.max(1, war.pvpKillTarget),
+                warOfSubmission,
+                warOfLand,
+                transferredPlotCount);
+    }
+
+    private int transferAllPlots(String fromCivRaw, String toCivRaw) {
+        CivilizationRecord from = getCivilization(fromCivRaw);
+        CivilizationRecord to = getCivilization(toCivRaw);
+        if (from == null || to == null || from.id().equals(to.id())) {
+            return 0;
+        }
+        int transferred = 0;
+        Iterator<Map.Entry<String, PlotRecord>> iterator = from.plots().entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, PlotRecord> entry = iterator.next();
+            PlotRecord plot = entry.getValue();
+            if (plot == null) {
+                iterator.remove();
+                continue;
+            }
+            if (plot.landClass() == LandClass.PRIVATE) {
+                plot.setLandClass(LandClass.COMMUNITY);
+                plot.setOwnerId(null);
+                plot.setDelinquentSinceTick(-1L);
+            }
+            if (!to.plots().containsKey(entry.getKey())) {
+                to.plots().put(entry.getKey(), plot);
+                transferred++;
+            }
+            iterator.remove();
+        }
+        return transferred;
     }
 
     public List<DiplomacyView> nonNeutralDiplomacyEntriesFor(String civIdRaw) {
@@ -2194,6 +2971,42 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    @Nullable
+    private static DiplomacyRequestView toDiplomacyRequestView(@Nullable DiplomacyRequestRecord request) {
+        if (request == null
+                || request.requesterCivId == null
+                || request.responderCivId == null
+                || request.requestedState == null
+                || request.requestedState == DiplomacyState.NEUTRAL) {
+            return null;
+        }
+        return new DiplomacyRequestView(
+                request.requesterCivId,
+                request.responderCivId,
+                request.requestedState,
+                Math.max(0L, request.createdAtMillis),
+                request.requestedState == DiplomacyState.WAR ? request.warType : null,
+                request.requestedState == DiplomacyState.WAR ? Math.max(1, request.pvpKillTarget) : 0,
+                request.requestedState == DiplomacyState.WAR && request.warOfSubmission,
+                request.requestedState == DiplomacyState.WAR && request.warOfLand);
+    }
+
+    private void clearDiplomacyRequestsBetween(String civAraw, String civBraw) {
+        String civA = normalizeCivId(civAraw);
+        String civB = normalizeCivId(civBraw);
+        if (civA == null || civB == null || civA.equals(civB)) {
+            return;
+        }
+        String aToB = diplomacyRequestKey(civA, civB);
+        if (aToB != null) {
+            diplomacyRequests.remove(aToB);
+        }
+        String bToA = diplomacyRequestKey(civB, civA);
+        if (bToA != null) {
+            diplomacyRequests.remove(bToA);
+        }
+    }
+
     private int removeDiplomacyLinksForCivilization(String civIdRaw) {
         String civId = normalizeCivId(civIdRaw);
         if (civId == null) {
@@ -2217,6 +3030,26 @@ public class CivSavedData extends SavedData {
         return removed;
     }
 
+    private int removeDiplomacyRequestsForCivilization(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return 0;
+        }
+        int removed = 0;
+        Iterator<Map.Entry<String, DiplomacyRequestRecord>> iterator = diplomacyRequests.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, DiplomacyRequestRecord> entry = iterator.next();
+            DiplomacyRequestRecord request = entry.getValue();
+            if (request == null
+                    || civId.equals(normalizeCivId(request.requesterCivId))
+                    || civId.equals(normalizeCivId(request.responderCivId))) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
     private int removeWarCasualtiesForCivilization(String civIdRaw) {
         String civId = normalizeCivId(civIdRaw);
         if (civId == null) {
@@ -2233,6 +3066,49 @@ public class CivSavedData extends SavedData {
                 continue;
             }
             if (civId.equals(pair.firstCivId()) || civId.equals(pair.secondCivId())) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private int removeActiveWarsForCivilization(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return 0;
+        }
+        int removed = 0;
+        Iterator<Map.Entry<String, ActiveWarRecord>> iterator = activeWars.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, ActiveWarRecord> entry = iterator.next();
+            DiplomacyPair pair = diplomacyPairFromKey(entry.getKey());
+            if (pair == null) {
+                iterator.remove();
+                removed++;
+                continue;
+            }
+            if (civId.equals(pair.firstCivId()) || civId.equals(pair.secondCivId())) {
+                iterator.remove();
+                removed++;
+            }
+        }
+        return removed;
+    }
+
+    private int removeVassalLinksForCivilization(String civIdRaw) {
+        String civId = normalizeCivId(civIdRaw);
+        if (civId == null) {
+            return 0;
+        }
+        int removed = 0;
+        if (vassalOverlord.remove(civId) != null) {
+            removed++;
+        }
+        Iterator<Map.Entry<String, String>> iterator = vassalOverlord.entrySet().iterator();
+        while (iterator.hasNext()) {
+            Map.Entry<String, String> entry = iterator.next();
+            if (civId.equals(normalizeCivId(entry.getValue()))) {
                 iterator.remove();
                 removed++;
             }
@@ -2365,8 +3241,49 @@ public class CivSavedData extends SavedData {
         return null;
     }
 
+    private boolean crossCivBuildBreakAllowed(String actorCivRaw, String targetCivRaw) {
+        String actorCiv = normalizeCivId(actorCivRaw);
+        String targetCiv = normalizeCivId(targetCivRaw);
+        if (actorCiv == null || targetCiv == null || actorCiv.equals(targetCiv)) {
+            return false;
+        }
+        if (isOverlordOf(actorCiv, targetCiv)) {
+            return true;
+        }
+        if (isOverlordOf(targetCiv, actorCiv)) {
+            return false;
+        }
+        DiplomacyState relationState = diplomacyState(actorCiv, targetCiv);
+        return switch (relationState) {
+            case ALLY -> RealCivConfig.allowAllyCivBuildBreak();
+            case WAR -> RealCivConfig.allowWarCivBuildBreak() && activeWarAllowsLandDestruction(actorCiv, targetCiv);
+            case NEUTRAL -> RealCivConfig.allowNeutralCivBuildBreak();
+        };
+    }
+
+    private boolean activeWarAllowsLandDestruction(String civAraw, String civBraw) {
+        String key = diplomacyKey(civAraw, civBraw);
+        if (key == null) {
+            return false;
+        }
+        ActiveWarRecord war = activeWars.get(key);
+        if (war == null || war.warType == null) {
+            // Legacy wars had no typed record; treat as destruction for compatibility.
+            return true;
+        }
+        return war.warType == WarType.DESTRUCTION;
+    }
+
     public boolean canBuildOnPlot(String civIdRaw, PlotRecord plot, UUID playerId, boolean bypass) {
         if (bypass) {
+            return true;
+        }
+        @Nullable String targetCiv = normalizeCivId(civIdRaw);
+        @Nullable String actorCiv = normalizeCivId(playerCivilization.get(playerId));
+        if (targetCiv != null
+                && actorCiv != null
+                && !targetCiv.equals(actorCiv)
+                && crossCivBuildBreakAllowed(actorCiv, targetCiv)) {
             return true;
         }
         return switch (plot.landClass()) {
@@ -2378,6 +3295,14 @@ public class CivSavedData extends SavedData {
 
     public boolean canBreakOnPlot(String civIdRaw, PlotRecord plot, UUID playerId, boolean bypass) {
         if (bypass) {
+            return true;
+        }
+        @Nullable String targetCiv = normalizeCivId(civIdRaw);
+        @Nullable String actorCiv = normalizeCivId(playerCivilization.get(playerId));
+        if (targetCiv != null
+                && actorCiv != null
+                && !targetCiv.equals(actorCiv)
+                && crossCivBuildBreakAllowed(actorCiv, targetCiv)) {
             return true;
         }
         return switch (plot.landClass()) {
@@ -2571,7 +3496,92 @@ public class CivSavedData extends SavedData {
 
 
 
+
+    public record DiplomacyRequestView(
+            String requesterCivilizationId,
+            String responderCivilizationId,
+            DiplomacyState requestedState,
+            long createdAtMillis,
+            @Nullable WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand) {
+    }
+
+    public record ActiveWarView(
+            String firstCivilizationId,
+            String secondCivilizationId,
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            long startedAtMillis,
+            @Nullable String declaredByCivilizationId,
+            long firstCivilizationCasualties,
+            long secondCivilizationCasualties) {
+    }
+
+    public record WarOutcomeView(
+            String winnerCivilizationId,
+            String loserCivilizationId,
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand,
+            int transferredPlotCount) {
+    }
+
+    public enum WarResignResultType {
+        INVALID,
+        NOT_AT_WAR,
+        RESIGNED
+    }
+
+    public record WarResignResult(WarResignResultType type, @Nullable WarOutcomeView outcome) {
+    }
+
+    public enum DiplomacyRequestResultType {
+        INVALID,
+        NO_CHANGE_ALREADY_SET,
+        REQUEST_ALREADY_PENDING,
+        REQUEST_SENT,
+        REQUEST_UPDATED,
+        REQUEST_ACCEPTED,
+        REQUEST_REJECTED,
+        STATE_SET,
+        NO_PENDING_REQUEST
+    }
+
+    public record DiplomacyRequestResult(DiplomacyRequestResultType type, DiplomacyState requestedState) {
+    }
+
+    private static final class DiplomacyRequestRecord {
+        @Nullable
+        private String requesterCivId;
+        @Nullable
+        private String responderCivId;
+        @Nullable
+        private DiplomacyState requestedState;
+        private long createdAtMillis;
+        @Nullable
+        private WarType warType;
+        private int pvpKillTarget;
+        private boolean warOfSubmission;
+        private boolean warOfLand;
+    }
+
     private record DiplomacyPair(String firstCivId, String secondCivId) {
+    }
+
+    private static final class ActiveWarRecord {
+        @Nullable
+        private WarType warType;
+        private int pvpKillTarget;
+        private boolean warOfSubmission;
+        private boolean warOfLand;
+        private long startedAtMillis;
+        @Nullable
+        private String declaredByCivId;
     }
 
     private static final class WarCasualtyRecord {

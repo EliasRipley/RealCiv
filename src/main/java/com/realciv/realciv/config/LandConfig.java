@@ -21,6 +21,18 @@ public final class LandConfig {
         return RealCivConfig.LAND_BLOCK_UNCLAIMED_BUILDING.get();
     }
 
+    public static boolean allowNeutralCivBuildBreak() {
+        return RealCivConfig.LAND_ALLOW_NEUTRAL_CIV_BUILD_BREAK.get();
+    }
+
+    public static boolean allowAllyCivBuildBreak() {
+        return RealCivConfig.LAND_ALLOW_ALLY_CIV_BUILD_BREAK.get();
+    }
+
+    public static boolean allowWarCivBuildBreak() {
+        return RealCivConfig.LAND_ALLOW_WAR_CIV_BUILD_BREAK.get();
+    }
+
     public static boolean canClaimDimension(@Nullable String dimensionIdRaw) {
         String dimensionId = normalizeDimensionId(dimensionIdRaw);
         if (dimensionId == null) {

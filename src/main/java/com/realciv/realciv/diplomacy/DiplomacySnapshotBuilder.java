@@ -13,6 +13,26 @@ public final class DiplomacySnapshotBuilder {
     private DiplomacySnapshotBuilder() {}
 
     public static DiplomacySnapshot build(ServerPlayer player, CivSavedData data, String civId, int page) {
+        return build(
+                player,
+                data,
+                civId,
+                page,
+                com.realciv.realciv.data.WarType.DESTRUCTION.displayName(),
+                com.realciv.realciv.config.RealCivConfig.defaultWarPvpKillTarget(),
+                false,
+                false);
+    }
+
+    public static DiplomacySnapshot build(
+            ServerPlayer player,
+            CivSavedData data,
+            String civId,
+            int page,
+            String draftWarType,
+            int draftPvpKillTarget,
+            boolean draftWarOfSubmission,
+            boolean draftWarOfLand) {
         boolean canManage = CivPermissionService.hasCivPermission(
                 player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY);
         @Nullable CivilizationRecord civ = data.getCivilization(civId);
@@ -38,6 +58,35 @@ public final class DiplomacySnapshotBuilder {
                     (int) cv.yourCasualties(), (int) cv.otherCasualties()));
         }
 
-        return new DiplomacySnapshot(civId, civName, canManage, page, totalPages, rows);
+        List<DiplomacySnapshot.IncomingWarRequest> incomingWarRequests = new ArrayList<>();
+        for (CivSavedData.DiplomacyRequestView request : data.incomingDiplomacyRequestsFor(civId)) {
+            if (request.requestedState() != DiplomacyState.WAR) {
+                continue;
+            }
+            String requesterId = request.requesterCivilizationId();
+            @Nullable CivilizationRecord requester = data.getCivilization(requesterId);
+            String requesterName = requester == null ? requesterId : requester.displayName();
+            String warType = request.warType() == null ? "DESTRUCTION" : request.warType().displayName();
+            incomingWarRequests.add(new DiplomacySnapshot.IncomingWarRequest(
+                    requesterId,
+                    requesterName,
+                    warType,
+                    Math.max(1, request.pvpKillTarget()),
+                    request.warOfSubmission(),
+                    request.warOfLand()));
+        }
+
+        return new DiplomacySnapshot(
+                civId,
+                civName,
+                canManage,
+                page,
+                totalPages,
+                draftWarType,
+                Math.max(1, draftPvpKillTarget),
+                draftWarOfSubmission,
+                draftWarOfLand,
+                incomingWarRequests,
+                rows);
     }
 }

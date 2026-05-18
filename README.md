@@ -25,12 +25,14 @@ New citizen flow:
 
 Important rule behaviors:
 
-- If you hit an action limit, you must contribute relevant resources to hub to reset that profession action counter (except warrior, which levels from enemy player kills directly).
+- If you hit an action limit, you must contribute relevant resources to hub to reset that profession action counter.
+- Warrior kill XP is configurable: by default it is awarded directly from enemy player kills, but server owners can require hub registration via `progression.warriorRequireHubRegistration=true`.
 - Profession action restoration is item- and quantity-based (configured per profession in `config/realciv/hub/*_resets.txt` by default), not a full reset from any single cheap item.
 - On death, action counters can be partially/fully refunded by `progression.deathActionRefundPercent` to prevent hard lockouts after item loss.
 - Timed recovery can auto-reset stale action counters after inactivity via `progression.staleActionResetEnabled` and `progression.staleActionResetMinutes`.
 - Tool tiers can be profession-gated (default) and/or general-level-gated (optional).
 - Player-vs-player combat is diplomacy-gated: WAR allows cross-civ PvP, ALLY/NEUTRAL block it, and same-civ PvP is controlled by the civilization's friendly-fire toggle.
+- Cross-civ territory entry is allowed by default; diplomacy/config mainly govern interaction rights (build/break/PvP), not whether players can physically enter.
 - Regulated explosives require a designated Explosives Expert role and respect per-level action caps.
 - Regulated redstone placement can require a designated Redstoner role per civilization.
 - Explosion block damage on claimed land is war/ownership-aware: non-war cross-civ grief is blocked.
@@ -57,6 +59,8 @@ In-Game Civic Blocks
   - Right-click: opens the Profession Ledger dashboard.
 - War Table (`realciv:war_table`)
   - Right-click: opens the Diplomacy Table dashboard for relations/war status.
+  - Leadership users can draft war terms in-table (destruction vs PvP, PvP kill target, submission, land takeover) before sending WAR requests.
+  - Incoming WAR requests can be accepted/rejected directly in-table by authorized leadership users.
 - Tax Block (`realciv:tax_block`)
   - Right-click: opens the Tax Office dashboard for upkeep and prepay flow.
 - Community Hub (`realciv:community_hub`)
@@ -100,8 +104,16 @@ Civilization setup and membership:
 - `/realciv civ delete <civ>`: Admin deletion of a civilization record.
 - `/realciv civ assign <player> <civ>`: Admin force-assigns a player to a civilization.
 - `/realciv civ diplomacy show [civ]`: Shows diplomacy state and same-civ friendly-fire status for a civilization.
-- `/realciv civ diplomacy set <other-civ> <ally|neutral|war>`: Leadership/admin sets your civilization's diplomacy toward another civ (shared relation).
+- `/realciv civ diplomacy set <other-civ> <ally|neutral|war>`: Leadership/admin diplomacy action. `ally`/`war` send requests (or accept matching incoming requests); `neutral` de-escalates immediately. For custom WAR terms (type/kill-target/submission/land), use `/realciv civ war declare ...`.
+- `/realciv civ diplomacy accept <other-civ>`: Leadership/admin accepts a pending diplomacy request sent by the target civ.
+- `/realciv civ diplomacy reject <other-civ>`: Leadership/admin rejects a pending diplomacy request sent by the target civ.
 - `/realciv civ diplomacy set <civA> <civB> <ally|neutral|war>`: Admin override variant to set diplomacy between any two civilizations.
+- `/realciv civ war show [civ]`: War-focused diplomacy view including active wars, war options, casualties, and vassal status.
+- `/realciv civ war declare destruction <other> [submission] [land]`: Sends a destruction-war declaration (optional `submission` and `land` booleans for outcome terms).
+- `/realciv civ war declare pvp <other> <killTarget> [submission] [land]`: Sends a PvP war declaration with a required kill target and optional outcome terms.
+- `/realciv civ war accept <other>`: Accepts a pending WAR declaration from the target civilization.
+- `/realciv civ war reject <other>`: Rejects a pending WAR declaration from the target civilization.
+- `/realciv civ war resign <other>`: Resigns an active war, which counts as a loss and applies submission/land terms configured on that war.
 - `/realciv civ pvp show [civ]`: Shows whether intra-civ PvP (friendly fire) is enabled.
 - `/realciv civ pvp friendlyfire <on|off>`: Leadership/admin toggles same-civilization PvP for sparring/friendly fights.
 - `/realciv civ explosives show [civ]`: Shows designated explosives experts and civ cap usage.
@@ -198,6 +210,7 @@ Custom governance permission keys (assign with `/realciv civ role permission add
 - `manage_census_roles`
 - `manage_leadership`
 - `manage_withdraw_rates`
+- `manage_hub_distribution`
 - `manage_hub_withdrawals`
 - `view_hub_quotas`
 - `view_hub_logs`
@@ -272,8 +285,6 @@ Key areas:
   - `progression.warriorXpPerPlayerKill`
   - `progression.warriorGeneralXpPerPlayerKill`
   - `progression.warriorRequireHubRegistration`
-  - `progression.explosivesExpertXpPerUse`
-  - `progression.explosivesExpertGeneralXpPerUse`
   - `combat.warriorHomeDefenseNoActionCost`
 - Hub rewards:
   - `hub.useProfessionRuleFiles`
@@ -302,6 +313,9 @@ Key areas:
   - `land.upkeepIntervalDays`
   - `land.upkeepGraceDays`
   - `land.blockUnclaimedBuilding`
+  - `land.allowNeutralCivBuildBreak`
+  - `land.allowAllyCivBuildBreak`
+  - `land.allowWarCivBuildBreak` (applies to typed destruction wars; PvP wars remain kill-only)
   - `land.wandVisualizeRadiusChunks`
   - `land.wandMaxSelectionChunks`
   - `land.ftbMayorDefaultClaimMode` (`civic` or `private`)
@@ -311,6 +325,7 @@ Key areas:
   - `civ.maxExplosivesExpertsPerCivilization`
   - `civ.maxRedstonersPerCivilization`
   - `civ.requireFounderApproval`
+  - `civ.war.defaultPvpKillTarget`
 - Redstone role controls:
   - `redstone.restrictedBlocks`
 - Explosives controls:

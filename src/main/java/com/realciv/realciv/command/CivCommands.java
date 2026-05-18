@@ -9,6 +9,7 @@ import com.realciv.realciv.data.CivilizationRecord;
 import com.realciv.realciv.data.DeleteCivilizationResult;
 import com.realciv.realciv.data.DiplomacyState;
 import com.realciv.realciv.data.DiplomacyView;
+import com.realciv.realciv.data.WarType;
 import java.util.List;
 import java.util.Locale;
 import java.util.UUID;
@@ -665,16 +666,115 @@ public final class CivCommands {
         List<DiplomacyView> relations = data.nonNeutralDiplomacyEntriesFor(civId);
         if (relations.isEmpty()) {
             source.sendSuccess(() -> Component.literal("All external relations are currently NEUTRAL."), false);
-            return 1;
+        } else {
+            source.sendSuccess(() -> Component.literal("Non-neutral relations:"), false);
+            for (DiplomacyView relation : relations) {
+                String other = relation.otherCivilizationId();
+                source.sendSuccess(() -> Component.literal(
+                        "- " + RealCivCommands.civDisplay(data, other) + " [" + other + "]: " + relation.state().displayName()), false);
+            }
         }
 
-        source.sendSuccess(() -> Component.literal("Non-neutral relations:"), false);
-        for (DiplomacyView relation : relations) {
-            String other = relation.otherCivilizationId();
+        List<CivSavedData.DiplomacyRequestView> incoming = data.incomingDiplomacyRequestsFor(civId);
+        if (incoming.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Incoming requests: none."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Incoming requests:"), false);
+            for (CivSavedData.DiplomacyRequestView request : incoming) {
+                String fromCiv = request.requesterCivilizationId();
+                String detail = formatWarRequestSummary(request);
+                source.sendSuccess(() -> Component.literal(
+                        "- from " + RealCivCommands.civDisplay(data, fromCiv) + " [" + fromCiv + "]: "
+                                + request.requestedState().displayName() + detail),
+                        false);
+            }
+        }
+
+        List<CivSavedData.DiplomacyRequestView> outgoing = data.outgoingDiplomacyRequestsFor(civId);
+        if (outgoing.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Outgoing requests: none."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Outgoing requests:"), false);
+            for (CivSavedData.DiplomacyRequestView request : outgoing) {
+                String toCiv = request.responderCivilizationId();
+                String detail = formatWarRequestSummary(request);
+                source.sendSuccess(() -> Component.literal(
+                        "- to " + RealCivCommands.civDisplay(data, toCiv) + " [" + toCiv + "]: "
+                                + request.requestedState().displayName() + detail),
+                        false);
+            }
+        }
+
+        List<CivSavedData.ActiveWarView> activeWars = data.activeWarsFor(civId);
+        if (activeWars.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Active wars: none."), false);
+        } else {
+            source.sendSuccess(() -> Component.literal("Active wars:"), false);
+            for (CivSavedData.ActiveWarView war : activeWars) {
+                boolean civIsFirst = civId.equals(war.firstCivilizationId());
+                String otherCiv = civIsFirst ? war.secondCivilizationId() : war.firstCivilizationId();
+                long ourLosses = civIsFirst ? war.firstCivilizationCasualties() : war.secondCivilizationCasualties();
+                long theirLosses = civIsFirst ? war.secondCivilizationCasualties() : war.firstCivilizationCasualties();
+                String mode = war.warType() == WarType.PVP
+                        ? "PVP target " + war.pvpKillTarget()
+                        : "DESTRUCTION";
+                String options = "submission:" + (war.warOfSubmission() ? "on" : "off")
+                        + ", land:" + (war.warOfLand() ? "on" : "off");
+                source.sendSuccess(() -> Component.literal(
+                        "- vs " + RealCivCommands.civDisplay(data, otherCiv) + " [" + otherCiv + "]"
+                                + " | " + mode
+                                + " | losses us:" + ourLosses + " them:" + theirLosses
+                                + " | " + options),
+                        false);
+            }
+        }
+
+        @Nullable String overlord = data.overlordOf(civId);
+        if (overlord != null) {
             source.sendSuccess(() -> Component.literal(
-                    "- " + RealCivCommands.civDisplay(data, other) + " [" + other + "]: " + relation.state().displayName()), false);
+                    "Vassal status: this civilization is a vassal of "
+                            + RealCivCommands.civDisplay(data, overlord) + " [" + overlord + "]."),
+                    false);
+        }
+        List<String> vassals = data.vassalsOf(civId);
+        if (!vassals.isEmpty()) {
+            source.sendSuccess(() -> Component.literal("Vassals under this civilization:"), false);
+            for (String vassalCiv : vassals) {
+                source.sendSuccess(() -> Component.literal(
+                        "- " + RealCivCommands.civDisplay(data, vassalCiv) + " [" + vassalCiv + "]"),
+                        false);
+            }
         }
         return 1;
+    }
+
+    public static int civWarShow(CommandSourceStack source, @Nullable String civRef) {
+        return civDiplomacyShow(source, civRef);
+    }
+
+    private static String formatWarRequestSummary(CivSavedData.DiplomacyRequestView request) {
+        if (request.requestedState() != DiplomacyState.WAR) {
+            return "";
+        }
+        WarType warType = request.warType() == null ? WarType.DESTRUCTION : request.warType();
+        return " | " + formatWarSummary(
+                warType,
+                Math.max(1, request.pvpKillTarget()),
+                request.warOfSubmission(),
+                request.warOfLand());
+    }
+
+    private static String formatWarSummary(
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand) {
+        String base = warType == WarType.PVP
+                ? "PVP (target " + Math.max(1, pvpKillTarget) + ")"
+                : "DESTRUCTION";
+        return base
+                + ", submission:" + (warOfSubmission ? "on" : "off")
+                + ", land:" + (warOfLand ? "on" : "off");
     }
 
     public static int civDiplomacySet(CommandSourceStack source, String otherCivRef, String stateRaw) {
@@ -701,16 +801,276 @@ public final class CivCommands {
             return 0;
         }
 
-        if (!data.setDiplomacyState(actorCiv, otherCiv, state, RealCivCommands.actorName(source))) {
+        CivSavedData.DiplomacyRequestResult result = data.proposeDiplomacyStateChange(
+                actorCiv,
+                otherCiv,
+                state,
+                RealCivCommands.actorName(source));
+        CivSavedData.DiplomacyRequestResultType type = result.type();
+        String actorDisplay = RealCivCommands.civDisplay(data, actorCiv);
+        String otherDisplay = RealCivCommands.civDisplay(data, otherCiv);
+
+        if (type == CivSavedData.DiplomacyRequestResultType.STATE_SET) {
+            source.sendSuccess(() -> Component.literal(
+                    "Set diplomacy between " + actorDisplay + " and "
+                            + otherDisplay + " to " + result.requestedState().displayName() + "."),
+                    true);
+            return 1;
+        }
+        if (type == CivSavedData.DiplomacyRequestResultType.REQUEST_ACCEPTED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Accepted incoming " + result.requestedState().displayName() + " request from "
+                            + otherDisplay + ". Diplomacy is now " + result.requestedState().displayName() + "."),
+                    true);
+            return 1;
+        }
+        if (type == CivSavedData.DiplomacyRequestResultType.REQUEST_SENT
+                || type == CivSavedData.DiplomacyRequestResultType.REQUEST_UPDATED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Sent " + result.requestedState().displayName() + " request to " + otherDisplay
+                            + ". The other civilization can accept or reject it."),
+                    true);
+            return 1;
+        }
+        if (type == CivSavedData.DiplomacyRequestResultType.REQUEST_ALREADY_PENDING) {
             source.sendFailure(Component.literal(
-                    "No change made. Diplomacy may already be " + state.displayName() + "."));
+                    result.requestedState().displayName() + " request to " + otherDisplay + " is already pending."));
+            return 0;
+        }
+        if (type == CivSavedData.DiplomacyRequestResultType.NO_CHANGE_ALREADY_SET) {
+            source.sendFailure(Component.literal(
+                    "No change made. Diplomacy is already " + result.requestedState().displayName() + "."));
             return 0;
         }
 
+        source.sendFailure(Component.literal("Unable to process diplomacy request."));
+        return 0;
+    }
+
+    public static int civWarDeclare(
+            CommandSourceStack source,
+            String otherCivRef,
+            String warTypeRaw,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = RealCivCommands.civOfSource(source, data);
+        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
+            source.sendFailure(Component.literal("Only leadership/admin can declare war for your civilization."));
+            return 0;
+        }
+        String otherCiv = RealCivCommands.resolveCivilizationId(data, otherCivRef);
+        if (otherCiv == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + otherCivRef));
+            return 0;
+        }
+        if (actorCiv.equals(otherCiv)) {
+            source.sendFailure(Component.literal("Cannot declare war on your own civilization."));
+            return 0;
+        }
+        @Nullable WarType warType = WarType.fromSerializedName(warTypeRaw);
+        if (warType == null) {
+            source.sendFailure(Component.literal("Invalid war type. Use destruction or pvp."));
+            return 0;
+        }
+        int safeTarget = warType == WarType.PVP
+                ? Math.max(1, pvpKillTarget)
+                : RealCivConfig.defaultWarPvpKillTarget();
+        CivSavedData.DiplomacyRequestResult result = data.proposeWarDeclaration(
+                actorCiv,
+                otherCiv,
+                warType,
+                safeTarget,
+                warOfSubmission,
+                warOfLand,
+                RealCivCommands.actorName(source));
+
+        String otherDisplay = RealCivCommands.civDisplay(data, otherCiv);
+        String warSummary = formatWarSummary(warType, safeTarget, warOfSubmission, warOfLand);
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_SENT
+                || result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_UPDATED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Sent WAR request to " + otherDisplay + " [" + otherCiv + "]: " + warSummary
+                            + ". The other civilization can accept or reject it."),
+                    true);
+            return 1;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_ACCEPTED) {
+            source.sendSuccess(() -> Component.literal(
+                    "War accepted with " + otherDisplay + " [" + otherCiv + "]: " + warSummary + "."),
+                    true);
+            return 1;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_ALREADY_PENDING) {
+            source.sendFailure(Component.literal(
+                    "A WAR request to " + otherDisplay + " is already pending."));
+            return 0;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.NO_CHANGE_ALREADY_SET) {
+            source.sendFailure(Component.literal("No change made. You are already at war with " + otherDisplay + "."));
+            return 0;
+        }
+        source.sendFailure(Component.literal("Unable to declare war right now."));
+        return 0;
+    }
+
+    public static int civWarAccept(CommandSourceStack source, String otherCivRef) {
+        return civWarRespond(source, otherCivRef, true);
+    }
+
+    public static int civWarReject(CommandSourceStack source, String otherCivRef) {
+        return civWarRespond(source, otherCivRef, false);
+    }
+
+    private static int civWarRespond(CommandSourceStack source, String otherCivRef, boolean accept) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = RealCivCommands.civOfSource(source, data);
+        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
+            source.sendFailure(Component.literal("Only leadership/admin can respond to war declarations."));
+            return 0;
+        }
+        String otherCiv = RealCivCommands.resolveCivilizationId(data, otherCivRef);
+        if (otherCiv == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + otherCivRef));
+            return 0;
+        }
+        if (actorCiv.equals(otherCiv)) {
+            source.sendFailure(Component.literal("Cannot respond to your own civilization."));
+            return 0;
+        }
+
+        @Nullable CivSavedData.DiplomacyRequestView pending = data.diplomacyRequest(otherCiv, actorCiv);
+        if (pending == null || pending.requestedState() != DiplomacyState.WAR) {
+            source.sendFailure(Component.literal(
+                    "No pending war declaration from " + RealCivCommands.civDisplay(data, otherCiv) + "."));
+            return 0;
+        }
+
+        CivSavedData.DiplomacyRequestResult result = data.respondToDiplomacyRequest(
+                actorCiv,
+                otherCiv,
+                accept,
+                RealCivCommands.actorName(source));
+        String otherDisplay = RealCivCommands.civDisplay(data, otherCiv);
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_ACCEPTED) {
+            WarType warType = pending.warType() == null ? WarType.DESTRUCTION : pending.warType();
+            String warSummary = formatWarSummary(
+                    warType,
+                    Math.max(1, pending.pvpKillTarget()),
+                    pending.warOfSubmission(),
+                    pending.warOfLand());
+            source.sendSuccess(() -> Component.literal(
+                    "Accepted war declaration from " + otherDisplay + ": " + warSummary + "."),
+                    true);
+            return 1;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_REJECTED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Rejected war declaration from " + otherDisplay + "."),
+                    true);
+            return 1;
+        }
+        source.sendFailure(Component.literal("Unable to respond to war declaration."));
+        return 0;
+    }
+
+    public static int civWarResign(CommandSourceStack source, String otherCivRef) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = RealCivCommands.civOfSource(source, data);
+        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
+            source.sendFailure(Component.literal("Only leadership/admin can resign from war."));
+            return 0;
+        }
+        String otherCiv = RealCivCommands.resolveCivilizationId(data, otherCivRef);
+        if (otherCiv == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + otherCivRef));
+            return 0;
+        }
+        if (actorCiv.equals(otherCiv)) {
+            source.sendFailure(Component.literal("Cannot resign a war against your own civilization."));
+            return 0;
+        }
+        CivSavedData.WarResignResult result = data.resignWar(actorCiv, otherCiv, RealCivCommands.actorName(source));
+        if (result.type() == CivSavedData.WarResignResultType.NOT_AT_WAR) {
+            source.sendFailure(Component.literal(
+                    "Your civilization is not currently at war with " + RealCivCommands.civDisplay(data, otherCiv) + "."));
+            return 0;
+        }
+        if (result.type() == CivSavedData.WarResignResultType.INVALID) {
+            source.sendFailure(Component.literal("Unable to process resignation."));
+            return 0;
+        }
+        @Nullable CivSavedData.WarOutcomeView outcome = result.outcome();
+        if (outcome == null) {
+            source.sendSuccess(() -> Component.literal("War resignation accepted."), true);
+            return 1;
+        }
         source.sendSuccess(() -> Component.literal(
-                "Set diplomacy between " + RealCivCommands.civDisplay(data, actorCiv) + " and "
-                        + RealCivCommands.civDisplay(data, otherCiv) + " to " + state.displayName() + "."), true);
+                "War ended. Winner: "
+                        + RealCivCommands.civDisplay(data, outcome.winnerCivilizationId())
+                        + " | Loser: " + RealCivCommands.civDisplay(data, outcome.loserCivilizationId())
+                        + " | " + formatWarSummary(
+                                outcome.warType(),
+                                outcome.pvpKillTarget(),
+                                outcome.warOfSubmission(),
+                                outcome.warOfLand())
+                        + (outcome.warOfLand() ? " | transferred plots: " + outcome.transferredPlotCount() : "")),
+                true);
         return 1;
+    }
+
+    public static int civDiplomacyAccept(CommandSourceStack source, String otherCivRef) {
+        return civDiplomacyRespond(source, otherCivRef, true);
+    }
+
+    public static int civDiplomacyReject(CommandSourceStack source, String otherCivRef) {
+        return civDiplomacyRespond(source, otherCivRef, false);
+    }
+
+    private static int civDiplomacyRespond(CommandSourceStack source, String otherCivRef, boolean accept) {
+        CivSavedData data = CivSavedData.get(source.getServer());
+        String actorCiv = RealCivCommands.civOfSource(source, data);
+        if (!RealCivCommands.hasCivPermission(source, data, actorCiv, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY)) {
+            source.sendFailure(Component.literal("Only leadership/admin can respond to diplomacy requests."));
+            return 0;
+        }
+        String otherCiv = RealCivCommands.resolveCivilizationId(data, otherCivRef);
+        if (otherCiv == null) {
+            source.sendFailure(Component.literal("Civilization not found: " + otherCivRef));
+            return 0;
+        }
+        if (actorCiv.equals(otherCiv)) {
+            source.sendFailure(Component.literal("Cannot respond to your own civilization."));
+            return 0;
+        }
+
+        CivSavedData.DiplomacyRequestResult result = data.respondToDiplomacyRequest(
+                actorCiv,
+                otherCiv,
+                accept,
+                RealCivCommands.actorName(source));
+        String otherDisplay = RealCivCommands.civDisplay(data, otherCiv);
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_ACCEPTED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Accepted " + result.requestedState().displayName() + " request from "
+                            + otherDisplay + ". Diplomacy is now " + result.requestedState().displayName() + "."),
+                    true);
+            return 1;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_REJECTED) {
+            source.sendSuccess(() -> Component.literal(
+                    "Rejected " + result.requestedState().displayName() + " request from " + otherDisplay + "."),
+                    true);
+            return 1;
+        }
+        if (result.type() == CivSavedData.DiplomacyRequestResultType.NO_PENDING_REQUEST) {
+            source.sendFailure(Component.literal(
+                    "No pending diplomacy request from " + otherDisplay + " to your civilization."));
+            return 0;
+        }
+        source.sendFailure(Component.literal("Unable to respond to diplomacy request."));
+        return 0;
     }
 
     public static int civDiplomacySetBetween(CommandSourceStack source, String civARef, String civBRef, String stateRaw) {

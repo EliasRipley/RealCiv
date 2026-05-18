@@ -69,6 +69,10 @@ import org.jetbrains.annotations.Nullable;
 public final class RealCivNetwork {
     private static final Map<UUID, Integer> taxPages = new HashMap<>();
     private static final Map<UUID, Integer> diplomacyPages = new HashMap<>();
+    private static final Map<UUID, WarType> diplomacyDraftWarType = new HashMap<>();
+    private static final Map<UUID, Integer> diplomacyDraftPvpKillTarget = new HashMap<>();
+    private static final Map<UUID, Boolean> diplomacyDraftWarOfSubmission = new HashMap<>();
+    private static final Map<UUID, Boolean> diplomacyDraftWarOfLand = new HashMap<>();
     private static final Map<UUID, Integer> hubStockPages = new HashMap<>();
     private static final Map<UUID, Integer> censusPages = new HashMap<>();
     private static final Map<UUID, Integer> rationPages = new HashMap<>();
@@ -249,6 +253,55 @@ public final class RealCivNetwork {
     private static String resolveCivId(ServerPlayer player) {
         if (player.getServer() == null) return null;
         return CivSavedData.get(player.getServer()).getOrAssignCivilization(player.getUUID());
+    }
+
+    private static WarDraftOptions warDraftOptions(UUID playerId) {
+        WarType warType = diplomacyDraftWarType.getOrDefault(playerId, WarType.DESTRUCTION);
+        int pvpKillTarget = Math.max(1, diplomacyDraftPvpKillTarget.getOrDefault(
+                playerId,
+                RealCivConfig.defaultWarPvpKillTarget()));
+        boolean warOfSubmission = diplomacyDraftWarOfSubmission.getOrDefault(playerId, false);
+        boolean warOfLand = diplomacyDraftWarOfLand.getOrDefault(playerId, false);
+        return new WarDraftOptions(warType, pvpKillTarget, warOfSubmission, warOfLand);
+    }
+
+    private static void sendDiplomacyScreen(ServerPlayer player, CivSavedData data, String civId) {
+        DiplomacySnapshot updated = buildDiplomacySnapshotForPlayer(
+                player,
+                data,
+                civId,
+                diplomacyPages.getOrDefault(player.getUUID(), 0));
+        PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenDiplomacyPayload(updated));
+    }
+
+    public static DiplomacySnapshot buildDiplomacySnapshotForPlayer(
+            ServerPlayer player,
+            CivSavedData data,
+            String civId,
+            int requestedPage) {
+        UUID playerId = player.getUUID();
+        WarDraftOptions options = warDraftOptions(playerId);
+        DiplomacySnapshot snapshot = DiplomacySnapshotBuilder.build(
+                player,
+                data,
+                civId,
+                requestedPage,
+                options.warType().displayName(),
+                options.pvpKillTarget(),
+                options.warOfSubmission(),
+                options.warOfLand());
+        diplomacyPages.put(playerId, snapshot.page());
+        return snapshot;
+    }
+
+    private static String formatWarDraftSummary(WarDraftOptions options) {
+        if (options.warType() == WarType.PVP) {
+            return "PVP target " + options.pvpKillTarget()
+                    + ", submission " + (options.warOfSubmission() ? "on" : "off")
+                    + ", land " + (options.warOfLand() ? "on" : "off");
+        }
+        return "DESTRUCTION, submission " + (options.warOfSubmission() ? "on" : "off")
+                + ", land " + (options.warOfLand() ? "on" : "off");
     }
 
     private static void sendTaxScreen(ServerPlayer player, CivSavedData data, String civId) {
@@ -606,19 +659,80 @@ public final class RealCivNetwork {
     }
 
     private static void handleDiplomacyAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
+        UUID playerId = player.getUUID();
         boolean canManage = CivPermissionService.hasCivPermission(player, data, civId, CivSavedData.ROLE_PERMISSION_MANAGE_DIPLOMACY);
+        WarDraftOptions options = warDraftOptions(playerId);
 
         if (actionId == ModernDiplomacyScreen.ACTION_PREV_PAGE) {
-            int p = diplomacyPages.getOrDefault(player.getUUID(), 0) - 1;
-            diplomacyPages.put(player.getUUID(), Math.max(0, p));
+            int p = diplomacyPages.getOrDefault(playerId, 0) - 1;
+            diplomacyPages.put(playerId, Math.max(0, p));
         } else if (actionId == ModernDiplomacyScreen.ACTION_NEXT_PAGE) {
-            int p = diplomacyPages.getOrDefault(player.getUUID(), 0) + 1;
-            DiplomacySnapshot s = DiplomacySnapshotBuilder.build(player, data, civId, p);
-            diplomacyPages.put(player.getUUID(), Math.min(p, s.totalPages() - 1));
+            int p = diplomacyPages.getOrDefault(playerId, 0) + 1;
+            DiplomacySnapshot s = buildDiplomacySnapshotForPlayer(player, data, civId, p);
+            diplomacyPages.put(playerId, Math.min(p, s.totalPages() - 1));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_TOGGLE_WAR_TYPE) {
+            WarType next = options.warType() == WarType.PVP ? WarType.DESTRUCTION : WarType.PVP;
+            diplomacyDraftWarType.put(playerId, next);
+            player.sendSystemMessage(Component.literal("War draft type: " + next.displayName()));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_PVP_TARGET_DOWN) {
+            int updated = Math.max(1, options.pvpKillTarget() - 1);
+            diplomacyDraftPvpKillTarget.put(playerId, updated);
+            player.sendSystemMessage(Component.literal("War draft PvP kill target: " + updated));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_PVP_TARGET_UP) {
+            int updated = Math.min(100_000, Math.max(1, options.pvpKillTarget() + 1));
+            diplomacyDraftPvpKillTarget.put(playerId, updated);
+            player.sendSystemMessage(Component.literal("War draft PvP kill target: " + updated));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_TOGGLE_WAR_SUBMISSION) {
+            boolean updated = !options.warOfSubmission();
+            diplomacyDraftWarOfSubmission.put(playerId, updated);
+            player.sendSystemMessage(Component.literal("War draft submission term: " + (updated ? "ON" : "OFF")));
+        } else if (canManage && actionId == ModernDiplomacyScreen.ACTION_TOGGLE_WAR_LAND) {
+            boolean updated = !options.warOfLand();
+            diplomacyDraftWarOfLand.put(playerId, updated);
+            player.sendSystemMessage(Component.literal("War draft land term: " + (updated ? "ON" : "OFF")));
+        } else if (canManage && actionId >= ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST
+                && actionId < ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST + 1_000) {
+            int index = actionId - ModernDiplomacyScreen.ACTION_ACCEPT_WAR_REQUEST;
+            DiplomacySnapshot s = buildDiplomacySnapshotForPlayer(player, data, civId, diplomacyPages.getOrDefault(playerId, 0));
+            if (index >= 0 && index < s.incomingWarRequests().size()) {
+                DiplomacySnapshot.IncomingWarRequest request = s.incomingWarRequests().get(index);
+                CivSavedData.DiplomacyRequestResult result = data.respondToDiplomacyRequest(
+                        civId,
+                        request.requesterCivId(),
+                        true,
+                        player.getGameProfile().getName());
+                if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_ACCEPTED) {
+                    player.sendSystemMessage(Component.literal(
+                            "Accepted WAR declaration from " + request.requesterCivName() + "."));
+                } else {
+                    player.sendSystemMessage(Component.literal(
+                            "Unable to accept WAR declaration from " + request.requesterCivName() + "."));
+                }
+            }
+        } else if (canManage && actionId >= ModernDiplomacyScreen.ACTION_REJECT_WAR_REQUEST
+                && actionId < ModernDiplomacyScreen.ACTION_REJECT_WAR_REQUEST + 1_000) {
+            int index = actionId - ModernDiplomacyScreen.ACTION_REJECT_WAR_REQUEST;
+            DiplomacySnapshot s = buildDiplomacySnapshotForPlayer(player, data, civId, diplomacyPages.getOrDefault(playerId, 0));
+            if (index >= 0 && index < s.incomingWarRequests().size()) {
+                DiplomacySnapshot.IncomingWarRequest request = s.incomingWarRequests().get(index);
+                CivSavedData.DiplomacyRequestResult result = data.respondToDiplomacyRequest(
+                        civId,
+                        request.requesterCivId(),
+                        false,
+                        player.getGameProfile().getName());
+                if (result.type() == CivSavedData.DiplomacyRequestResultType.REQUEST_REJECTED) {
+                    player.sendSystemMessage(Component.literal(
+                            "Rejected WAR declaration from " + request.requesterCivName() + "."));
+                } else {
+                    player.sendSystemMessage(Component.literal(
+                            "Unable to reject WAR declaration from " + request.requesterCivName() + "."));
+                }
+            }
         } else if (actionId >= ModernDiplomacyScreen.ACTION_CYCLE_RELATION * 100 && canManage) {
             int index = actionId - ModernDiplomacyScreen.ACTION_CYCLE_RELATION * 100;
-            int page = diplomacyPages.getOrDefault(player.getUUID(), 0);
-            DiplomacySnapshot s = DiplomacySnapshotBuilder.build(player, data, civId, page);
+            int page = diplomacyPages.getOrDefault(playerId, 0);
+            options = warDraftOptions(playerId);
+            DiplomacySnapshot s = buildDiplomacySnapshotForPlayer(player, data, civId, page);
             if (index >= 0 && index < s.relations().size()) {
                 String otherId = s.relations().get(index).otherCivId();
                 DiplomacyState current = data.diplomacyState(civId, otherId);
@@ -627,15 +741,41 @@ public final class RealCivNetwork {
                     case ALLY -> DiplomacyState.WAR;
                     case WAR -> DiplomacyState.NEUTRAL;
                 };
-                data.setDiplomacyState(civId, otherId, next, player.getGameProfile().getName());
-                player.sendSystemMessage(Component.literal("Diplomacy with " + otherId + " is now " + next.displayName()));
-                s = DiplomacySnapshotBuilder.build(player, data, civId, page);
+                CivSavedData.DiplomacyRequestResult result = next == DiplomacyState.WAR
+                        ? data.proposeWarDeclaration(
+                                civId,
+                                otherId,
+                                options.warType(),
+                                options.pvpKillTarget(),
+                                options.warOfSubmission(),
+                                options.warOfLand(),
+                                player.getGameProfile().getName())
+                        : data.proposeDiplomacyStateChange(
+                                civId,
+                                otherId,
+                                next,
+                                player.getGameProfile().getName());
+                String warSummary = formatWarDraftSummary(options);
+                switch (result.type()) {
+                    case STATE_SET -> player.sendSystemMessage(Component.literal(
+                            "Diplomacy with " + otherId + " is now " + result.requestedState().displayName() + "."));
+                    case REQUEST_SENT, REQUEST_UPDATED -> player.sendSystemMessage(Component.literal(
+                            "Sent " + result.requestedState().displayName() + " request to " + otherId
+                                    + (next == DiplomacyState.WAR ? " (" + warSummary + ")." : ".")));
+                    case REQUEST_ACCEPTED -> player.sendSystemMessage(Component.literal(
+                            "Accepted incoming " + result.requestedState().displayName() + " request from " + otherId
+                                    + ". Diplomacy is now " + result.requestedState().displayName()
+                                    + (next == DiplomacyState.WAR ? " (" + warSummary + ")." : ".")));
+                    case REQUEST_ALREADY_PENDING -> player.sendSystemMessage(Component.literal(
+                            result.requestedState().displayName() + " request is already pending with " + otherId + "."));
+                    case NO_CHANGE_ALREADY_SET -> player.sendSystemMessage(Component.literal(
+                            "Diplomacy with " + otherId + " is already " + result.requestedState().displayName() + "."));
+                    default -> player.sendSystemMessage(Component.literal("Unable to process diplomacy action right now."));
+                }
             }
         }
 
-        int page = diplomacyPages.getOrDefault(player.getUUID(), 0);
-        DiplomacySnapshot updated = DiplomacySnapshotBuilder.build(player, data, civId, page);
-        PacketDistributor.sendToPlayer(player, new RealCivPayloads.OpenDiplomacyPayload(updated));
+        sendDiplomacyScreen(player, data, civId);
     }
 
     private static void handleCensusAction(ServerPlayer player, CivSavedData data, String civId, int actionId) {
@@ -954,6 +1094,13 @@ public final class RealCivNetwork {
         roleManagerPages.put(playerId, page);
         roleManagerSelectedRoleIds.put(playerId, selectedRoleId == null ? "" : selectedRoleId);
         openRoleManager(player, data, civId);
+    }
+
+    private record WarDraftOptions(
+            WarType warType,
+            int pvpKillTarget,
+            boolean warOfSubmission,
+            boolean warOfLand) {
     }
 
     private static void applyAction(ServerPlayer player, CivSavedData data, String civId, CivGovernanceWorkflowService.PanelAction action) {

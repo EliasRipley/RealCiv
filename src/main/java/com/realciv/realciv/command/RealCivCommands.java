@@ -3,6 +3,7 @@ package com.realciv.realciv.command;
 import com.mojang.brigadier.arguments.DoubleArgumentType;
 import com.mojang.brigadier.arguments.IntegerArgumentType;
 import com.mojang.brigadier.arguments.StringArgumentType;
+import com.mojang.brigadier.arguments.BoolArgumentType;
 import com.realciv.realciv.ModBlocks;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.*;
@@ -311,6 +312,91 @@ public final class RealCivCommands {
                                                                         StringArgumentType.getString(ctx, "civA"),
                                                                         StringArgumentType.getString(ctx, "civB"),
                                                                         StringArgumentType.getString(ctx, "state"))))))))
+                                .then(Commands.literal("accept")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .executes(ctx -> CivCommands.civDiplomacyAccept(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "other")))))
+                                .then(Commands.literal("reject")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .executes(ctx -> CivCommands.civDiplomacyReject(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "other")))))
+                        .then(Commands.literal("war")
+                                .then(Commands.literal("show")
+                                        .executes(ctx -> CivCommands.civWarShow(ctx.getSource(), null))
+                                        .then(Commands.argument("civ", StringArgumentType.string())
+                                                .requires(source -> source.hasPermission(2))
+                                                .executes(ctx -> CivCommands.civWarShow(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "civ")))))
+                                .then(Commands.literal("declare")
+                                        .then(Commands.literal("destruction")
+                                                .then(Commands.argument("other", StringArgumentType.string())
+                                                        .executes(ctx -> CivCommands.civWarDeclare(
+                                                                ctx.getSource(),
+                                                                StringArgumentType.getString(ctx, "other"),
+                                                                "destruction",
+                                                                RealCivConfig.defaultWarPvpKillTarget(),
+                                                                false,
+                                                                false))
+                                                        .then(Commands.argument("submission", BoolArgumentType.bool())
+                                                                .executes(ctx -> CivCommands.civWarDeclare(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "other"),
+                                                                        "destruction",
+                                                                        RealCivConfig.defaultWarPvpKillTarget(),
+                                                                        BoolArgumentType.getBool(ctx, "submission"),
+                                                                        false))
+                                                                .then(Commands.argument("land", BoolArgumentType.bool())
+                                                                        .executes(ctx -> CivCommands.civWarDeclare(
+                                                                                ctx.getSource(),
+                                                                                StringArgumentType.getString(ctx, "other"),
+                                                                                "destruction",
+                                                                                RealCivConfig.defaultWarPvpKillTarget(),
+                                                                                BoolArgumentType.getBool(ctx, "submission"),
+                                                                                BoolArgumentType.getBool(ctx, "land")))))))
+                                        .then(Commands.literal("pvp")
+                                                .then(Commands.argument("other", StringArgumentType.string())
+                                                        .then(Commands.argument("killTarget", IntegerArgumentType.integer(1, 100_000))
+                                                                .executes(ctx -> CivCommands.civWarDeclare(
+                                                                        ctx.getSource(),
+                                                                        StringArgumentType.getString(ctx, "other"),
+                                                                        "pvp",
+                                                                        IntegerArgumentType.getInteger(ctx, "killTarget"),
+                                                                        false,
+                                                                        false))
+                                                                .then(Commands.argument("submission", BoolArgumentType.bool())
+                                                                        .executes(ctx -> CivCommands.civWarDeclare(
+                                                                                ctx.getSource(),
+                                                                                StringArgumentType.getString(ctx, "other"),
+                                                                                "pvp",
+                                                                                IntegerArgumentType.getInteger(ctx, "killTarget"),
+                                                                                BoolArgumentType.getBool(ctx, "submission"),
+                                                                                false))
+                                                                        .then(Commands.argument("land", BoolArgumentType.bool())
+                                                                                .executes(ctx -> CivCommands.civWarDeclare(
+                                                                                        ctx.getSource(),
+                                                                                        StringArgumentType.getString(ctx, "other"),
+                                                                                        "pvp",
+                                                                                        IntegerArgumentType.getInteger(ctx, "killTarget"),
+                                                                                        BoolArgumentType.getBool(ctx, "submission"),
+                                                                                        BoolArgumentType.getBool(ctx, "land")))))))))
+                                .then(Commands.literal("accept")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .executes(ctx -> CivCommands.civWarAccept(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "other")))))
+                                .then(Commands.literal("reject")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .executes(ctx -> CivCommands.civWarReject(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "other")))))
+                                .then(Commands.literal("resign")
+                                        .then(Commands.argument("other", StringArgumentType.string())
+                                                .executes(ctx -> CivCommands.civWarResign(
+                                                        ctx.getSource(),
+                                                        StringArgumentType.getString(ctx, "other"))))))
                         .then(Commands.literal("pvp")
                                 .then(Commands.literal("show")
                                         .executes(ctx -> CivCommands.civFriendlyFireShow(ctx.getSource(), null))

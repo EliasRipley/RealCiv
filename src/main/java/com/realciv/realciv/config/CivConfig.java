@@ -58,6 +58,10 @@ public final class CivConfig {
         return RealCivConfig.REQUIRE_FOUNDER_APPROVAL.get();
     }
 
+    public static int defaultWarPvpKillTarget() {
+        return Math.max(1, RealCivConfig.WAR_DEFAULT_PVP_KILL_TARGET.get());
+    }
+
     public static int maxExplosivesExpertsPerCivilization() {
         return Math.max(0, RealCivConfig.MAX_EXPLOSIVES_EXPERTS_PER_CIV.get());
     }

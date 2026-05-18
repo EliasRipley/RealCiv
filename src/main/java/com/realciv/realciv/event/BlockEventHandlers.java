@@ -6,7 +6,6 @@ import com.realciv.realciv.command.RealCivCommands;
 import com.realciv.realciv.config.RealCivConfig;
 import com.realciv.realciv.data.*;
 import com.realciv.realciv.data.LandClass;
-import com.realciv.realciv.diplomacy.DiplomacySnapshotBuilder;
 import com.realciv.realciv.hub.CommunityHubDepositContainer;
 import com.realciv.realciv.hub.CommunityHubDepositMenu;
 import com.realciv.realciv.hub.HubStockSnapshotBuilder;
@@ -17,6 +16,7 @@ import com.realciv.realciv.logic.Profession;
 import com.realciv.realciv.logic.ProfessionEventHook;
 import com.realciv.realciv.logic.RealCivMessages;
 import com.realciv.realciv.logic.RealCivUtil;
+import com.realciv.realciv.network.RealCivNetwork;
 import com.realciv.realciv.tax.TaxSnapshotBuilder;
 import java.util.Locale;
 import net.minecraft.core.BlockPos;
@@ -1054,7 +1054,7 @@ public final class BlockEventHandlers {
             ServerPlayer player,
             CivSavedData data) {
         String civId = data.getOrAssignCivilization(player.getUUID());
-        var snapshot = DiplomacySnapshotBuilder.build(player, data, civId, 0);
+        var snapshot = RealCivNetwork.buildDiplomacySnapshotForPlayer(player, data, civId, 0);
         PacketDistributor.sendToPlayer(player, new com.realciv.realciv.network.RealCivPayloads.OpenDiplomacyPayload(snapshot));
         player.sendSystemMessage(Component.literal("Diplomacy Table opened."));
         event.setCancellationResult(InteractionResult.SUCCESS);
