@@ -8,6 +8,10 @@
     "ResultSlotMixin",
     "ResultSlotOnTakeMixin"
   ],
+  "client": [
+    "BaseScreenOpenGuiMixin",
+    "GuiHelperScissorMixin"
+  ],
   "injectors": {
     "defaultRequire": 1
   }

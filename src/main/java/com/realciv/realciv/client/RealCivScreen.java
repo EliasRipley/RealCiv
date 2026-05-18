@@ -3,11 +3,13 @@ package com.realciv.realciv.client;
 import com.realciv.realciv.RealCivMod;
 import dev.ftb.mods.ftblibrary.ui.*;
 import dev.ftb.mods.ftblibrary.ui.input.MouseButton;
+import dev.ftb.mods.ftblibrary.util.BooleanConsumer;
 import dev.ftb.mods.ftblibrary.icon.Icon;
 import dev.ftb.mods.ftblibrary.util.TooltipList;
 import net.minecraft.ChatFormatting;
 import net.minecraft.client.Minecraft;
 import net.minecraft.client.gui.GuiGraphics;
+import net.minecraft.client.gui.screens.ConfirmScreen;
 import net.minecraft.network.chat.Component;
 import java.util.function.Consumer;
 
@@ -23,13 +25,14 @@ public abstract class RealCivScreen extends BaseScreen {
 
     protected static final int COL_LABEL = 4;
     protected static final int COL_VALUE = 175;
-    protected static final int COL_BTNS = 310;
+    protected static final int COL_BTNS = 420;
     protected static final int ROW_H = 18;
     protected static final int BTN_H = 14;
 
     private final Component screenTitle;
     private final String subtitleText;
     private final int accentColor;
+    private boolean responsiveWrapperMode;
     protected int currentY = 2;
     private Panel scrollPanel;
 
@@ -39,6 +42,39 @@ public abstract class RealCivScreen extends BaseScreen {
         this.screenTitle = title;
         this.subtitleText = subtitle;
         this.accentColor = accentColor;
+        this.responsiveWrapperMode = false;
+    }
+
+    public final int designWidth() {
+        return PANEL_W;
+    }
+
+    public final int designHeight() {
+        return PANEL_H;
+    }
+
+    public final void setResponsiveWrapperMode(boolean enabled) {
+        this.responsiveWrapperMode = enabled;
+    }
+
+    public final boolean isResponsiveWrapperMode() {
+        return responsiveWrapperMode;
+    }
+
+    @Override
+    public int getX() {
+        if (responsiveWrapperMode) {
+            return 0;
+        }
+        return super.getX();
+    }
+
+    @Override
+    public int getY() {
+        if (responsiveWrapperMode) {
+            return 0;
+        }
+        return super.getY();
     }
 
     @Override
@@ -238,9 +274,11 @@ public abstract class RealCivScreen extends BaseScreen {
     @Override
     public void drawBackground(GuiGraphics graphics, Theme theme, int x, int y, int w, int h) {
         var mc = Minecraft.getInstance();
-        int sw = mc.getWindow().getGuiScaledWidth();
-        int sh = mc.getWindow().getGuiScaledHeight();
-        graphics.fill(0, 0, sw, sh, 0xB0111318);
+        if (!responsiveWrapperMode) {
+            int sw = mc.getWindow().getGuiScaledWidth();
+            int sh = mc.getWindow().getGuiScaledHeight();
+            graphics.fill(0, 0, sw, sh, 0xB0111318);
+        }
         graphics.fill(x, y, x + w, y + h, 0xFF0F141C);
         graphics.fill(x + 2, y + 2, x + w - 2, y + h - 2, 0xFF1D2632);
         graphics.fill(x + 6, y + 6, x + w - 6, y + 34, 0xFF16212E);
@@ -260,6 +298,20 @@ public abstract class RealCivScreen extends BaseScreen {
     @Override
     public boolean shouldCloseOnEsc() {
         return true;
+    }
+
+    @Override
+    public void openYesNoFull(Component title, Component desc, BooleanConsumer callback) {
+        boolean reopenResponsive = responsiveWrapperMode;
+        Minecraft.getInstance().setScreen(new ConfirmScreen(result -> {
+            if (reopenResponsive) {
+                Minecraft.getInstance().setScreen(new ResponsiveRealCivScreenWrapper(this));
+            } else {
+                openGui();
+            }
+            callback.accept(result);
+            refreshWidgets();
+        }, title, desc));
     }
 
     @Override
