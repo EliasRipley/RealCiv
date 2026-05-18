@@ -472,7 +472,8 @@ public final class BlockEventHandlers {
                 }
             }
         } else if (isProtectedCivicControlBlock(state) && !player.hasPermissions(3)) {
-            String civId = data.getOrAssignCivilization(player.getUUID());
+            @Nullable String ownerCiv = civicControlBlockOwnerCiv(data, state, dimension, pos);
+            String civId = ownerCiv != null ? ownerCiv : data.getOrAssignCivilization(player.getUUID());
             if (!canRecoverCivicControlBlock(player, data, civId)) {
                 RealCivMessages.deny(player, "Only civilization leadership can recover civic control blocks.");
                 event.setCanceled(true);
@@ -516,6 +517,24 @@ public final class BlockEventHandlers {
         if (isToolLocked(player, player.getMainHandItem(), data)) {
             event.setCanceled(true);
             return;
+        }
+
+        if (!player.isCreative() && isCivicControlBlock(state)) {
+            @Nullable ItemStack recoveredStack = recoveredCivicBlockStack(state);
+            if (recoveredStack != null && level.destroyBlock(pos, false, player)) {
+                ItemEntity blockEntity = new ItemEntity(
+                        level,
+                        pos.getX() + 0.5D,
+                        pos.getY() + 0.5D,
+                        pos.getZ() + 0.5D,
+                        recoveredStack.copy());
+                level.addFreshEntity(blockEntity);
+                player.sendSystemMessage(Component.literal(
+                        recoveredStack.getHoverName().getString() + " recovered. You can place it again."));
+                // We performed the break/recovery manually so the default break path should stop here.
+                event.setCanceled(true);
+                return;
+            }
         }
 
         if (!player.isCreative()) {
@@ -656,9 +675,6 @@ public final class BlockEventHandlers {
         if (!(event.getBreaker() instanceof ServerPlayer player) || player.getServer() == null || player.isCreative()) {
             return;
         }
-        if (RealCivUtil.isBypass(player)) {
-            return;
-        }
 
         BlockState state = event.getState();
         if (isCivicControlBlock(state)) {
@@ -668,18 +684,12 @@ public final class BlockEventHandlers {
                 return;
             }
 
-            if (!player.hasPermissions(3)) {
-                String dimension = player.level().dimension().location().toString();
+            if (!player.hasPermissions(3) && !RealCivUtil.isBypass(player)) {
+                String dimension = event.getLevel().dimension().location().toString();
                 BlockPos pos = event.getPos();
-                @Nullable String ownerCiv;
-                if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
-                    ownerCiv = data.findCivilizationIdByHubPosition(dimension, pos.getX(), pos.getY(), pos.getZ());
-                } else {
-                    @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
-                            dimension,
-                            pos.getX() >> 4,
-                            pos.getZ() >> 4);
-                    ownerCiv = lookup == null ? data.getOrAssignCivilization(player.getUUID()) : lookup.civilizationId();
+                @Nullable String ownerCiv = civicControlBlockOwnerCiv(data, state, dimension, pos);
+                if (ownerCiv == null) {
+                    ownerCiv = data.getOrAssignCivilization(player.getUUID());
                 }
                 if (ownerCiv == null || !canRecoverCivicControlBlock(player, data, ownerCiv)) {
                     event.getDrops().clear();
@@ -698,6 +708,10 @@ public final class BlockEventHandlers {
             }
             player.sendSystemMessage(Component.literal(
                     recoveredStack.getHoverName().getString() + " recovered. You can place it again."));
+            return;
+        }
+
+        if (RealCivUtil.isBypass(player)) {
             return;
         }
 
@@ -1278,6 +1292,25 @@ public final class BlockEventHandlers {
                 || state.is(ModBlocks.CIVIC_CONTROL_CONSOLE.get())
                 || state.is(ModBlocks.PROFESSION_LEDGER.get())
                 || state.is(ModBlocks.WAR_TABLE.get());
+    }
+
+    @Nullable
+    private static String civicControlBlockOwnerCiv(CivSavedData data, BlockState state, String dimension, BlockPos pos) {
+        if (state.is(ModBlocks.COMMUNITY_HUB.get())) {
+            @Nullable String hubOwnerCiv = data.findCivilizationIdByHubPosition(
+                    dimension,
+                    pos.getX(),
+                    pos.getY(),
+                    pos.getZ());
+            if (hubOwnerCiv != null) {
+                return hubOwnerCiv;
+            }
+        }
+        @Nullable PlotLookup lookup = data.getPlotAnyCivilization(
+                dimension,
+                pos.getX() >> 4,
+                pos.getZ() >> 4);
+        return lookup == null ? null : lookup.civilizationId();
     }
 
     private static boolean canRecoverCivicControlBlock(ServerPlayer player, CivSavedData data, String civId) {
