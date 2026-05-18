@@ -80,6 +80,7 @@ public class CivSavedData extends SavedData {
             ROLE_PERMISSION_MANAGE_UPKEEP,
             ROLE_PERMISSION_MANAGE_GOVERNANCE);
 
+    // ---- In-memory state: persisted to disk via save/load ----
     private final Map<UUID, PlayerRecord> players = new HashMap<>();
     private final Map<String, CivilizationRecord> civilizations = new HashMap<>();
     private final Map<UUID, String> playerCivilization = new HashMap<>();
@@ -89,18 +90,28 @@ public class CivSavedData extends SavedData {
     private final Map<String, WarCasualtyRecord> warCasualties = new HashMap<>();
     private final Map<String, String> vassalOverlord = new HashMap<>();
     private final Set<UUID> founderApprovals = new HashSet<>();
+
+    // Cross-civilization plot lookup cache (keyed by dimension|x|z -> civId + PlotRecord).
+    // Built at load time and kept in sync by setPlot / clearPlot / deleteCivilization.
+    private final Map<String, PlotLookup> globalPlotIndex = new HashMap<>();
+
     @Nullable
     private transient MinecraftServer attachedServer;
 
+    // ---- Singleton access ----
+    // Retrieves (or creates) the global CivSavedData instance attached to the overworld dimension.
+    // Must be called from the server thread only.
     public static CivSavedData get(MinecraftServer server) {
         ServerLevel overworld = Objects.requireNonNull(server.overworld(), "Overworld is not available");
         SavedData.Factory<CivSavedData> factory = new SavedData.Factory<>(CivSavedData::new, CivSavedData::load);
         CivSavedData data = overworld.getDataStorage().computeIfAbsent(factory, DATA_NAME);
         data.attachedServer = server;
         data.ensureDefaultCivilizationExists();
+        data.rebuildGlobalPlotIndex();
         return data;
     }
 
+    // ---- Serialization ----
     public static CivSavedData load(CompoundTag tag, HolderLookup.Provider provider) {
         CivSavedData data = new CivSavedData();
 
@@ -297,6 +308,7 @@ public class CivSavedData extends SavedData {
         }
 
         data.ensureDefaultCivilizationExists();
+        data.rebuildGlobalPlotIndex();
 
         // Lazy legacy account migration into default civ account.
         String defaultId = RealCivConfig.defaultCivilizationId();
@@ -785,6 +797,9 @@ public class CivSavedData extends SavedData {
             transferredStockItems += value;
         }
 
+        for (String plotKey : removed.plots().keySet()) {
+            globalPlotIndex.remove(plotKey);
+        }
         int removedPlots = removed.plots().size();
         addAuditLog(
                 fallback.id(),
@@ -945,6 +960,7 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    // ---- Hub stock (shared item pools per civilization) ----
     public long getHubStock(String civIdRaw, ResourceLocation itemId) {
         return getOrCreateCivilization(civIdRaw).hubStock().getOrDefault(itemId.toString(), 0L);
     }
@@ -956,17 +972,18 @@ public class CivSavedData extends SavedData {
                 .toList();
     }
 
+    // Atomically checks available stock (total minus war-locked) and withdraws in one read-compare-write.
     public boolean tryWithdrawFromHub(String civIdRaw, ResourceLocation itemId, long amount) {
         if (amount <= 0L) {
             return false;
         }
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         String key = itemId.toString();
-        long available = civ.availableHubStock(key);
-        if (available < amount) {
+        long current = civ.hubStock().getOrDefault(key, 0L);
+        long locked = civ.hubLockedForWar().getOrDefault(key, 0L);
+        if (current - locked < amount) {
             return false;
         }
-        long current = civ.hubStock().getOrDefault(key, 0L);
         long remaining = current - amount;
         if (remaining <= 0L) {
             civ.hubStock().remove(key);
@@ -977,6 +994,7 @@ public class CivSavedData extends SavedData {
         return true;
     }
 
+    // Reserves stock for war resource gambles; prevents withdrawal during active war.
     private void lockHubStock(String civIdRaw, String itemId, long amount) {
         if (amount <= 0L || itemId == null || itemId.isBlank()) {
             return;
@@ -3314,16 +3332,34 @@ public class CivSavedData extends SavedData {
         return new ArrayList<>(civ.auditLogs().subList(start, civ.auditLogs().size()));
     }
 
+    // ---- Plot management ----
+
+    // Rebuilds the cross-civ global plot index from all civilizations' plot maps.
+    // Called after deserialization (load) and after default civ initialization.
+    private void rebuildGlobalPlotIndex() {
+        globalPlotIndex.clear();
+        for (Map.Entry<String, CivilizationRecord> entry : civilizations.entrySet()) {
+            String civId = entry.getKey();
+            for (PlotRecord plot : entry.getValue().plots().values()) {
+                globalPlotIndex.put(plot.plotKey(), new PlotLookup(civId, plot));
+            }
+        }
+    }
+
+    // Canonical string key for a chunk: "dimension|x|z".
     public String chunkKey(String dimension, long chunkX, long chunkZ) {
         return dimension + "|" + chunkX + "|" + chunkZ;
     }
 
+    // Looks up a plot within a specific civilization by chunk coordinates.
     @Nullable
     public PlotRecord getPlot(String civIdRaw, String dimension, long chunkX, long chunkZ) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         return civ.plots().get(chunkKey(dimension, chunkX, chunkZ));
     }
 
+    // Claims a chunk for a civilization. Sets initial upkeep schedule, clears delinquency,
+    // updates the global plot index, and syncs to FTB Chunks if the server is attached.
     public void setPlot(
             String civIdRaw,
             String dimension,
@@ -3339,6 +3375,7 @@ public class CivSavedData extends SavedData {
         plot.setNextUpkeepTick(gameTime + Math.max(interval, Math.max(0L, initialPaidTicks)));
         plot.setDelinquentSinceTick(-1L);
         civ.plots().put(plot.plotKey(), plot);
+        globalPlotIndex.put(plot.plotKey(), new PlotLookup(civ.id(), plot));
         setDirty();
         if (attachedServer != null) {
             RealCivFTBChunksMirror.syncPlotChange(
@@ -3352,10 +3389,14 @@ public class CivSavedData extends SavedData {
         }
     }
 
+    // Removes a plot from its civilization, cleans up the global index, and syncs FTB Chunks.
+    // Returns true if a plot was actually removed.
     public boolean clearPlot(String civIdRaw, String dimension, long chunkX, long chunkZ) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
-        PlotRecord removed = civ.plots().remove(chunkKey(dimension, chunkX, chunkZ));
+        String key = chunkKey(dimension, chunkX, chunkZ);
+        PlotRecord removed = civ.plots().remove(key);
         if (removed != null) {
+            globalPlotIndex.remove(key);
             setDirty();
             if (attachedServer != null) {
                 RealCivFTBChunksMirror.syncPlotChange(
@@ -3372,16 +3413,11 @@ public class CivSavedData extends SavedData {
         return false;
     }
 
+    // Cross-civilization plot lookup via the global index. O(1) — no linear scan.
     @Nullable
     public PlotLookup getPlotAnyCivilization(String dimension, long chunkX, long chunkZ) {
         String key = chunkKey(dimension, chunkX, chunkZ);
-        for (CivilizationRecord civ : civilizations.values()) {
-            PlotRecord plot = civ.plots().get(key);
-            if (plot != null) {
-                return new PlotLookup(civ.id(), plot);
-            }
-        }
-        return null;
+        return globalPlotIndex.get(key);
     }
 
     private boolean crossCivBuildBreakAllowed(String actorCivRaw, String targetCivRaw) {
@@ -3488,6 +3524,7 @@ public class CivSavedData extends SavedData {
         return earliest == Long.MAX_VALUE ? -1L : earliest;
     }
 
+    // ---- Plot upkeep (rent/delinquency/repossession) ----
     public int prepayPrivatePlotUpkeep(String civIdRaw, UUID ownerId, int cycles, long gameTime, String actorName) {
         CivilizationRecord civ = getOrCreateCivilization(civIdRaw);
         int safeCycles = Math.max(0, cycles);
@@ -3520,6 +3557,9 @@ public class CivSavedData extends SavedData {
         return updated;
     }
 
+    // Runs every server tick. For each private plot whose upkeep is due, charges the owner
+    // in batched O(1) fashion (capped at one interval's worth of ticks). Plots that cannot
+    // be paid become delinquent; delinquent plots past the grace period are repossessed.
     public void processUpkeep(long gameTime) {
         long interval = Math.max(1L, RealCivConfig.upkeepIntervalTicks());
         long grace = Math.max(1L, RealCivConfig.upkeepGraceTicks());
@@ -3541,23 +3581,23 @@ public class CivSavedData extends SavedData {
                 }
 
                 PlayerRecord owner = getOrCreatePlayer(plot.ownerId());
-                int safety = 0;
-                while (gameTime >= plot.nextUpkeepTick() && safety < 4096) {
-                    if (owner.socialCreditCents(civ.id()) >= cost) {
-                        owner.addSocialCreditCents(civ.id(), -cost);
-                        civ.setTreasuryCents(civ.treasuryCents() + cost);
-                        plot.setNextUpkeepTick(plot.nextUpkeepTick() + interval);
-                        plot.setDelinquentSinceTick(-1L);
+                long missedTicks = (gameTime - plot.nextUpkeepTick()) / interval + 1;
+                long capped = Math.min(missedTicks, interval);
+                long affordable = Math.min(capped, owner.socialCreditCents(civ.id()) / cost);
+                if (affordable > 0L) {
+                    long totalCost = cost * affordable;
+                    owner.addSocialCreditCents(civ.id(), -totalCost);
+                    civ.setTreasuryCents(civ.treasuryCents() + totalCost);
+                    plot.setNextUpkeepTick(plot.nextUpkeepTick() + interval * affordable);
+                    plot.setDelinquentSinceTick(-1L);
+                    changed = true;
+                }
+                if (plot.nextUpkeepTick() <= gameTime) {
+                    if (plot.delinquentSinceTick() < 0L) {
+                        plot.setDelinquentSinceTick(plot.nextUpkeepTick());
+                        addAuditLog(civ.id(), "Plot " + plot.plotKey() + " became delinquent for owner " + plot.ownerId(), RealCivConfig.MAX_AUDIT_LOGS.get());
                         changed = true;
-                    } else {
-                        if (plot.delinquentSinceTick() < 0L) {
-                            plot.setDelinquentSinceTick(plot.nextUpkeepTick());
-                            addAuditLog(civ.id(), "Plot " + plot.plotKey() + " became delinquent for owner " + plot.ownerId(), RealCivConfig.MAX_AUDIT_LOGS.get());
-                            changed = true;
-                        }
-                        break;
                     }
-                    safety++;
                 }
 
                 if (plot.delinquentSinceTick() >= 0L && gameTime - plot.delinquentSinceTick() >= grace) {

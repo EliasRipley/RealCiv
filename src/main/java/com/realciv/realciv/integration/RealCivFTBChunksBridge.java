@@ -8,7 +8,6 @@ import com.realciv.realciv.logic.CivPermissionService;
 import com.realciv.realciv.logic.RealCivUtil;
 import com.realciv.realciv.network.RealCivPayloads;
 import dev.architectury.event.CompoundEventResult;
-import dev.architectury.networking.NetworkManager;
 import dev.ftb.mods.ftbchunks.api.ClaimResult;
 import dev.ftb.mods.ftbchunks.api.ClaimedChunk;
 import dev.ftb.mods.ftbchunks.api.event.ClaimedChunkEvent;
@@ -20,8 +19,11 @@ import java.util.function.Supplier;
 import net.minecraft.commands.CommandSourceStack;
 import net.minecraft.network.chat.Component;
 import net.minecraft.server.level.ServerPlayer;
+import net.neoforged.neoforge.network.PacketDistributor;
 import org.jetbrains.annotations.Nullable;
 
+// Intercepts FTB Chunks claim/unclaim events to enforce RealCiv land ownership rules.
+// Also provides claim-mode management (auto / civic / private) and internal sync helpers.
 public final class RealCivFTBChunksBridge {
     private static final String CLAIM_DENIED_TRANSLATION_KEY = "realciv.ftbchunks.claim_denied";
     private static final String UNCLAIM_DENIED_TRANSLATION_KEY = "realciv.ftbchunks.unclaim_denied";
@@ -29,6 +31,8 @@ public final class RealCivFTBChunksBridge {
     public static final String CLAIM_MODE_CIVIC = "civic";
     public static final String CLAIM_MODE_PRIVATE = "private";
 
+    // Re-entrancy guards: INTERNAL_UNCLAIM prevents infinite loops when rolling back invalid claims,
+    // INTERNAL_SYNC_DEPTH prevents recursive sync triggers during bulk operations.
     private static final ThreadLocal<Boolean> INTERNAL_UNCLAIM = ThreadLocal.withInitial(() -> false);
     private static final ThreadLocal<Integer> INTERNAL_SYNC_DEPTH = ThreadLocal.withInitial(() -> 0);
     private static boolean registered;
@@ -57,7 +61,7 @@ public final class RealCivFTBChunksBridge {
                                 + "Opening the RealCiv land map instead."));
                 return false;
             }
-            NetworkManager.sendToPlayer(player, new OpenClaimGUIPacket(civTeam.getTeamId()));
+            PacketDistributor.sendToPlayer(player, new OpenClaimGUIPacket(civTeam.getTeamId()));
             return true;
         } catch (Throwable throwable) {
             RealCivMod.LOGGER.warn("Failed to open FTB claim map for {}.", player.getGameProfile().getName(), throwable);
@@ -446,11 +450,14 @@ public final class RealCivFTBChunksBridge {
         }
     }
 
+    // Sends a force-refresh to the client's FTB Chunks minimap for a specific chunk position.
+    // Uses PacketDistributor directly (NeoForge native) since ForceMapRefreshPayload is registered
+    // via RealCivNetwork.registerPayloads on the NeoForge event bus.
     private static void sendMapRefreshToPlayer(CommandSourceStack source, ChunkDimPos pos) {
         if (!(source.getEntity() instanceof ServerPlayer player)) {
             return;
         }
-        NetworkManager.sendToPlayer(player, new RealCivPayloads.ForceMapRefreshPayload(
+        PacketDistributor.sendToPlayer(player, new RealCivPayloads.ForceMapRefreshPayload(
                 pos.dimension().location().toString(),
                 pos.x(),
                 pos.z()));

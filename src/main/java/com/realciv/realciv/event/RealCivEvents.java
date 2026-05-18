@@ -120,6 +120,7 @@ public final class RealCivEvents {
     private RealCivEvents() {
     }
 
+    // ---- Player lifecycle events ----
     public static void onPlayerLogin(PlayerEvent.PlayerLoggedInEvent event) {
         PlayerEventHandlers.handlePlayerLogin(event);
     }
@@ -132,6 +133,8 @@ public final class RealCivEvents {
         PlayerEventHandlers.handlePlayerClone(event);
     }
 
+    // ---- Server tick ----
+    // Periodic territory transition messages and upkeep processing.
     public static void onServerTick(ServerTickEvent.Post event) {
         if (event.getServer().overworld() == null) {
             return;
@@ -176,10 +179,12 @@ public final class RealCivEvents {
         }
     }
 
+    // ---- Item events ----
     public static void onItemPickupPre(ItemEntityPickupEvent.Pre event) {
         PlayerEventHandlers.handleItemPickupPre(event);
     }
 
+    // ---- Block interaction events ----
     public static void onRightClickBlock(PlayerInteractEvent.RightClickBlock event) {
         BlockEventHandlers.handleRightClickBlock(event);
     }
@@ -192,6 +197,7 @@ public final class RealCivEvents {
         BlockEventHandlers.handleLeftClickBlock(event);
     }
 
+    // ---- Block modification events ----
     public static void onBlockPlace(BlockEvent.EntityPlaceEvent event) {
         BlockEventHandlers.handleBlockPlace(event);
     }
@@ -204,6 +210,23 @@ public final class RealCivEvents {
         BlockEventHandlers.handleBlockDrops(event);
     }
 
+    public static void onBlockToolModification(BlockEvent.BlockToolModificationEvent event) {
+        BlockEventHandlers.handleBlockToolModification(event);
+    }
+
+    public static void onFarmlandTrample(BlockEvent.FarmlandTrampleEvent event) {
+        BlockEventHandlers.handleFarmlandTrample(event);
+    }
+
+    public static void onUseItemOnBlock(UseItemOnBlockEvent event) {
+        BlockEventHandlers.handleUseItemOnBlock(event);
+    }
+
+    public static void onBonemealUse(BonemealEvent event) {
+        BlockEventHandlers.handleBonemealUse(event);
+    }
+
+    // ---- Entity interaction events ----
     public static void onAttackEntity(AttackEntityEvent event) {
         EntityEventHandlers.handleAttackEntity(event);
     }
@@ -228,22 +251,7 @@ public final class RealCivEvents {
         EntityEventHandlers.handleEntityInteractSpecific(event);
     }
 
-    public static void onBlockToolModification(BlockEvent.BlockToolModificationEvent event) {
-        BlockEventHandlers.handleBlockToolModification(event);
-    }
-
-    public static void onFarmlandTrample(BlockEvent.FarmlandTrampleEvent event) {
-        BlockEventHandlers.handleFarmlandTrample(event);
-    }
-
-    public static void onUseItemOnBlock(UseItemOnBlockEvent event) {
-        BlockEventHandlers.handleUseItemOnBlock(event);
-    }
-
-    public static void onBonemealUse(BonemealEvent event) {
-        BlockEventHandlers.handleBonemealUse(event);
-    }
-
+    // ---- Profession / craft / stat events ----
     public static void onVillagerTrade(TradeWithVillagerEvent event) {
         PlayerEventHandlers.handleVillagerTrade(event);
     }
@@ -280,6 +288,7 @@ public final class RealCivEvents {
         PlayerEventHandlers.handleItemFished(event);
     }
 
+    // ---- Explosion events ----
     public static void onExplosionStart(ExplosionEvent.Start event) {
         BlockEventHandlers.handleExplosionStart(event);
     }
@@ -361,6 +370,8 @@ public final class RealCivEvents {
 
     /**
      * Applies all configured event hook rules for the hook (atomically) against profession action counters.
+     * Validates membership duration, profession level, general level, and window quotas before mutating.
+     * All mutations are deferred to the end so that a denial from any rule leaves state unchanged.
      */
     public static boolean tryConsumeConfiguredHookActions(
             ServerPlayer player,
@@ -399,6 +410,7 @@ public final class RealCivEvents {
         Map<Profession, Integer> pendingProfessionXpByProfession = new HashMap<>();
         Map<String, PendingWindowUsage> pendingWindowUsageByRule = new HashMap<>();
         int pendingGeneralXp = 0;
+        long pendingFirstSeenAtMillis = -1L;
         boolean anyRuleApplied = false;
         boolean mutated = false;
 
@@ -460,9 +472,7 @@ public final class RealCivEvents {
 
             if (rule.minMembershipMillis() > 0L) {
                 if (record.firstSeenAtMillis() <= 0L) {
-                    record.ensureFirstSeenAtMillis(nowMillis);
-                    mutated = true;
-                    data.setDirty();
+                    pendingFirstSeenAtMillis = nowMillis;
                 }
                 long membershipMillis = record.membershipMillis(nowMillis);
                 if (membershipMillis < rule.minMembershipMillis()) {
@@ -643,12 +653,18 @@ public final class RealCivEvents {
             mutated = true;
         }
 
+        if (pendingFirstSeenAtMillis > 0L) {
+            record.ensureFirstSeenAtMillis(pendingFirstSeenAtMillis);
+            mutated = true;
+        }
+
         if (mutated) {
             data.setDirty();
         }
         return true;
     }
 
+    // ---- Hook rule resolution helpers ----
     private static List<ProfessionEventHookRule> configuredHookRules(ProfessionEventHook hook) {
         ArrayList<ProfessionEventHookRule> matches = new ArrayList<>();
         for (ProfessionEventHookRule rule : RealCivConfig.professionEventHookRules()) {

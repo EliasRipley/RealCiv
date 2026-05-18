@@ -15,9 +15,12 @@ import net.minecraft.resources.ResourceKey;
 import net.minecraft.resources.ResourceLocation;
 import net.minecraft.world.level.Level;
 
+// Custom packet payloads for RealCiv client-server communication.
+// Each inner record implements CustomPacketPayload with a STREAM_CODEC for NeoForge networking.
 public final class RealCivPayloads {
     private RealCivPayloads() {}
 
+    // ---- Screen identifier constants (sent in RealCivActionPayload) ----
     public static final String SCREEN_TAX = "tax";
     public static final String SCREEN_DIPLOMACY = "diplomacy";
     public static final String SCREEN_PROFESSION = "profession";
@@ -240,6 +243,9 @@ public final class RealCivPayloads {
         }
     }
 
+    // Batch-set daily allowance limits for multiple hub items at once (from the ration draft UI).
+    // Wire format: VAR_INT count, then count pairs of (STRING_UTF8 itemId, VAR_INT dailyCount), then boolean replaceExisting.
+    // The server handler caps the decoded count at 256 to prevent OOM from malicious packets.
     public record SetHubAllowanceBatchPayload(
             List<String> itemIds,
             List<Integer> dailyCounts,
@@ -258,7 +264,8 @@ public final class RealCivPayloads {
                     buf.writeBoolean(payload.replaceExisting());
                 },
                 buf -> {
-                    int count = ByteBufCodecs.VAR_INT.decode(buf);
+                    int rawCount = ByteBufCodecs.VAR_INT.decode(buf);
+                    int count = Math.min(rawCount, 256);
                     List<String> itemIds = new ArrayList<>(count);
                     List<Integer> dailyCounts = new ArrayList<>(count);
                     for (int i = 0; i < count; i++) {

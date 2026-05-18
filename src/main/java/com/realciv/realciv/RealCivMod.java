@@ -11,6 +11,7 @@ import net.neoforged.bus.api.IEventBus;
 import net.neoforged.fml.ModContainer;
 import net.neoforged.fml.common.Mod;
 import net.neoforged.fml.config.ModConfig;
+import net.neoforged.fml.ModList;
 import net.neoforged.fml.event.config.ModConfigEvent;
 import net.neoforged.neoforge.common.NeoForge;
 import net.neoforged.neoforge.event.BuildCreativeModeTabContentsEvent;
@@ -22,6 +23,10 @@ public class RealCivMod {
     public static final Logger LOGGER = LogUtils.getLogger();
 
     public RealCivMod(IEventBus modEventBus, ModContainer modContainer) {
+        // Check FTB Chunks version before any integration code runs.
+        checkFTBChunksVersion();
+
+        // Register blocks, menus, and network payloads on the mod event bus.
         ModBlocks.register(modEventBus);
         ModMenus.register(modEventBus);
         modEventBus.addListener(RealCivNetwork::registerPayloads);
@@ -31,8 +36,10 @@ public class RealCivMod {
 
         modContainer.registerConfig(ModConfig.Type.COMMON, RealCivConfig.SPEC);
 
+        // Register FTB Chunks integration (claim interceptors).
         RealCivFTBChunksBridge.register();
 
+        // Register all game event handlers on the NeoForge event bus.
         NeoForge.EVENT_BUS.addListener(RealCivCommands::onRegisterCommands);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogin);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onPlayerLogout);
@@ -66,6 +73,25 @@ public class RealCivMod {
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemCrafted);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onItemPickupPre);
         NeoForge.EVENT_BUS.addListener(RealCivEvents::onServerTick);
+    }
+
+    // Verifies the installed FTB Chunks version is on the expected 1.21.1 line (2101.1.x)
+    // and warns if it predates the minimum recommended version (2101.1.14).
+    private static void checkFTBChunksVersion() {
+        ModList.get().getModContainerById("ftbchunks").ifPresentOrElse(container -> {
+            String version = container.getModInfo().getVersion().toString();
+            if (version.startsWith("2101.1.")) {
+                int patch = 0;
+                try {
+                    patch = Integer.parseInt(version.substring("2101.1.".length()));
+                } catch (NumberFormatException ignored) {}
+                if (patch < 14) {
+                    LOGGER.warn("FTB Chunks version {} is older than recommended 2101.1.14. Upgrade recommended for compatibility.", version);
+                }
+            } else {
+                LOGGER.warn("FTB Chunks version {} may be incompatible. Expected 2101.1.x (1.21.1 line).", version);
+            }
+        }, () -> LOGGER.error("FTB Chunks mod (ftbchunks) not found! RealCiv requires FTB Chunks to be installed."));
     }
 
     private void onConfigLoading(ModConfigEvent.Loading event) {

@@ -36,6 +36,9 @@ bin/
 ### External research files ###
 External/
 
+### Logs ###
+Logs/
+
 ### Minecraft Modding ###
 run/
 !**/src/**/run/
